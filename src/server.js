@@ -4,6 +4,7 @@ const connectDB = require("./config/db");
 const cors = require('cors');
 const PORT = process.env.PORT || 9000;
 const app = express();
+const productRoutes = require("./routes/productRoutes");
 
 // Connect to database
 connectDB();
@@ -24,6 +25,7 @@ app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('Something broke!');
 });
+app.use("/api/products", productRoutes);
 
 // Start server
 app.listen(PORT, () => {
