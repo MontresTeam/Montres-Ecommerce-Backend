@@ -28,7 +28,7 @@ const getProducts = async (req, res) => {
 
 const addProduct = async (req, res) => {
   try {
-    // If multer is configured as `.array('images')`
+  
     const images = req.files ? req.files.map(file => file.path) : [];
 
     const newProduct = new SProduct({
