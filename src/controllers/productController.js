@@ -1,5 +1,5 @@
 const Product = require("../models/product");
-const SProduct = require('../models/ProductModal')
+const SProduct = require("../models/ProductModal");
 
 const getProducts = async (req, res) => {
   try {
@@ -31,7 +31,6 @@ const getProducts = async (req, res) => {
       currentPage: pageNum,
       products,
     });
-
   } catch (err) {
     res.status(500).json({
       message: "❌ Error fetching products",
@@ -40,22 +39,55 @@ const getProducts = async (req, res) => {
   }
 };
 
+const productHome = async (req, res) => {
+  try {
+    // Fetch last-added products (LIFO order) using createdAt timestamp
+    const brandNew = await Product.find()
+      .sort({ createdAt: 1 })
+      .skip(2) // newest first
+      .limit(6)
 
+    const newArrivals = await Product.find()
+      .sort({ createdAt: -1 })  
+      .skip(19)
+      .limit(3);
+
+    const montresTrusted = await Product.find()
+      .sort({ createdAt: -1 })
+      .skip(8)
+      .limit(3);
+
+    const lastBrandNew = await Product.find()
+      .sort({ createdAt: -1 })
+      .skip(12)
+      .limit(6);
+
+    res.json({
+      brandNew,
+      newArrivals,
+      montresTrusted,
+      lastBrandNew,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: "❌ Error fetching home products",
+      error: err.message,
+    });
+  }
+};
 
 // Add Product
 
 const addProduct = async (req, res) => {
   try {
-  
-    const images = req.files ? req.files.map(file => file.path) : [];
+    const images = req.files ? req.files.map((file) => file.path) : [];
 
     const newProduct = new SProduct({
       ...req.body,
-      images, 
+      images,
     });
 
-    console.log(newProduct,"newProduct");
-    
+    console.log(newProduct, "newProduct");
 
     const savedProduct = await newProduct.save();
     res.status(201).json(savedProduct);
@@ -64,8 +96,8 @@ const addProduct = async (req, res) => {
   }
 };
 
-
 module.exports = {
   getProducts,
-  addProduct
+  addProduct,
+  productHome,
 };
