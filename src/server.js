@@ -2,8 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const connectDB = require("./config/db");
 const cors = require('cors');
-const PORT = process.env.PORT || 9000;
+const PORT = process.env.PORT || 7000;
 const app = express();
+const bodyParser = require("body-parser");
 const productRoutes = require("./routes/productRoutes");
 const userRoute = require('./routes/userRoute')
 
@@ -12,7 +13,9 @@ connectDB();
 
 
 // Middlewares
-app.use(cors());       
+app.use(cors());  
+app.use(bodyParser.json());
+// app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -28,6 +31,7 @@ app.use((err, req, res, next) => {
 });
 
 app.use("/api/products", productRoutes);
+app.use("/api",productRoutes)
 app.use("/api/createProduct",productRoutes)
 app.use('/api/Auth', userRoute)
 
