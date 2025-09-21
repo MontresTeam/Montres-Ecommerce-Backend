@@ -42,7 +42,7 @@ const productSchema = new mongoose.Schema(
     lowStockAmount: { type: Number },
     backordersAllowed: { type: Boolean, default: false },
     soldIndividually: { type: Boolean, default: false },
-
+    categorisOne: {String},
     // Shipping
     weight: { type: Number },
     length: { type: Number },
