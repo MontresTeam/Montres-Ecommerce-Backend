@@ -5,6 +5,7 @@ const cors = require('cors');
 const PORT = process.env.PORT || 9000;
 const app = express();
 const productRoutes = require("./routes/productRoutes");
+const userRoute = require('./routes/userRoute')
 
 // Connect to database
 connectDB();
@@ -28,6 +29,7 @@ app.use((err, req, res, next) => {
 
 app.use("/api/products", productRoutes);
 app.use("/api/createProduct",productRoutes)
+app.use('/api/Auth', userRoute)
 
 // Start server
 app.listen(PORT, () => {
