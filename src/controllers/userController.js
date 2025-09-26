@@ -1,8 +1,8 @@
 const userModel = require("../models/UserModel");
+const ProductModel = require("../models/product")
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
-
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -88,6 +88,8 @@ const Login = async (req, res) => {
       });
     }
 
+    console.log(isMatch, "Mathc");
+
     // ✅ Generate JWT token
     const token = jwt.sign(
       { id: user._id, email: user.email },
@@ -115,6 +117,8 @@ const Login = async (req, res) => {
   }
 };
 
+// forgotPassword -> with email send verification
+
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -133,15 +137,12 @@ const forgotPassword = async (req, res) => {
         .status(404)
         .json({ status: "Fail", message: "User not found." });
     }
-
-    // 🔑 Generate reset token (JWT)
     const token = jwt.sign(
       { id: user._id },
       process.env.USER_ACCESS_TOKEN_SECRET,
       { expiresIn: "15m" } // token valid for 15 minutes
     );
 
-    // 🔑 Save token + expiry in DB
     user.resetPasswordToken = token;
     user.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 min
     await user.save();
@@ -149,11 +150,11 @@ const forgotPassword = async (req, res) => {
     // 🔑 Create reset link
     const resetLink = `http://localhost:3000/ResetPassword/${user._id}/${token}`;
 
-const mailOptions = {
-  from: `"Montres Trading L.L.C – The Art Of Time" <${process.env.EMAIL_USER}>`,
-  to: email,
-  subject: "🔑 Reset Your Password – Montres Trading L.L.C",
-  html: `
+    const mailOptions = {
+      from: `"Montres Trading L.L.C – The Art Of Time" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "🔑 Reset Your Password – Montres Trading L.L.C",
+      html: `
   <!DOCTYPE html>
   <html lang="en">
   <head>
@@ -227,8 +228,7 @@ const mailOptions = {
   </body>
   </html>
   `,
-};
-
+    };
 
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
@@ -249,4 +249,221 @@ const mailOptions = {
   }
 };
 
-module.exports = { Registration, Login, forgotPassword };
+// ResetPassword verification
+const ResetPassword = async (req, res) => {
+  try {
+    const { id, token } = req.params;
+    const { newPassword, confirmPassword } = req.body;
+
+    // 1️⃣ Check fields
+    if (!newPassword || !confirmPassword) {
+      return res
+        .status(400)
+        .json({ status: "Fail", message: "Both password fields are required" });
+    }
+
+    // 2️⃣ Check match
+    if (newPassword !== confirmPassword) {
+      return res
+        .status(400)
+        .json({ status: "Fail", message: "Passwords do not match" });
+    }
+
+    // ✅ Find user by ID
+    const user = await userModel.findById(id);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ status: "Fail", message: "User not found" });
+    }
+
+    // ✅ Check token and expiry
+    if (user.resetPasswordToken !== token) {
+      return res
+        .status(400)
+        .json({ status: "Fail", message: "Invalid or expired token" });
+    }
+
+    if (user.resetPasswordExpire < Date.now()) {
+      return res
+        .status(400)
+        .json({ status: "Fail", message: "Reset link has expired" });
+    }
+
+    // ✅ Verify JWT
+    try {
+      jwt.verify(token, process.env.USER_ACCESS_TOKEN_SECRET);
+    } catch (err) {
+      return res
+        .status(400)
+        .json({ status: "Fail", message: "Invalid or expired token" });
+    }
+
+    // ✅ Set new password (NO MANUAL HASHING)
+    user.password = newPassword;
+
+    // ✅ Clear reset fields
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+
+    await user.save(); // pre-save hook will hash password here
+
+    return res.status(200).json({
+      status: "Success",
+      message:
+        "Password reset successful. Please login with your new password.",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ status: "Error", message: error.message });
+  }
+};
+
+
+
+// 🛒 Add to Cart
+
+const addToCart = async (req,res)=>{
+   try {
+    const { userId } = req.user; // from auth middleware (JWT)
+    const { productId, quantity } = req.body;
+
+    let user = await userModel.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+     const product = await ProductModel.findById(productId);
+    if (!product) return res.status(404).json({ message: "Product not found" });
+
+    // Check if product already in cart
+    const cartItem = user.cart.find(
+      (item) => item.productId.toString() === productId
+    );
+
+      if (cartItem) {
+      // update quantity
+      cartItem.quantity += quantity;
+    } else {
+      user.cart.push({ productId, quantity });
+    }
+
+    await user.save();
+    res.status(200).json({ message: "Added to cart", cart: user.cart });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+
+// 🗑️ Remove from Cart
+
+
+const removeFromCart = async (req,res)=>{
+   try {
+    const { userId } = req.user;
+    const { productId } = req.body;
+
+    
+    let user = await userModel.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.cart = user.cart.filter(
+      (item) => item.productId.toString() !== productId
+    );
+      await user.save();
+    res.status(200).json({ message: "Removed from cart", cart: user.cart });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+
+
+// 💖 Add to Wishlist
+
+const addToWishlist = async(req,res)=>{
+  try {
+      const { userId } = req.user;
+    const { productId } = req.body;
+
+    let user = await userModel.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // check duplicate
+    const alreadyInWishlist = user.wishlist.find(
+      (item) => item.productId.toString() === productId
+    );
+    if (alreadyInWishlist)
+      return res.status(400).json({ message: "Already in wishlist" });
+
+    user.wishlist.push({ productId });
+    await user.save();
+    res.status(200).json({ message: "Added to wishlist", wishlist: user.wishlist });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// 🛍️ Place Order
+
+const placeOrder = async(req,res)=>{
+  try {
+    const { userId } = req.user;
+    const { paymentMethod } = req.body;
+    
+    let user = await userModel.findById(userId).populate("cart.productId");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+      if (user.cart.length === 0)
+      return res.status(400).json({ message: "Cart is empty" });
+
+
+       // calculate total
+    const totalAmount = user.cart.reduce(
+      (sum, item) => sum + item.productId.price * item.quantity,
+      0
+    );
+
+    const order = {
+      orderId: "ORD-" + Date.now(),
+      items: user.cart.map((item) => ({
+        productId: item.productId._id,
+        quantity: item.quantity,
+      })),
+      totalAmount,
+      paymentMethod,
+      status: "pending",
+    };
+
+    user.myOrders.push(order);
+    user.cart = []; // clear cart after order
+
+    await user.save();
+
+    res.status(201).json({ message: "Order placed", order });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+
+// 📦 Get My Orders
+
+
+const getMyOrders = async (req,res)=>{
+   try {
+    
+   } catch (error) {
+    
+   }
+}
+
+module.exports = {
+   Registration,
+   Login, 
+   forgotPassword, 
+   ResetPassword,
+   removeFromCart,
+   addToCart,
+   addToWishlist,
+   placeOrder
+   };

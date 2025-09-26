@@ -2,13 +2,12 @@ require('dotenv').config();
 const express = require('express');
 const connectDB = require("./config/db");
 const cors = require('cors');
-const PORT = process.env.PORT || 7000;
+const PORT = process.env.PORT || 9000;
 const app = express();
 const bodyParser = require("body-parser");
 const productRoutes = require("./routes/productRoutes");
 const userRoute = require('./routes/userRoute')
 
-// Connect to database
 connectDB();
 
 
@@ -25,7 +24,7 @@ app.get('/', (req, res) => {
 });
 
 // Error handler
-app.use((err, req, res, next) => {
+app.use((err, req, res, next) => { 
     console.error(err.stack);
     res.status(500).send('Something broke!');
 });
