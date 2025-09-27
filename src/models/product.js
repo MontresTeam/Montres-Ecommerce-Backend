@@ -42,7 +42,9 @@ const productSchema = new mongoose.Schema(
     lowStockAmount: { type: Number },
     backordersAllowed: { type: Boolean, default: false },
     soldIndividually: { type: Boolean, default: false },
-    categorisOne: {String},
+    categorisOne: {tyep:String},
+    subcategory: [{tyep:String}],
+    gender: {type:String ,enum:['men','women','unisex']},
     // Shipping
     weight: { type: Number },
     length: { type: Number },
