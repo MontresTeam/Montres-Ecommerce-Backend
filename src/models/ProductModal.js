@@ -9,6 +9,7 @@ const ProductSchema = new mongoose.Schema({
     price: { type: Number, required: true },               // Current price (can be sale price)
     regularPrice: { type: Number },                        // Original price
     salePrice: { type: Number },                           // Discounted price (optional)
+    categoryiesOne: { type: String },                     // Primary category
     description: { type: String },                         // General description
     specifications: {                                      // Watch / Bag specifications
         caseDiameter: { type: String },
