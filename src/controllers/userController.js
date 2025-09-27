@@ -369,9 +369,11 @@ const removeFromCart = async (req,res)=>{
     user.cart = user.cart.filter(
       (item) => item.productId.toString() !== productId
     );
-      await user.save();
+    await user.save();
     res.status(200).json({ message: "Removed from cart", cart: user.cart });
   } catch (error) {
+    console.log(error,"hh");
+    
     res.status(500).json({ message: error.message });
   }
 }
@@ -382,7 +384,7 @@ const removeFromCart = async (req,res)=>{
 
 const addToWishlist = async(req,res)=>{
   try {
-      const { userId } = req.user;
+    const { userId } = req.user;
     const { productId } = req.body;
 
     let user = await userModel.findById(userId);
@@ -402,6 +404,33 @@ const addToWishlist = async(req,res)=>{
     res.status(500).json({ message: error.message });
   }
 }
+
+
+// 🗑️ Remove from Wishlist
+
+ const removeFromWishlist = async(req,res)=>{
+   try {
+
+    const { userId } = req.user;
+    const { productId } = req.body;
+
+    let user = await userModel.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.wishlist = user.wishlist.filter(
+      (item) => item.productId.toString() !== productId
+    );
+    await user.save();
+    res.status(200).json({ message: "Removed from wishlist", cart: user.cart });
+    
+   } catch (error) {
+     res.status(500).json({ message: error.message });
+   }
+ }
+
+
+
+
 
 // 🛍️ Place Order
 
@@ -451,10 +480,15 @@ const placeOrder = async(req,res)=>{
 
 const getMyOrders = async (req,res)=>{
    try {
-    
-   } catch (error) {
-    
-   }
+    const { userId } = req.user;
+
+    let user = await userModel.findById(userId).populate("myOrders.items.productId");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.status(200).json({ orders: user.myOrders });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 }
 
 module.exports = {
@@ -465,5 +499,7 @@ module.exports = {
    removeFromCart,
    addToCart,
    addToWishlist,
-   placeOrder
+   placeOrder,
+   getMyOrders,
+   removeFromWishlist
    };
