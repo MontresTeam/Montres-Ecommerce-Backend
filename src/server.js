@@ -7,6 +7,9 @@ const app = express();
 const bodyParser = require("body-parser");
 const productRoutes = require("./routes/productRoutes");
 const userRoute = require('./routes/userRoute')
+const watchesRoute = require('./routes/watchesRoute')
+const leatherRoute = require('./routes/leatheRouter')
+const accessoriesRoute = require('./routes/accessoriesRouter')
 
 connectDB();
 
@@ -33,6 +36,9 @@ app.use("/api/products", productRoutes);
 app.use("/api",productRoutes)
 app.use("/api/createProduct",productRoutes)
 app.use('/api/Auth', userRoute)
+app.use('/api/watches', watchesRoute);
+app.use('/api/leather', leatherRoute);
+app.use('/api/accessories', accessoriesRoute);
 
 // Start server
 app.listen(PORT, () => {

@@ -40,3 +40,22 @@ Thumbs.db
 # Optional: Secrets / keys
 *.pem
 *.key
+
+
+
+# Ignore CSVs and temp scripts inside src/models
+/src/models/*.csv
+/src/models/cleaned.csv
+/src/models/messy.csv
+/src/models/test.csv
+/src/models/subcatoryupdated.csv
+/src/models/subcatoryupdatedorg.csv
+/src/models/subcatrioytesupdated.csv
+/src/models/Montres Trading LLC products.csv
+/src/models/Montres Trading LLC products final .csv
+
+/src/models/impotProducts.js
+/src/models/updateSubcategories.js
+/src/models/updateSubcategories.js
+/src/models/working.js
+
