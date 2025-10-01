@@ -2,6 +2,7 @@ const userModel = require("../models/UserModel");
 const ProductModel = require("../models/product")
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const axios = require('axios')
 const nodemailer = require("nodemailer");
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -13,6 +14,10 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false, // <-- allows self-signed certificates
   },
 });
+
+
+const API_KEY = process.env.EXCHANGE_API_KEY;
+const BASE = process.env.BASE_CURRENCY || "AED";
 
 // ✅ User Registration
 const Registration = async (req, res) => {
@@ -491,6 +496,48 @@ const getMyOrders = async (req,res)=>{
   }
 }
 
+
+
+const convertprice = async (req, res) => {
+  const { amount, from, to } = req.query;
+
+  // Validate input
+  if (!amount || !from || !to) {
+    return res.status(400).json({ error: "Missing params (amount, from, to)" });
+  }
+
+  try {
+    // Call Exchangerate-API (v6)
+    const response = await axios.get(
+      `https://v6.exchangerate-api.com/v6/${process.env.EXCHANGE_API_KEY}/latest/${from}`
+    );
+
+    if (response.data.result !== "success") {
+      return res.status(500).json({ error: "API call failed", details: response.data });
+    }
+
+    // Get conversion rate
+    const rate = response.data.conversion_rates[to];
+    if (!rate) {
+      return res.status(400).json({ error: `Currency ${to} not supported` });
+    }
+
+    // Calculate converted amount
+    const converted = (parseFloat(amount) * rate).toFixed(2);
+
+    res.json({
+      base: from,
+      target: to,
+      rate,
+      amount: parseFloat(amount),
+      converted: Number(converted),
+    });''
+  } catch (err) {
+    console.error("Conversion Error:", err.response?.data || err.message);
+    res.status(500).json({ error: "Conversion failed" });
+  }
+};
+
 module.exports = {
    Registration,
    Login, 
@@ -501,5 +548,6 @@ module.exports = {
    addToWishlist,
    placeOrder,
    getMyOrders,
-   removeFromWishlist
+   removeFromWishlist,
+   convertprice
    };
