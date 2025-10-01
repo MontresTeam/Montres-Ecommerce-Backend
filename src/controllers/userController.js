@@ -385,31 +385,123 @@ const removeFromCart = async (req,res)=>{
 
 
 
-// 💖 Add to Wishlist
-
-const addToWishlist = async(req,res)=>{
+const createWishlist = async (req, res) => {
   try {
     const { userId } = req.user;
-    const { productId } = req.body;
+    const { name, isDefault } = req.body;
 
     let user = await userModel.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // check duplicate
-    const alreadyInWishlist = user.wishlist.find(
-      (item) => item.productId.toString() === productId
+    // Prevent duplicate wishlist names
+    const existing = user.wishlistGroups.find(
+      (w) => w.name.toLowerCase() === name.toLowerCase()
     );
-    if (alreadyInWishlist)
-      return res.status(400).json({ message: "Already in wishlist" });
+    if (existing) {
+      return res.status(400).json({ message: "Wishlist name already exists" });
+    }
 
-    user.wishlist.push({ productId });
+    // If marked as default, unset old default
+    if (isDefault) {
+      user.wishlistGroups.forEach((w) => (w.isDefault = false));
+    }
+
+    user.wishlistGroups.push({ name, isDefault });
     await user.save();
-    res.status(200).json({ message: "Added to wishlist", wishlist: user.wishlist });
+
+    res.status(201).json({ message: "Wishlist created", wishlists: user.wishlistGroups });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-}
+};
 
+
+// get Wishlist names
+const getWishlists = async (req, res) => {
+  try {
+    const { userId } = req.user;
+
+    const user = await userModel.findById(userId).select("wishlistGroups.name wishlistGroups.isDefault");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.status(200).json({
+      wishlists: user.wishlistGroups.map(w => ({
+        id: w._id,
+        name: w.name,
+        isDefault: w.isDefault,
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+
+// 💖 Add to Wishlist
+
+const addToWishlist = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const { wishlistId, productId } = req.body;
+
+    let user = await userModel.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const wishlist = user.wishlistGroups.id(wishlistId);
+    if (!wishlist) return res.status(404).json({ message: "Wishlist not found" });
+
+    const alreadyInWishlist = wishlist.items.find(
+      (item) => item.productId.toString() === productId
+    );
+    if (alreadyInWishlist)
+      return res.status(400).json({ message: "Already in this wishlist" });
+
+    wishlist.items.push({ productId });
+    await user.save();
+
+    res.status(200).json({ message: "Added to wishlist", wishlist });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+
+// Get all wishlists for user
+
+ const getAllwishlist = async(req,res)=>{
+  try {
+    const { userId } = req.user;
+
+    const user = await userModel.findById(userId).populate('wishlistGroups.items.productId');
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const wishlists = user.wishlistGroups.map(wishlist => ({
+      id: wishlist._id,
+      name: wishlist.name,
+      isDefault: wishlist.isDefault,
+      items: wishlist.items.map(item => ({
+        id: item.productId._id,
+        name: item.productId.name,
+        price: item.productId.price,
+        rating: item.productId.rating,
+        reviews: item.productId.reviews,
+        image: item.productId.images?.[0] || null,
+        // Add other product fields as needed
+      }))
+    }));
+
+    res.status(200).json({
+      wishlists
+    });
+  } catch (error) {
+    console.error('Error fetching wishlists:', error);
+    res.status(500).json({ message: error.message });
+  }
+ }
 
 // 🗑️ Remove from Wishlist
 
@@ -432,6 +524,148 @@ const addToWishlist = async(req,res)=>{
      res.status(500).json({ message: error.message });
    }
  }
+
+
+ // Empty wishlist - Remove all items from a specific wishlist
+const Emptywishlist = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const { wishlistId } = req.params;
+
+    const user = await userModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Find the specific wishlist group
+    const wishlistGroup = user.wishlistGroups.id(wishlistId);
+    if (!wishlistGroup) {
+      return res.status(404).json({ message: "Wishlist not found" });
+    }
+
+    // Check if user owns this wishlist
+    if (wishlistGroup.userId.toString() !== userId) {
+      return res.status(403).json({ message: "Not authorized to modify this wishlist" });
+    }
+
+    // Empty the items array
+    wishlistGroup.items = [];
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Wishlist emptied successfully",
+      wishlist: {
+        id: wishlistGroup._id,
+        name: wishlistGroup.name,
+        isDefault: wishlistGroup.isDefault,
+        items: wishlistGroup.items
+      }
+    });
+  } catch (error) {
+    console.error('Error emptying wishlist:', error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+ // Set default wishlist
+const Setdefaultwishlist = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const { wishlistId } = req.params;
+
+    const user = await userModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Find the wishlist to set as default
+    const targetWishlist = user.wishlistGroups.id(wishlistId);
+    if (!targetWishlist) {
+      return res.status(404).json({ message: "Wishlist not found" });
+    }
+
+    // Check if user owns this wishlist
+    if (targetWishlist.userId.toString() !== userId) {
+      return res.status(403).json({ message: "Not authorized to modify this wishlist" });
+    }
+
+    // Reset all wishlists to non-default
+    user.wishlistGroups.forEach(wishlist => {
+      wishlist.isDefault = false;
+    });
+
+    // Set the target wishlist as default
+    targetWishlist.isDefault = true;
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Default wishlist updated successfully",
+      wishlists: user.wishlistGroups.map(w => ({
+        id: w._id,
+        name: w.name,
+        isDefault: w.isDefault,
+        items: w.items
+      }))
+    });
+  } catch (error) {
+    console.error('Error setting default wishlist:', error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+ // Delete entire wishlist
+const Deleteentirewishlist = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const { wishlistId } = req.params;
+
+    const user = await userModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Find the wishlist to delete
+    const wishlistToDelete = user.wishlistGroups.id(wishlistId);
+    if (!wishlistToDelete) {
+      return res.status(404).json({ message: "Wishlist not found" });
+    }
+
+    // Check if user owns this wishlist
+    if (wishlistToDelete.userId.toString() !== userId) {
+      return res.status(403).json({ message: "Not authorized to delete this wishlist" });
+    }
+
+    // Prevent deletion of default wishlist
+    if (wishlistToDelete.isDefault) {
+      return res.status(400).json({ message: "Cannot delete default wishlist" });
+    }
+
+    // Prevent deletion if it's the only wishlist
+    if (user.wishlistGroups.length <= 1) {
+      return res.status(400).json({ message: "Cannot delete the only wishlist" });
+    }
+
+    // Remove the wishlist
+    user.wishlistGroups.pull({ _id: wishlistId });
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Wishlist deleted successfully",
+      wishlists: user.wishlistGroups.map(w => ({
+        id: w._id,
+        name: w.name,
+        isDefault: w.isDefault,
+        items: w.items
+      }))
+    });
+  } catch (error) {
+    console.error('Error deleting wishlist:', error);
+    res.status(500).json({ message: error.message });
+  }
+}
 
 
 
@@ -549,5 +783,11 @@ module.exports = {
    placeOrder,
    getMyOrders,
    removeFromWishlist,
-   convertprice
+   convertprice,
+   createWishlist,
+   getWishlists,
+   Deleteentirewishlist,
+   Setdefaultwishlist,
+   Emptywishlist,
+   getAllwishlist
    };
