@@ -632,10 +632,10 @@ const Deleteentirewishlist = async (req, res) => {
       return res.status(404).json({ message: "Wishlist not found" });
     }
 
-    // Check if user owns this wishlist
-    if (wishlistToDelete.userId.toString() !== userId) {
-      return res.status(403).json({ message: "Not authorized to delete this wishlist" });
-    }
+    // // Check if user owns this wishlist
+    // if (wishlistToDelete?.userId?.toString() !== userId) {
+    //   return res.status(403).json({ message: "Not authorized to delete this wishlist" });
+    // }
 
     // Prevent deletion of default wishlist
     if (wishlistToDelete.isDefault) {

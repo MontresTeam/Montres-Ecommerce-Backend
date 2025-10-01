@@ -40,7 +40,7 @@ router.post("/wishlist/create", protect, createWishlist);   // Create wishlist
 router.get("/wishlists", protect, getWishlists);
 router.delete("/wishlists/:wishlistId/items", Emptywishlist)    
 router.put("/wishlists/:wishlistId/default",Setdefaultwishlist) 
-router.delete("/wishlists/:wishlistId",Deleteentirewishlist) 
+router.delete("/wishlists/:wishlistId",protect,Deleteentirewishlist) 
     // Get all wishlists
 
 /* ----------------- Order Routes ----------------- */
