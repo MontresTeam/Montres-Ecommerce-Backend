@@ -1,20 +1,50 @@
 const express = require("express");
-const { getProducts, addProduct,addServiceForm,productHome } = require("../controllers/productController");
-const ImageUpload = require('../config/multerConfig');
-const { addToCart, removeFromCart, addToWishlist, placeOrder, getMyOrders, removeFromWishlist } = require("../controllers/userController");
-const { protect } = require("../middlewares/authMiddleware"); // JWT middleware
+const {
+  getProducts,
+  addProduct,
+  addServiceForm,
+  productHome,
+} = require("../controllers/productController");
+const {
+  addToCart,
+  removeFromCart,
+  addToWishlist,
+  removeFromWishlist,
+  createWishlist,
+  getWishlists,
+  placeOrder,
+  getMyOrders,
+  Emptywishlist,
+  Setdefaultwishlist,
+  Deleteentirewishlist,
+} = require("../controllers/userController");
+const ImageUpload = require("../config/multerConfig");
+const { protect } = require("../middlewares/authMiddleware");
+
 const router = express.Router();
 
-// Routes
-router.get("/", getProducts);           // Fetch all products
-router.post("/", ImageUpload, addProduct); // Add a new product with image upload
-router.post("/createBooking",ImageUpload,addServiceForm) // create a Watch service Form
-router.get("/home",productHome) // Fetch products for home page
-router.post("/cart/add",protect, addToCart) // add To Cart
-router.delete("/cart/remove",protect, removeFromCart) // Remove from Cart
-router.delete("/wishlist/remove",protect,removeFromWishlist)
-router.post("/wishlist/add",protect, addToWishlist) // add To wishlist
-router.post("/orders/place",placeOrder) // Place Order
-router.get("/orders/my",getMyOrders) // My orders fething
+/* ----------------- Product Routes ----------------- */
+router.get("/products", getProducts);                       // Fetch all products
+router.post("/products", ImageUpload, addProduct);          // Add a new product
+router.post("/products/createBooking", ImageUpload, addServiceForm); // Create service form
+router.get("/products/home", productHome);                  // Products for homepage
+
+/* ----------------- Cart Routes ----------------- */
+router.post("/cart/add", protect, addToCart);               // Add to cart
+router.delete("/cart/remove", protect, removeFromCart);     // Remove from cart
+
+/* ----------------- Wishlist Routes ----------------- */
+router.post("/wishlist/add", protect, addToWishlist);       // Add to wishlist
+router.delete("/wishlist/remove", protect, removeFromWishlist); // Remove from wishlist
+router.post("/wishlist/create", protect, createWishlist);   // Create wishlist
+router.get("/wishlists", protect, getWishlists);
+router.delete("/wishlists/:wishlistId/items", Emptywishlist)    
+router.put("/wishlists/:wishlistId/default",Setdefaultwishlist) 
+router.delete("/wishlists/:wishlistId",Deleteentirewishlist) 
+    // Get all wishlists
+
+/* ----------------- Order Routes ----------------- */
+router.post("/orders/place", protect, placeOrder);          // Place order
+router.get("/orders/my", protect, getMyOrders);             // My orders
 
 module.exports = router;

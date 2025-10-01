@@ -27,6 +27,13 @@ const wishlistItemSchema = new mongoose.Schema({
   },
 });
 
+const wishlistGroupSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  isDefault: { type: Boolean, default: false },
+  items: [wishlistItemSchema],
+});
+
+
 const orderSchema = new mongoose.Schema({
   orderId: { type: String, required: true }, // you can auto-generate
   items: [
@@ -66,7 +73,7 @@ const userSchema = new mongoose.Schema(
 
     cart: [cartItemSchema],
 
-    wishlist: [wishlistItemSchema],
+    wishlistGroups: [wishlistGroupSchema], // 👈 multiple wishlists
 
     myOrders: [orderSchema],
   },

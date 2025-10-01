@@ -7,7 +7,6 @@ const app = express();
 const bodyParser = require("body-parser");
 const passport = require("passport")
 const session = require("express-session")
-const GoogleAuth = require('./middlewares/GoogleAuthentication')
 const productRoutes = require("./routes/productRoutes");
 const userRoute = require('./routes/userRoute')
 const watchesRoute = require('./routes/watchesRoute')
@@ -17,10 +16,6 @@ const accessoriesRoute = require('./routes/accessoriesRouter')
 connectDB();
 
 
-// Google Authentication
-app.use(session({ secret: "secretKey", resave: false, saveUninitialized: true }));
-app.use(passport.initialize());
-app.use(passport.session());
 
 
 // Middlewares
@@ -41,7 +36,7 @@ app.use((err, req, res, next) => {
     res.status(500).send('Something broke!');
 });
 
-app.use("/api/auth", GoogleAuth);
+
 app.use("/api/products", productRoutes);
 app.use("/api",productRoutes)
 app.use("/api/createProduct",productRoutes)
