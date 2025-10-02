@@ -17,6 +17,9 @@ const {
   Emptywishlist,
   Setdefaultwishlist,
   Deleteentirewishlist,
+  getCart,
+  updateCart,
+  recommendationsProduct,
 } = require("../controllers/userController");
 const ImageUpload = require("../config/multerConfig");
 const { protect } = require("../middlewares/authMiddleware");
@@ -30,8 +33,13 @@ router.post("/products/createBooking", ImageUpload, addServiceForm); // Create s
 router.get("/products/home", productHome);                  // Products for homepage
 
 /* ----------------- Cart Routes ----------------- */
-router.post("/cart/add", protect, addToCart);               // Add to cart
-router.delete("/cart/remove", protect, removeFromCart);     // Remove from cart
+router.post("/cart/add", protect, addToCart);    
+router.get('/cart',protect,getCart)            // Add to cart
+router.delete("/cart/remove", protect, removeFromCart);   // Remove from cart
+router.put('/cart/update-cart',protect,updateCart)
+
+/*------------------ Recommendations ----------------*/
+router.get('/cart/recommendations',protect,recommendationsProduct)
 
 /* ----------------- Wishlist Routes ----------------- */
 router.post("/wishlist/add", protect, addToWishlist);       // Add to wishlist
