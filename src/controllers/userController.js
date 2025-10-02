@@ -93,24 +93,30 @@ const Login = async (req, res) => {
       });
     }
 
-    console.log(isMatch, "Mathc");
+  
 
     // ✅ Generate JWT token
     const token = jwt.sign(
       { id: user._id, email: user.email },
       process.env.USER_ACCESS_TOKEN_SECRET,
-      { expiresIn: "1h" }
+    { expiresIn: "1h" } // <-- This sets the expiry to 1 hour
     );
+
+      // Sum all items in wishlistGroups
+    const totalItems = user.wishlistGroups.reduce((acc, group) => {
+      return acc + (group.items ? group.items.length : 0);
+    }, 0);
 
     // 5️⃣ Send response
     res.status(200).json({
       status: "Success",
-      message: "Login successful 🎉",
+      message: "Login successful ",
       token,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
+        wishilist:totalItems,
       },
     });
   } catch (error) {
@@ -384,6 +390,7 @@ const removeFromCart = async (req,res)=>{
 }
 
 
+// wishilist
 
 const createWishlist = async (req, res) => {
   try {
@@ -416,17 +423,18 @@ const createWishlist = async (req, res) => {
 };
 
 
-// get Wishlist names
 const getWishlists = async (req, res) => {
   try {
     const { userId } = req.user;
 
-    const user = await userModel.findById(userId).select("wishlistGroups.name wishlistGroups.isDefault");
+    const user = await userModel.findById(userId)
+      .select("wishlistGroups._id wishlistGroups.name wishlistGroups.isDefault");
+
     if (!user) return res.status(404).json({ message: "User not found" });
 
     res.status(200).json({
       wishlists: user.wishlistGroups.map(w => ({
-        id: w._id,
+        id: w._id,         // 👈 important
         name: w.name,
         isDefault: w.isDefault,
       }))
@@ -435,6 +443,8 @@ const getWishlists = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
 
 
 
@@ -486,9 +496,7 @@ const addToWishlist = async (req, res) => {
       items: wishlist.items.map(item => ({
         id: item.productId._id,
         name: item.productId.name,
-        price: item.productId.price,
-        rating: item.productId.rating,
-        reviews: item.productId.reviews,
+        salePrice: item.productId.salePrice,
         image: item.productId.images?.[0] || null,
         // Add other product fields as needed
       }))
@@ -503,27 +511,111 @@ const addToWishlist = async (req, res) => {
   }
  }
 
-// 🗑️ Remove from Wishlist
-
- const removeFromWishlist = async(req,res)=>{
-   try {
-
+// 🗑️ Remove product from a specific wishlist
+const removeFromWishlist = async (req, res) => {
+  try {
     const { userId } = req.user;
-    const { productId } = req.body;
+    const { wishlistId, productId } = req.body; // ✅ wishlistId + productId needed
 
     let user = await userModel.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    user.wishlist = user.wishlist.filter(
+    // ✅ Find the specific wishlist group
+    const wishlist = user.wishlistGroups.id(wishlistId);
+    if (!wishlist) {
+      return res.status(404).json({ message: "Wishlist not found" });
+    }
+
+    // ✅ Remove the product from items
+    wishlist.items = wishlist.items.filter(
       (item) => item.productId.toString() !== productId
     );
+
     await user.save();
-    res.status(200).json({ message: "Removed from wishlist", cart: user.cart });
+
+    res.status(200).json({ message: "Removed from wishlist", wishlist });
+  } catch (error) {
+    console.error("Error removing from wishlist:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Toggle wishlist public sharing - FIXED VERSION
+const togglePublicSharing = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    const { wishlistId } = req.params;
+    const { isPublic } = req.body;
+
+ 
+    // ✅ Validate isPublic
+    if (typeof isPublic !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "isPublic field is required and must be a boolean",
+      });
+    }
+
+    // ✅ Find user
+    const user = await userModel.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // ✅ Find wishlist by subdocument ID
+    const wishlist = user.wishlistGroups.id(wishlistId);
+    if (!wishlist) {
+      return res.status(404).json({
+        success: false,
+        message: "Wishlist not found",
+      });
+    }
+
+
+    wishlist.isPublic = isPublic;
+
+    if (isPublic) {
+      // Generate slug if making public and slug doesn't exist
+      if (!wishlist.publicSlug) {
+        wishlist.publicSlug = wishlist._id.toString();
+     
+      }
+    } else {
     
-   } catch (error) {
-     res.status(500).json({ message: error.message });
-   }
- }
+    }
+
+  
+
+    // ✅ Save the user document
+    await user.save();
+
+
+
+    res.json({
+      success: true,
+      message: `Wishlist is now ${isPublic ? "public" : "private"}`,
+      wishlist: {
+        id: wishlist._id,
+        name: wishlist.name,
+        isPublic: wishlist.isPublic,
+        publicSlug: wishlist.publicSlug,
+        isDefault: wishlist.isDefault,
+        items: wishlist.items,
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ Toggle public sharing error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating wishlist visibility",
+      error: error.message // Include error message for debugging
+    });
+  }
+};
 
 
  // Empty wishlist - Remove all items from a specific wishlist
@@ -543,10 +635,10 @@ const Emptywishlist = async (req, res) => {
       return res.status(404).json({ message: "Wishlist not found" });
     }
 
-    // Check if user owns this wishlist
-    if (wishlistGroup.userId.toString() !== userId) {
-      return res.status(403).json({ message: "Not authorized to modify this wishlist" });
-    }
+    // // Check if user owns this wishlist
+    // if (wishlistGroup.userId?.toString() !== userId) {
+    //   return res.status(403).json({ message: "Not authorized to modify this wishlist" });
+    // }
 
     // Empty the items array
     wishlistGroup.items = [];
@@ -585,10 +677,10 @@ const Setdefaultwishlist = async (req, res) => {
       return res.status(404).json({ message: "Wishlist not found" });
     }
 
-    // Check if user owns this wishlist
-    if (targetWishlist.userId.toString() !== userId) {
-      return res.status(403).json({ message: "Not authorized to modify this wishlist" });
-    }
+    // // Check if user owns this wishlist
+    // if (targetWishlist.userId?.toString() !== userId) {
+    //   return res.status(403).json({ message: "Not authorized to modify this wishlist" });
+    // }
 
     // Reset all wishlists to non-default
     user.wishlistGroups.forEach(wishlist => {
@@ -632,10 +724,8 @@ const Deleteentirewishlist = async (req, res) => {
       return res.status(404).json({ message: "Wishlist not found" });
     }
 
-    // // Check if user owns this wishlist
-    // if (wishlistToDelete?.userId?.toString() !== userId) {
-    //   return res.status(403).json({ message: "Not authorized to delete this wishlist" });
-    // }
+
+    
 
     // Prevent deletion of default wishlist
     if (wishlistToDelete.isDefault) {
@@ -789,5 +879,6 @@ module.exports = {
    Deleteentirewishlist,
    Setdefaultwishlist,
    Emptywishlist,
-   getAllwishlist
+   getAllwishlist,
+   togglePublicSharing
    };
