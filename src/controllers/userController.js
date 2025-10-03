@@ -390,6 +390,7 @@ const getCart = async (req, res) => {
 // 🗑️ Remove from Cart
 const removeFromCart = async (req, res) => {
   try {
+    console.log('working')
     const { userId } = req.user;
     const { productId } = req.body;
 
@@ -404,25 +405,8 @@ const removeFromCart = async (req, res) => {
 
     await user.save();
 
-    // Recalculate total amount
-    const totalAmount = user.cart.reduce((acc, item) => {
-      const product = item.productId;
-      if (!product) return acc;
-
-      const price = product.salePrice || product.regularPrice || 0;
-      return acc + price * item.quantity;
-    }, 0);
-    const cartItems = user.cart.map(item => ({
-      productId: item.productId._id,
-      quantity: item.quantity,
-    }));
-    const recommended = await getRecommendations(cartItems);
-
     res.status(200).json({
       message: "Removed from cart",
-      cart: user.cart,
-      totalAmount,
-      recommended
     });
   } catch (error) {
     console.error(error);

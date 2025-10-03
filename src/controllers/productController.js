@@ -1,8 +1,6 @@
 const Product = require("../models/product");
-const SProduct = require('../models/ProductModal')
-const WatchService = require('../models/repairserviceModal')
-
-
+const SProduct = require("../models/ProductModal");
+const WatchService = require("../models/repairserviceModal");
 
 const getProducts = async (req, res) => {
   try {
@@ -48,10 +46,10 @@ const productHome = async (req, res) => {
     const brandNew = await Product.find()
       .sort({ createdAt: 1 })
       .skip(2) // newest first
-      .limit(6)
+      .limit(6);
 
     const newArrivals = await Product.find()
-      .sort({ createdAt: -1 })  
+      .sort({ createdAt: -1 })
       .skip(19)
       .limit(3);
 
@@ -90,12 +88,9 @@ const addProduct = async (req, res) => {
       images,
     });
 
-
     // console.log(newProduct,"newProduct");
-    
 
     console.log(newProduct, "newProduct");
-
 
     const savedProduct = await newProduct.save();
     res.status(201).json(savedProduct);
@@ -103,8 +98,6 @@ const addProduct = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
-
 
 // 📌 Add Service Form (Create new booking)
 const addServiceForm = async (req, res) => {
@@ -125,16 +118,13 @@ const addServiceForm = async (req, res) => {
       });
     }
 
-    
-  
-
     // 🔹 Create new booking
     const newBooking = new WatchService({
       productName,
       manufactureYear,
       watchType,
       selectedService,
-      image
+      image,
     });
 
     await newBooking.save();
@@ -154,14 +144,9 @@ const addServiceForm = async (req, res) => {
   }
 };
 
-
-
-
-
-
 const getRecommendations = async (cartItems, limit = 4) => {
   try {
-    const cartProductIds = cartItems.map(item => item.productId);
+    const cartProductIds = cartItems.map((item) => item.productId);
 
     if (cartProductIds.length === 0) {
       // Fallback: random watches
@@ -178,9 +163,21 @@ const getRecommendations = async (cartItems, limit = 4) => {
         $match: {
           _id: { $nin: cartProductIds }, // exclude cart items
           $or: [
-            { categorisOne: { $in: cartItems.map(i => i.categorisOne).filter(Boolean) } },
-            { subcategory: { $in: cartItems.flatMap(i => i.subcategory).filter(Boolean) } },
-            { brands: { $in: cartItems.flatMap(i => i.brands).filter(Boolean) } },
+            {
+              categorisOne: {
+                $in: cartItems.map((i) => i.categorisOne).filter(Boolean),
+              },
+            },
+            {
+              subcategory: {
+                $in: cartItems.flatMap((i) => i.subcategory).filter(Boolean),
+              },
+            },
+            {
+              brands: {
+                $in: cartItems.flatMap((i) => i.brands).filter(Boolean),
+              },
+            },
           ],
         },
       },
@@ -198,15 +195,42 @@ const getRecommendations = async (cartItems, limit = 4) => {
     }
 
     return recommended;
-
   } catch (err) {
     console.error("Recommendation Service Error:", err);
     throw new Error("Error fetching recommendations");
   }
 };
 
+const getAllProductwithSearch = async (req, res) => {
+  try {
+    const { search = "" } = req.query;
 
+    // ✅ Case-insensitive search by name or brand
+    let query = {};
+    if (search.trim()) {
+      query = {
+        $or: [
+          { name: { $regex: search, $options: "i" } }, 
+          { brand: { $regex: search, $options: "i" } }
+        ],
+      };
+    }
 
+    // ✅ Fetch all matching products
+    const products = await Product.find(query);
+
+    return res.json({
+      totalProducts: products.length,
+      products,
+    });
+  } catch (error) {
+    console.error("Product fetch error: ", error);
+    res.status(500).json({
+      message: "❌ Error fetching products",
+      error: error.message,
+    });
+  }
+};
 
 
 module.exports = {
@@ -214,5 +238,6 @@ module.exports = {
   addProduct,
   addServiceForm,
   productHome,
-  getRecommendations
+  getRecommendations,
+  getAllProductwithSearch,
 };
