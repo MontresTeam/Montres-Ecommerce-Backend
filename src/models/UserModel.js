@@ -30,6 +30,8 @@ const wishlistItemSchema = new mongoose.Schema({
 const wishlistGroupSchema = new mongoose.Schema({
   name: { type: String, required: true },
   isDefault: { type: Boolean, default: false },
+  isPublic: { type: Boolean, default: false }, // Add this field
+  publicSlug: { type: String, unique: true, sparse: true }, // Add this field
   items: [wishlistItemSchema],
 });
 

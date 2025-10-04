@@ -16,7 +16,7 @@ exports.protect = async (req, res, next) => {
       req.user = { userId: decoded.id }; // 👈 matches your controller
       next();
     } catch (error) {
-        console.log(error,"hii");
+        // console.log(error,"hii");
         
       return res.status(401).json({ message: "Not authorized, token failed" });
     }
