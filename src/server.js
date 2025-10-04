@@ -12,7 +12,7 @@ const userRoute = require('./routes/userRoute')
 const watchesRoute = require('./routes/watchesRoute')
 const leatherRoute = require('./routes/leatheRouter')
 const accessoriesRoute = require('./routes/accessoriesRouter')
-
+const homeProductsRoute =require('./routes/homeProductRoutes')
 connectDB();
 
 
@@ -44,6 +44,7 @@ app.use('/api/Auth', userRoute)
 app.use('/api/watches', watchesRoute);
 app.use('/api/leather', leatherRoute);
 app.use('/api/accessories', accessoriesRoute);
+app.use('/api/home',homeProductsRoute );
 
 
 // Start server
