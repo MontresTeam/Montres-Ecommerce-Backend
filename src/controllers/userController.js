@@ -260,6 +260,9 @@ const forgotPassword = async (req, res) => {
   }
 };
 
+
+
+
 // ResetPassword verification
 const ResetPassword = async (req, res) => {
   try {
@@ -618,7 +621,7 @@ const getAllwishlist = async (req, res) => {
         salePrice: item.productId.salePrice,
         regularPrice: item.productId.regularPrice,
         image: item.productId.images?.[0] || null,
-        // Add other product fields as needed
+      
       })),
     }));
 
@@ -832,13 +835,6 @@ const Deleteentirewishlist = async (req, res) => {
       return res.status(404).json({ message: "Wishlist not found" });
     }
 
-
-    // Check if user owns this wishlist
-    if (wishlistToDelete.userId.toString() !== userId) {
-      return res
-        .status(403)
-        .json({ message: "Not authorized to delete this wishlist" });
-    }
 
 
     // Prevent deletion of default wishlist

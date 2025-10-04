@@ -4,7 +4,8 @@ const {
   addProduct,
   addServiceForm,
   productHome,
-  getAllProductwithSearch
+  getAllProductwithSearch,
+  SimilarProduct
 } = require("../controllers/productController");
 const {
   addToCart,
@@ -61,4 +62,8 @@ router.put("/wishlists/:wishlistId/visibility",protect,togglePublicSharing)
 router.post("/orders/place", protect, placeOrder);          // Place order
 router.get("/orders/my", protect, getMyOrders);             // My orders
 
+
+
+/* ----------------- Simillar product ----------------- */
+router.get("/:id/similar",protect,SimilarProduct)
 module.exports = router;

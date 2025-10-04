@@ -40,6 +40,11 @@ const getProducts = async (req, res) => {
   }
 };
 
+
+
+
+
+
 const productHome = async (req, res) => {
   try {
     // Fetch last-added products (LIFO order) using createdAt timestamp
@@ -233,6 +238,37 @@ const getAllProductwithSearch = async (req, res) => {
 };
 
 
+ const SimilarProduct = async (req, res) => {
+  try {
+    const { id } = req.params; // Product ID from URL
+
+    // 1️⃣ Find the current product
+    const currentProduct = await Product.findById(id);
+
+    if (!currentProduct) {
+      return res.status(404).json({ success: false, message: "Product not found" });
+    }
+
+    // 2️⃣ Find similar products by category or brand
+    const similarProducts = await Product.find({
+      _id: { $ne: id }, // exclude current product
+      category: currentProduct.category, // same category
+    })
+      .limit(8) // limit to 8 items
+      .select("name salePrice  regularPrice images  categories");
+
+    // 3️⃣ Return response
+    return res.status(200).json({
+      success: true,
+      count: similarProducts.length,
+      products: similarProducts,
+    });
+  } catch (error) {
+    console.error("Error fetching similar products:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   getProducts,
   addProduct,
@@ -240,4 +276,5 @@ module.exports = {
   productHome,
   getRecommendations,
   getAllProductwithSearch,
+  SimilarProduct
 };
