@@ -155,9 +155,64 @@ const addServiceForm = async (req, res) => {
 };
 
 
+
+
+
+
+const getRecommendations = async (cartItems, limit = 4) => {
+  try {
+    const cartProductIds = cartItems.map(item => item.productId);
+
+    if (cartProductIds.length === 0) {
+      // Fallback: random watches
+      return Product.aggregate([
+        { $match: { categorisOne: "watch" } },
+        { $sample: { size: limit } },
+        { $project: { name: 1, images: 1, salePrice: 1, regularPrice: 1 } },
+      ]);
+    }
+
+    // Fetch recommended products in one aggregation
+    const recommended = await Product.aggregate([
+      {
+        $match: {
+          _id: { $nin: cartProductIds }, // exclude cart items
+          $or: [
+            { categorisOne: { $in: cartItems.map(i => i.categorisOne).filter(Boolean) } },
+            { subcategory: { $in: cartItems.flatMap(i => i.subcategory).filter(Boolean) } },
+            { brands: { $in: cartItems.flatMap(i => i.brands).filter(Boolean) } },
+          ],
+        },
+      },
+      { $sample: { size: limit } }, // random selection for variety
+      { $project: { name: 1, images: 1, salePrice: 1, regularPrice: 1 } },
+    ]);
+
+    // If not enough recommendations, fallback to random watches
+    if (!recommended || recommended.length === 0) {
+      return Product.aggregate([
+        { $match: { categorisOne: "watch" } },
+        { $sample: { size: limit } },
+        { $project: { name: 1, images: 1, salePrice: 1, regularPrice: 1 } },
+      ]);
+    }
+
+    return recommended;
+
+  } catch (err) {
+    console.error("Recommendation Service Error:", err);
+    throw new Error("Error fetching recommendations");
+  }
+};
+
+
+
+
+
 module.exports = {
   getProducts,
   addProduct,
   addServiceForm,
-  productHome
+  productHome,
+  getRecommendations
 };

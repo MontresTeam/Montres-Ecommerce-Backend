@@ -1,9 +1,10 @@
 const userModel = require("../models/UserModel");
-const ProductModel = require("../models/product")
+const ProductModel = require("../models/product");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const axios = require('axios')
+const axios = require("axios");
 const nodemailer = require("nodemailer");
+const { getRecommendations } = require("./productController");
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -14,7 +15,6 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false, // <-- allows self-signed certificates
   },
 });
-
 
 const API_KEY = process.env.EXCHANGE_API_KEY;
 const BASE = process.env.BASE_CURRENCY || "AED";
@@ -330,19 +330,18 @@ const ResetPassword = async (req, res) => {
   }
 };
 
-
-
 // 🛒 Add to Cart
 
-const addToCart = async (req,res)=>{
-   try {
+const addToCart = async (req, res) => {
+  try {
     const { userId } = req.user; // from auth middleware (JWT)
     const { productId, quantity } = req.body;
-
+    
+    console.log(productId);
     let user = await userModel.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-     const product = await ProductModel.findById(productId);
+    const product = await ProductModel.findById(productId);
     if (!product) return res.status(404).json({ message: "Product not found" });
 
     // Check if product already in cart
@@ -350,7 +349,7 @@ const addToCart = async (req,res)=>{
       (item) => item.productId.toString() === productId
     );
 
-      if (cartItem) {
+    if (cartItem) {
       // update quantity
       cartItem.quantity += quantity;
     } else {
@@ -362,35 +361,166 @@ const addToCart = async (req,res)=>{
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-}
+};
+
+//get cart
+
+const getCart = async (req, res) => {
+  try {
+
+    const { userId } = req.user; // from JWT auth middleware
+
+    const user = await userModel.findById(userId).populate("cart.productId");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Calculate total
+    const totalAmount = user.cart.reduce((acc, item) => {
+      const product = item.productId;
+      if (!product) return acc;
+
+      // use salePrice if available, otherwise regularPrice
+      const price = product.salePrice || product.regularPrice || 0;
+      return acc + price * item.quantity;
+    }, 0)
+    return res.status(200).json({
+      message: "Cart fetched successfully",
+      cart: user.cart,
+      totalAmount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 
 
 // 🗑️ Remove from Cart
-
-
-const removeFromCart = async (req,res)=>{
-   try {
+const removeFromCart = async (req, res) => {
+  try {
     const { userId } = req.user;
     const { productId } = req.body;
 
-    
-    let user = await userModel.findById(userId);
+    // Find the user
+    let user = await userModel.findById(userId).populate("cart.productId");
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    // Remove the product from cart
     user.cart = user.cart.filter(
-      (item) => item.productId.toString() !== productId
+      (item) => item.productId._id.toString() !== productId
     );
+
     await user.save();
-    res.status(200).json({ message: "Removed from cart", cart: user.cart });
+
+    // Recalculate total amount
+    const totalAmount = user.cart.reduce((acc, item) => {
+      const product = item.productId;
+      if (!product) return acc;
+
+      const price = product.salePrice || product.regularPrice || 0;
+      return acc + price * item.quantity;
+    }, 0);
+    const cartItems = user.cart.map(item => ({
+      productId: item.productId._id,
+      quantity: item.quantity,
+    }));
+    const recommended = await getRecommendations(cartItems);
+
+    res.status(200).json({
+      message: "Removed from cart",
+      cart: user.cart,
+      totalAmount,
+      recommended
+    });
   } catch (error) {
-    console.log(error,"hh");
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// 📝 Update Cart Quantities
+const updateCart = async (req, res) => {
+  try {
+    const { userId } = req.user; // from JWT auth middleware
+    const { items } = req.body; // [{ productId, quantity }]
+
+    if (!items || !Array.isArray(items)) {
+      return res.status(400).json({ message: "Invalid request: items required" });
+    }
+
+    // Find the user
+    const user = await userModel.findById(userId).populate("cart.productId");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Update quantities 
+    user.cart = user.cart.map((cartItem) => {
+      const updated = items.find(
+        (i) => i.productId.toString() === cartItem.productId._id.toString()
+      );
+      if (updated) {
+        return { ...cartItem.toObject(), quantity: updated.quantity };
+      }
+      return cartItem;
+    });
+
+    await user.save();
+
+    // Recalculate total amount
+    const totalAmount = user.cart.reduce((acc, item) => {
+      const product = item.productId;
+      if (!product) return acc;
+      const price = product.salePrice || product.regularPrice || 0;
+      return acc + price * item.quantity;
+    }, 0);
+
+    // Prepare cart items for frontend
+    const cartItems = user.cart.map(item => ({
+      productId: item.productId._id,
+      quantity: item.quantity,
+    }));
+
+    const recommended = await getRecommendations(cartItems);
+
+    res.status(200).json({
+      message: "Cart updated successfully",
+      cart: user.cart,
+      totalAmount,
+      recommended
+    });
+  } catch (error) {
+    console.error("Update Cart Error:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// getrecommed products
+const recommendationsProduct =async (req,res)=>{
+  try {
+        const { userId } = req.user; // from JWT auth middleware
+
+    const user = await userModel.findById(userId).populate("cart.productId");
+    if (!user) return res.status(404).json({ message: "User not found" });
+    const cartItems = user.cart.map(item => ({
+      productId: item.productId._id,
+      quantity: item.quantity,
+    }));
+    const recommended = await getRecommendations(cartItems);
+    return res.status(200).json({
+      message: "Cart fetched successfully",
+      recommended
+    });
     
+  } catch (error) {
+    console.error("Update Cart Error:", error);
     res.status(500).json({ message: error.message });
   }
 }
 
 
+
 // wishilist
+
 
 const createWishlist = async (req, res) => {
   try {
@@ -416,12 +546,16 @@ const createWishlist = async (req, res) => {
     user.wishlistGroups.push({ name, isDefault });
     await user.save();
 
-    res.status(201).json({ message: "Wishlist created", wishlists: user.wishlistGroups });
+    res
+      .status(201)
+      .json({ message: "Wishlist created", wishlists: user.wishlistGroups });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
+
+// get Wishlist names
 
 const getWishlists = async (req, res) => {
   try {
@@ -442,7 +576,7 @@ const getWishlists = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-};
+}
 
 
 
@@ -459,7 +593,8 @@ const addToWishlist = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const wishlist = user.wishlistGroups.id(wishlistId);
-    if (!wishlist) return res.status(404).json({ message: "Wishlist not found" });
+    if (!wishlist)
+      return res.status(404).json({ message: "Wishlist not found" });
 
     const alreadyInWishlist = wishlist.items.find(
       (item) => item.productId.toString() === productId
@@ -476,42 +611,42 @@ const addToWishlist = async (req, res) => {
   }
 };
 
-
-
 // Get all wishlists for user
 
- const getAllwishlist = async(req,res)=>{
+const getAllwishlist = async (req, res) => {
   try {
     const { userId } = req.user;
 
-    const user = await userModel.findById(userId).populate('wishlistGroups.items.productId');
+    const user = await userModel
+      .findById(userId)
+      .populate("wishlistGroups.items.productId");
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const wishlists = user.wishlistGroups.map(wishlist => ({
+    const wishlists = user.wishlistGroups.map((wishlist) => ({
       id: wishlist._id,
       name: wishlist.name,
       isDefault: wishlist.isDefault,
-      items: wishlist.items.map(item => ({
+      items: wishlist.items.map((item) => ({
         id: item.productId._id,
         name: item.productId.name,
         salePrice: item.productId.salePrice,
+        regularPrice: item.productId.regularPrice,
         image: item.productId.images?.[0] || null,
         // Add other product fields as needed
-      }))
+      })),
     }));
 
     res.status(200).json({
-      wishlists
+      wishlists,
     });
   } catch (error) {
-    console.error('Error fetching wishlists:', error);
+    console.error("Error fetching wishlists:", error);
     res.status(500).json({ message: error.message });
   }
- }
+};
 
-// 🗑️ Remove product from a specific wishlist
 const removeFromWishlist = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -533,6 +668,7 @@ const removeFromWishlist = async (req, res) => {
 
     await user.save();
 
+
     res.status(200).json({ message: "Removed from wishlist", wishlist });
   } catch (error) {
     console.error("Error removing from wishlist:", error);
@@ -540,7 +676,7 @@ const removeFromWishlist = async (req, res) => {
   }
 };
 
-// Toggle wishlist public sharing - FIXED VERSION
+
 const togglePublicSharing = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -617,8 +753,7 @@ const togglePublicSharing = async (req, res) => {
   }
 };
 
-
- // Empty wishlist - Remove all items from a specific wishlist
+// Empty wishlist - Remove all items from a specific wishlist
 const Emptywishlist = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -634,12 +769,6 @@ const Emptywishlist = async (req, res) => {
     if (!wishlistGroup) {
       return res.status(404).json({ message: "Wishlist not found" });
     }
-
-    // // Check if user owns this wishlist
-    // if (wishlistGroup.userId?.toString() !== userId) {
-    //   return res.status(403).json({ message: "Not authorized to modify this wishlist" });
-    // }
-
     // Empty the items array
     wishlistGroup.items = [];
 
@@ -651,16 +780,16 @@ const Emptywishlist = async (req, res) => {
         id: wishlistGroup._id,
         name: wishlistGroup.name,
         isDefault: wishlistGroup.isDefault,
-        items: wishlistGroup.items
-      }
+        items: wishlistGroup.items,
+      },
     });
   } catch (error) {
-    console.error('Error emptying wishlist:', error);
+    console.error("Error emptying wishlist:", error);
     res.status(500).json({ message: error.message });
   }
-}
+};
 
- // Set default wishlist
+// Set default wishlist
 const Setdefaultwishlist = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -677,13 +806,8 @@ const Setdefaultwishlist = async (req, res) => {
       return res.status(404).json({ message: "Wishlist not found" });
     }
 
-    // // Check if user owns this wishlist
-    // if (targetWishlist.userId?.toString() !== userId) {
-    //   return res.status(403).json({ message: "Not authorized to modify this wishlist" });
-    // }
-
     // Reset all wishlists to non-default
-    user.wishlistGroups.forEach(wishlist => {
+    user.wishlistGroups.forEach((wishlist) => {
       wishlist.isDefault = false;
     });
 
@@ -694,20 +818,20 @@ const Setdefaultwishlist = async (req, res) => {
 
     res.status(200).json({
       message: "Default wishlist updated successfully",
-      wishlists: user.wishlistGroups.map(w => ({
+      wishlists: user.wishlistGroups.map((w) => ({
         id: w._id,
         name: w.name,
         isDefault: w.isDefault,
-        items: w.items
-      }))
+        items: w.items,
+      })),
     });
   } catch (error) {
-    console.error('Error setting default wishlist:', error);
+    console.error("Error setting default wishlist:", error);
     res.status(500).json({ message: error.message });
   }
-}
+};
 
- // Delete entire wishlist
+// Delete entire wishlist
 const Deleteentirewishlist = async (req, res) => {
   try {
     const { userId } = req.user;
@@ -725,16 +849,26 @@ const Deleteentirewishlist = async (req, res) => {
     }
 
 
-    
+    // Check if user owns this wishlist
+    if (wishlistToDelete.userId.toString() !== userId) {
+      return res
+        .status(403)
+        .json({ message: "Not authorized to delete this wishlist" });
+    }
+
 
     // Prevent deletion of default wishlist
     if (wishlistToDelete.isDefault) {
-      return res.status(400).json({ message: "Cannot delete default wishlist" });
+      return res
+        .status(400)
+        .json({ message: "Cannot delete default wishlist" });
     }
 
     // Prevent deletion if it's the only wishlist
     if (user.wishlistGroups.length <= 1) {
-      return res.status(400).json({ message: "Cannot delete the only wishlist" });
+      return res
+        .status(400)
+        .json({ message: "Cannot delete the only wishlist" });
     }
 
     // Remove the wishlist
@@ -744,38 +878,33 @@ const Deleteentirewishlist = async (req, res) => {
 
     res.status(200).json({
       message: "Wishlist deleted successfully",
-      wishlists: user.wishlistGroups.map(w => ({
+      wishlists: user.wishlistGroups.map((w) => ({
         id: w._id,
         name: w.name,
         isDefault: w.isDefault,
-        items: w.items
-      }))
+        items: w.items,
+      })),
     });
   } catch (error) {
-    console.error('Error deleting wishlist:', error);
+    console.error("Error deleting wishlist:", error);
     res.status(500).json({ message: error.message });
   }
-}
-
-
-
-
+};
 
 // 🛍️ Place Order
 
-const placeOrder = async(req,res)=>{
+const placeOrder = async (req, res) => {
   try {
     const { userId } = req.user;
     const { paymentMethod } = req.body;
-    
+
     let user = await userModel.findById(userId).populate("cart.productId");
     if (!user) return res.status(404).json({ message: "User not found" });
 
-      if (user.cart.length === 0)
+    if (user.cart.length === 0)
       return res.status(400).json({ message: "Cart is empty" });
 
-
-       // calculate total
+    // calculate total
     const totalAmount = user.cart.reduce(
       (sum, item) => sum + item.productId.price * item.quantity,
       0
@@ -801,26 +930,24 @@ const placeOrder = async(req,res)=>{
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-}
-
+};
 
 // 📦 Get My Orders
 
-
-const getMyOrders = async (req,res)=>{
-   try {
+const getMyOrders = async (req, res) => {
+  try {
     const { userId } = req.user;
 
-    let user = await userModel.findById(userId).populate("myOrders.items.productId");
+    let user = await userModel
+      .findById(userId)
+      .populate("myOrders.items.productId");
     if (!user) return res.status(404).json({ message: "User not found" });
 
     res.status(200).json({ orders: user.myOrders });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-}
-
-
+};
 
 const convertprice = async (req, res) => {
   const { amount, from, to } = req.query;
@@ -837,7 +964,9 @@ const convertprice = async (req, res) => {
     );
 
     if (response.data.result !== "success") {
-      return res.status(500).json({ error: "API call failed", details: response.data });
+      return res
+        .status(500)
+        .json({ error: "API call failed", details: response.data });
     }
 
     // Get conversion rate
@@ -855,7 +984,8 @@ const convertprice = async (req, res) => {
       rate,
       amount: parseFloat(amount),
       converted: Number(converted),
-    });''
+    });
+    ("");
   } catch (err) {
     console.error("Conversion Error:", err.response?.data || err.message);
     res.status(500).json({ error: "Conversion failed" });
@@ -863,6 +993,7 @@ const convertprice = async (req, res) => {
 };
 
 module.exports = {
+
    Registration,
    Login, 
    forgotPassword, 
@@ -880,5 +1011,11 @@ module.exports = {
    Setdefaultwishlist,
    Emptywishlist,
    getAllwishlist,
-   togglePublicSharing
-   };
+   togglePublicSharing,
+   getCart,
+  updateCart,
+  recommendationsProduct
+   
+  
+};
+
