@@ -5,6 +5,10 @@ const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const nodemailer = require("nodemailer");
 const { getRecommendations } = require("./productController");
+const {
+  generateAccessToken,
+  generateRefreshToken,
+} = require("../utils/generateToken");
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -16,64 +20,53 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const API_KEY = process.env.EXCHANGE_API_KEY;
-const BASE = process.env.BASE_CURRENCY || "AED";
+// const API_KEY = process.env.EXCHANGE_API_KEY;
+// const BASE = process.env.BASE_CURRENCY || "AED";
 
 // ✅ User Registration
 const Registration = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // ✅ Validation
-    if (!name || !email || !password) {
-      return res.status(400).json({
-        status: "Fail",
-        message: "All fields (name, email, password) are required.",
-      });
-    }
+    if (!name || !email || !password)
+      return res.status(400).json({ message: "All fields required" });
 
-    // ✅ Check if user already exists
     const existingUser = await userModel.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({
-        status: "Fail",
-        message: "Email already registered.",
-      });
-    }
+    if (existingUser)
+      return res.status(400).json({ message: "Email already registered" });
 
-    // ✅ Create new user (password is hashed in UserModel pre-save middleware)
     const newUser = await userModel.create({ name, email, password });
 
-    res.status(201).json({
-      status: "Success",
-      message: "User registration successful 😊",
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "Error",
-      message: "Server error. Please try again later.",
-      error: error.message,
-    });
+    // Auto-login after registration
+    const accessToken = generateAccessToken(newUser._id, newUser.email);
+    const refreshToken = generateRefreshToken(newUser._id);
+
+    newUser.refreshToken = refreshToken;
+    await newUser.save();
+
+    res
+      .cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      })
+      .status(201)
+      .json({
+        message: "Registration successful",
+        accessToken,
+        user: { id: newUser._id, name: newUser.name, email: newUser.email },
+      });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
-// ✅ User Login
 const Login = async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // ✅ Validation
-    if (!email || !password) {
-      return res.status(400).json({
-        status: "Fail",
-        message: "Email and password are required.",
-      });
-    }
+    if (!email || !password)
+      return res.status(400).json({ message: "Email and password required" });
 
     // ✅ Check if user exists
     const user = await userModel.findOne({ email });
@@ -84,49 +77,58 @@ const Login = async (req, res) => {
       });
     }
 
-    // ✅ Verify password
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({
-        status: "Fail",
-        message: "Invalid credentials.",
+    if (!isMatch)
+      return res.status(401).json({ message: "Invalid credentials" });
+
+    const accessToken = generateAccessToken(user._id, user.email);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    res
+      .cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      })
+      .status(200)
+      .json({
+        message: "Login successful",
+        accessToken,
+        user: { id: user._id, name: user.name, email: user.email },
       });
-    }
-
-  
-
-    // ✅ Generate JWT token
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.USER_ACCESS_TOKEN_SECRET,
-    { expiresIn: "1h" } // <-- This sets the expiry to 1 hour
-    );
-
-      // Sum all items in wishlistGroups
-    const totalItems = user.wishlistGroups.reduce((acc, group) => {
-      return acc + (group.items ? group.items.length : 0);
-    }, 0);
-
-    // 5️⃣ Send response
-    res.status(200).json({
-      status: "Success",
-      message: "Login successful ",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        wishilist:totalItems,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: "Error",
-      message: "Server error. Please try again later.",
-      error: error.message,
-    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
+  // RefreshToken
+
+
+ const refreshToken = async (req, res) => {
+  try {
+    const token = req.cookies.refreshToken;
+    if (!token) return res.status(401).json({ message: "No refresh token" });
+
+    jwt.verify(token, process.env.USER_REFRESH_TOKEN_SECRET, async (err, decoded) => {
+      if (err) return res.status(403).json({ message: "Invalid or expired refresh token" });
+
+      const user = await userModel.findById(decoded.id);
+      if (!user || user.refreshToken !== token)
+        return res.status(403).json({ message: "Invalid refresh token" });
+
+      const newAccessToken = generateAccessToken(user._id);
+      return res.status(200).json({ accessToken: newAccessToken });
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
 
 // forgotPassword -> with email send verification
 
@@ -260,9 +262,6 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-
-
-
 // ResetPassword verification
 const ResetPassword = async (req, res) => {
   try {
@@ -339,7 +338,7 @@ const addToCart = async (req, res) => {
   try {
     const { userId } = req.user; // from auth middleware (JWT)
     const { productId, quantity } = req.body;
-    
+
     console.log(productId);
     let user = await userModel.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -370,7 +369,6 @@ const addToCart = async (req, res) => {
 
 const getCart = async (req, res) => {
   try {
-
     const { userId } = req.user; // from JWT auth middleware
 
     const user = await userModel.findById(userId).populate("cart.productId");
@@ -384,7 +382,7 @@ const getCart = async (req, res) => {
       // use salePrice if available, otherwise regularPrice
       const price = product.salePrice || product.regularPrice || 0;
       return acc + price * item.quantity;
-    }, 0)
+    }, 0);
     return res.status(200).json({
       message: "Cart fetched successfully",
       cart: user.cart,
@@ -395,12 +393,10 @@ const getCart = async (req, res) => {
   }
 };
 
-
-
 // 🗑️ Remove from Cart
 const removeFromCart = async (req, res) => {
   try {
-    console.log('working')
+    console.log("working");
     const { userId } = req.user;
     const { productId } = req.body;
 
@@ -424,7 +420,6 @@ const removeFromCart = async (req, res) => {
   }
 };
 
-
 // 📝 Update Cart Quantities
 const updateCart = async (req, res) => {
   try {
@@ -432,14 +427,16 @@ const updateCart = async (req, res) => {
     const { items } = req.body; // [{ productId, quantity }]
 
     if (!items || !Array.isArray(items)) {
-      return res.status(400).json({ message: "Invalid request: items required" });
+      return res
+        .status(400)
+        .json({ message: "Invalid request: items required" });
     }
 
     // Find the user
     const user = await userModel.findById(userId).populate("cart.productId");
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Update quantities 
+    // Update quantities
     user.cart = user.cart.map((cartItem) => {
       const updated = items.find(
         (i) => i.productId.toString() === cartItem.productId._id.toString()
@@ -461,7 +458,7 @@ const updateCart = async (req, res) => {
     }, 0);
 
     // Prepare cart items for frontend
-    const cartItems = user.cart.map(item => ({
+    const cartItems = user.cart.map((item) => ({
       productId: item.productId._id,
       quantity: item.quantity,
     }));
@@ -472,7 +469,7 @@ const updateCart = async (req, res) => {
       message: "Cart updated successfully",
       cart: user.cart,
       totalAmount,
-      recommended
+      recommended,
     });
   } catch (error) {
     console.error("Update Cart Error:", error);
@@ -480,34 +477,29 @@ const updateCart = async (req, res) => {
   }
 };
 
-
 // getrecommed products
-const recommendationsProduct =async (req,res)=>{
+const recommendationsProduct = async (req, res) => {
   try {
-        const { userId } = req.user; // from JWT auth middleware
+    const { userId } = req.user; // from JWT auth middleware
 
     const user = await userModel.findById(userId).populate("cart.productId");
     if (!user) return res.status(404).json({ message: "User not found" });
-    const cartItems = user.cart.map(item => ({
+    const cartItems = user.cart.map((item) => ({
       productId: item.productId._id,
       quantity: item.quantity,
     }));
     const recommended = await getRecommendations(cartItems);
     return res.status(200).json({
       message: "Cart fetched successfully",
-      recommended
+      recommended,
     });
-    
   } catch (error) {
     console.error("Update Cart Error:", error);
     res.status(500).json({ message: error.message });
   }
-}
-
-
+};
 
 // wishilist
-
 
 const createWishlist = async (req, res) => {
   try {
@@ -541,33 +533,31 @@ const createWishlist = async (req, res) => {
   }
 };
 
-
 // get Wishlist names
 
 const getWishlists = async (req, res) => {
   try {
     const { userId } = req.user;
 
-    const user = await userModel.findById(userId)
-      .select("wishlistGroups._id wishlistGroups.name wishlistGroups.isDefault");
+    const user = await userModel
+      .findById(userId)
+      .select(
+        "wishlistGroups._id wishlistGroups.name wishlistGroups.isDefault"
+      );
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
     res.status(200).json({
-      wishlists: user.wishlistGroups.map(w => ({
-        id: w._id,         // 👈 important
+      wishlists: user.wishlistGroups.map((w) => ({
+        id: w._id, // 👈 important
         name: w.name,
         isDefault: w.isDefault,
-      }))
+      })),
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-}
-
-
-
-
+};
 
 // 💖 Add to Wishlist
 
@@ -621,7 +611,6 @@ const getAllwishlist = async (req, res) => {
         salePrice: item.productId.salePrice,
         regularPrice: item.productId.regularPrice,
         image: item.productId.images?.[0] || null,
-      
       })),
     }));
 
@@ -655,7 +644,6 @@ const removeFromWishlist = async (req, res) => {
 
     await user.save();
 
-
     res.status(200).json({ message: "Removed from wishlist", wishlist });
   } catch (error) {
     console.error("Error removing from wishlist:", error);
@@ -663,14 +651,12 @@ const removeFromWishlist = async (req, res) => {
   }
 };
 
-
 const togglePublicSharing = async (req, res) => {
   try {
     const { userId } = req.user;
     const { wishlistId } = req.params;
     const { isPublic } = req.body;
 
- 
     // ✅ Validate isPublic
     if (typeof isPublic !== "boolean") {
       return res.status(400).json({
@@ -697,25 +683,18 @@ const togglePublicSharing = async (req, res) => {
       });
     }
 
-
     wishlist.isPublic = isPublic;
 
     if (isPublic) {
       // Generate slug if making public and slug doesn't exist
       if (!wishlist.publicSlug) {
         wishlist.publicSlug = wishlist._id.toString();
-     
       }
     } else {
-    
     }
-
-  
 
     // ✅ Save the user document
     await user.save();
-
-
 
     res.json({
       success: true,
@@ -729,13 +708,12 @@ const togglePublicSharing = async (req, res) => {
         items: wishlist.items,
       },
     });
-
   } catch (error) {
     console.error("❌ Toggle public sharing error:", error);
     res.status(500).json({
       success: false,
       message: "Server error while updating wishlist visibility",
-      error: error.message // Include error message for debugging
+      error: error.message, // Include error message for debugging
     });
   }
 };
@@ -835,8 +813,6 @@ const Deleteentirewishlist = async (req, res) => {
       return res.status(404).json({ message: "Wishlist not found" });
     }
 
-
-
     // Prevent deletion of default wishlist
     if (wishlistToDelete.isDefault) {
       return res
@@ -871,46 +847,7 @@ const Deleteentirewishlist = async (req, res) => {
   }
 };
 
-// 🛍️ Place Order
 
-const placeOrder = async (req, res) => {
-  try {
-    const { userId } = req.user;
-    const { paymentMethod } = req.body;
-
-    let user = await userModel.findById(userId).populate("cart.productId");
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    if (user.cart.length === 0)
-      return res.status(400).json({ message: "Cart is empty" });
-
-    // calculate total
-    const totalAmount = user.cart.reduce(
-      (sum, item) => sum + item.productId.price * item.quantity,
-      0
-    );
-
-    const order = {
-      orderId: "ORD-" + Date.now(),
-      items: user.cart.map((item) => ({
-        productId: item.productId._id,
-        quantity: item.quantity,
-      })),
-      totalAmount,
-      paymentMethod,
-      status: "pending",
-    };
-
-    user.myOrders.push(order);
-    user.cart = []; // clear cart after order
-
-    await user.save();
-
-    res.status(201).json({ message: "Order placed", order });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
 
 // 📦 Get My Orders
 
@@ -973,29 +910,25 @@ const convertprice = async (req, res) => {
 };
 
 module.exports = {
-
-   Registration,
-   Login, 
-   forgotPassword, 
-   ResetPassword,
-   removeFromCart,
-   addToCart,
-   addToWishlist,
-   placeOrder,
-   getMyOrders,
-   removeFromWishlist,
-   convertprice,
-   createWishlist,
-   getWishlists,
-   Deleteentirewishlist,
-   Setdefaultwishlist,
-   Emptywishlist,
-   getAllwishlist,
-   togglePublicSharing,
-   getCart,
+  Registration,
+  Login,
+  forgotPassword,
+  ResetPassword,
+  removeFromCart,
+  addToCart,
+  addToWishlist,
+  getMyOrders,
+  removeFromWishlist,
+  convertprice,
+  createWishlist,
+  getWishlists,
+  Deleteentirewishlist,
+  Setdefaultwishlist,
+  Emptywishlist,
+  getAllwishlist,
+  togglePublicSharing,
+  getCart,
   updateCart,
-  recommendationsProduct
-   
-  
+  recommendationsProduct,
+  refreshToken
 };
-

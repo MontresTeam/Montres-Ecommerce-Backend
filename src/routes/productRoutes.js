@@ -59,7 +59,7 @@ router.put("/wishlists/:wishlistId/visibility",protect,togglePublicSharing)
     // Get all wishlists
 
 /* ----------------- Order Routes ----------------- */
-router.post("/orders/place", protect, placeOrder);          // Place order
+       // Place order
 router.get("/orders/my", protect, getMyOrders);             // My orders
 
 

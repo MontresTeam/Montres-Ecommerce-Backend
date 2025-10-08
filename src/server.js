@@ -5,8 +5,7 @@ const cors = require('cors');
 const PORT = process.env.PORT || 9000;
 const app = express();
 const bodyParser = require("body-parser");
-const passport = require("passport")
-const session = require("express-session")
+const cookieParser = require("cookie-parser");
 const productRoutes = require("./routes/productRoutes");
 const userRoute = require('./routes/userRoute')
 const watchesRoute = require('./routes/watchesRoute')
@@ -19,9 +18,9 @@ connectDB();
 
 
 // Middlewares
-app.use(cors());  
+app.use(cors({ origin: "http://localhost:3000", credentials: true }));
 app.use(bodyParser.json());
-// app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

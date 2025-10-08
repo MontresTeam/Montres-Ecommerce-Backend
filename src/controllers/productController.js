@@ -240,34 +240,49 @@ const getAllProductwithSearch = async (req, res) => {
 
  const SimilarProduct = async (req, res) => {
   try {
-    const { id } = req.params; // Product ID from URL
+    const { id } = req.params;
 
-    // 1️⃣ Find the current product
-    const currentProduct = await Product.findById(id);
+    // 1️⃣ Find the main product
+    const product = await Product.findById(id);
 
-    if (!currentProduct) {
-      return res.status(404).json({ success: false, message: "Product not found" });
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
     }
 
-    // 2️⃣ Find similar products by category or brand
-    const similarProducts = await Product.find({
-      _id: { $ne: id }, // exclude current product
-      category: currentProduct.category, // same category
-    })
-      .limit(8) // limit to 8 items
-      .select("name salePrice  regularPrice images  categories");
+    // 2️⃣ Build a dynamic query for similar products
+    const query = {
+      _id: { $ne: product._id }, // exclude the current product
+      $or: [
+        { categories: { $in: product.categories } },
+        { subcategory: { $in: product.subcategory } },
+        { brands: { $in: product.brands } },
+        { tags: { $in: product.tags } },
+        { gender: product.gender },
+      ],
+    };
 
-    // 3️⃣ Return response
-    return res.status(200).json({
+    // 3️⃣ Find similar products
+    const similarProducts = await Product.find(query).limit(10);
+
+    console.log(similarProducts,"similarProducts");
+    
+
+    // 4️⃣ Send response
+    res.status(200).json({
       success: true,
-      count: similarProducts.length,
-      products: similarProducts,
+      product,
+      products: similarProducts, // ✅ Changed from similarProducts to products
     });
   } catch (error) {
-    console.error("Error fetching similar products:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("Error fetching product:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
+
 
 module.exports = {
   getProducts,
