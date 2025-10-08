@@ -21,36 +21,44 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 const imageUpload = (req, res, next) => {
-    upload.single("image")(req, res, async (err) => {
-        if (err) {
-            return res.status(400).json({ error: err.message });
-        }
+  upload.any()(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
 
-        if (!req.file) {
-            return res.status(400).json({ message: "No file uploaded. Please upload with key 'image'." });
-        }
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No images uploaded." });
+    }
 
-        try {
-            // Upload to Cloudinary
-            const result = await cloudinary.uploader.upload(req.file.path, {
-                folder: "MontresTradingLLC",
-                quality: "auto",
-                fetch_format: "auto"
-            });
+    try {
+      const uploadedImages = [];
 
-            req.body.image = result.secure_url;
+      // Upload each file to Cloudinary
+      for (const file of req.files) {
+        const result = await cloudinary.uploader.upload(file.path, {
+          folder: "MontresTradingLLC",
+          quality: "auto",
+          fetch_format: "auto",
+        });
 
-            // Delete local file
-            fs.unlink(req.file.path, (error) => {
-                if (error) console.log("Error deleting local file:", error);
-            });
+        uploadedImages.push({
+          url: result.secure_url,
+          alt: file.originalname,
+        });
 
-            next();
-        } catch (error) {
-            console.error(error);
-            return res.status(500).json({ message: "Error uploading file to Cloudinary" });
-        }
-    });
+        // Delete local file after upload
+        fs.unlink(file.path, (error) => {
+          if (error) console.error("Error deleting local file:", error);
+        });
+      }
+
+      req.body.images = uploadedImages; // Pass to controller
+      next();
+    } catch (error) {
+      console.error("Cloudinary upload error:", error);
+      return res.status(500).json({ message: "Error uploading files to Cloudinary" });
+    }
+  });
 };
 
 

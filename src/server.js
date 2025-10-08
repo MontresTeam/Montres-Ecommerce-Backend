@@ -23,14 +23,14 @@ app.use(cors());
 app.use(bodyParser.json());
 // app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true })); 
 
 // Routes
 app.get('/', (req, res) => {
-    res.send("Welcome To Montres Store");
+    res.send("Welcome To Montres Store"); 
 });
 
-// Error handler
+// Error handler 
 app.use((err, req, res, next) => { 
     console.error(err.stack);
     res.status(500).send('Something broke!');
