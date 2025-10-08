@@ -22,14 +22,14 @@ app.use(cors({ origin: "http://localhost:3000", credentials: true }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true })); 
 
 // Routes
 app.get('/', (req, res) => {
-    res.send("Welcome To Montres Store");
+    res.send("Welcome To Montres Store"); 
 });
 
-// Error handler
+// Error handler 
 app.use((err, req, res, next) => { 
     console.error(err.stack);
     res.status(500).send('Something broke!');

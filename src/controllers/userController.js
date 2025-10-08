@@ -909,6 +909,51 @@ const convertprice = async (req, res) => {
   }
 };
 
+
+//get cart Count
+const getCartCount = async (req, res) => {
+  try {
+    const { userId } = req.user; 
+    console.log(userId)
+    if (!userId) return res.status(400).json({ message: "User ID required" });
+
+    const user = await userModel.findById(userId).select("cart");
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const cartCount = user.cart.reduce((total, item) => total + item.quantity, 0);
+
+    res.status(200).json({ cartCount });
+  } catch (error) {
+    console.error("Error fetching cart count:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+//get wishhlist count
+
+const getWishlistCount = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    if (!userId) return res.status(400).json({ message: "User ID required" });
+
+    const user = await userModel.findById(userId).select("wishlistGroups");
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Total items across all wishlist groups
+    const wishlistCount = user.wishlistGroups.reduce(
+      (acc, group) => acc + group.items.length,
+      0
+    );
+
+    res.status(200).json({ wishlistCount });
+  } catch (error) {
+    console.error("Error fetching wishlist count:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 module.exports = {
   Registration,
   Login,
@@ -931,4 +976,7 @@ module.exports = {
   updateCart,
   recommendationsProduct,
   refreshToken
-};
+  getCartCount,
+  getWishlistCount
+  };
+

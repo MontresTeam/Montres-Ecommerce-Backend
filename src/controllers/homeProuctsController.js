@@ -33,9 +33,10 @@ const addHomeProductsGrid = async (req, res) => {
   }
 };
 // Update existing homeProducts
-const updateHomeProducts = async (req, res) => {
+const updateHomeProducts = async (req, res) => { 
   try {
     const { id } = req.params;
+    console.log(req.body)
     const { title, products } = req.body;
 
     if (products && products.length > 3) {
