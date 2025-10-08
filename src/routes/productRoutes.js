@@ -18,11 +18,13 @@ const {
   Emptywishlist,
   Setdefaultwishlist,
   Deleteentirewishlist,
+  getAllwishlist,
+  togglePublicSharing,
   getCart,
   updateCart,
   recommendationsProduct,
   getWishlistCount,
-  getCartCount,
+  getCartCount,e
 } = require("../controllers/userController");
 const ImageUpload = require("../config/multerConfig");
 const { protect } = require("../middlewares/authMiddleware");
@@ -53,6 +55,8 @@ router.delete("/wishlists/:wishlistId/items", Emptywishlist)
 router.put("/wishlists/:wishlistId/default",Setdefaultwishlist) 
 router.delete("/wishlists/:wishlistId",Deleteentirewishlist)
 router.get("/wishlist-count",protect, getWishlistCount);
+router.get("/wishlists/getAll",protect,getAllwishlist)
+router.put("/wishlists/:wishlistId/visibility",protect,togglePublicSharing)
     // Get all wishlists
 
 /* ----------------- Order Routes ----------------- */
