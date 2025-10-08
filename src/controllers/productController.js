@@ -40,6 +40,11 @@ const getProducts = async (req, res) => {
   }
 };
 
+
+
+
+
+
 const productHome = async (req, res) => {
   try {
     // Fetch last-added products (LIFO order) using createdAt timestamp
@@ -248,6 +253,52 @@ const getAllProductwithSearch = async (req, res) => {
 };
 
 
+ const SimilarProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1️⃣ Find the main product
+    const product = await Product.findById(id);
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // 2️⃣ Build a dynamic query for similar products
+    const query = {
+      _id: { $ne: product._id }, // exclude the current product
+      $or: [
+        { categories: { $in: product.categories } },
+        { subcategory: { $in: product.subcategory } },
+        { brands: { $in: product.brands } },
+        { tags: { $in: product.tags } },
+        { gender: product.gender },
+      ],
+    };
+
+    // 3️⃣ Find similar products
+    const similarProducts = await Product.find(query).limit(10);
+
+    console.log(similarProducts,"similarProducts");
+    
+
+    // 4️⃣ Send response
+    res.status(200).json({
+      success: true,
+      product,
+      products: similarProducts, // ✅ Changed from similarProducts to products
+    });
+  } catch (error) {
+    console.error("Error fetching product:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
 module.exports = {
   getProducts,
   addProduct,
@@ -255,4 +306,5 @@ module.exports = {
   productHome,
   getRecommendations,
   getAllProductwithSearch,
+  SimilarProduct
 };

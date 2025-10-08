@@ -1,10 +1,13 @@
 const express = require("express");
-const { Registration, Login, forgotPassword, ResetPassword, convertprice} = require("../controllers/userController");
+const { Registration, Login, forgotPassword, ResetPassword, convertprice, refreshToken} = require("../controllers/userController");
 
 const router = express.Router();
 
 // ✅ Correct routes
 router.post("/register", Registration);
+
+router.post("/refresh-token",refreshToken)
+
 router.post("/login", Login);
 // 🔑 Forgot Password (send reset link to email)
 router.post("/forgot-password",forgotPassword)
