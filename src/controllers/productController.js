@@ -78,26 +78,41 @@ const productHome = async (req, res) => {
 };
 
 // Add Product
-
 const addProduct = async (req, res) => {
   try {
-    const images = req.files ? req.files.map((file) => file.path) : [];
+    const productData = req.body;
 
-    const newProduct = new SProduct({
-      ...req.body,
-      images,
+    if (!productData.name) {
+      return res.status(400).json({ message: "Product name is required." });
+    }
+
+    // Parse stringified JSON fields
+    const parseJSON = (field) => {
+      if (!field) return undefined;
+      try {
+        return typeof field === "string" ? JSON.parse(field) : field;
+      } catch {
+        return field;
+      }
+    };
+
+    const newProduct = new Product({
+      ...productData,
+      subcategory: parseJSON(productData.subcategory),
+      brands: parseJSON(productData.brands),
+      tags: parseJSON(productData.tags),
+      attributes: parseJSON(productData.attributes),
+      images: req.body.images || [], // already array from upload middleware
     });
-
-    // console.log(newProduct,"newProduct");
-
-    console.log(newProduct, "newProduct");
 
     const savedProduct = await newProduct.save();
     res.status(201).json(savedProduct);
   } catch (error) {
+    console.error("Add product error:", error);
     res.status(500).json({ error: error.message });
   }
 };
+
 
 // 📌 Add Service Form (Create new booking)
 const addServiceForm = async (req, res) => {

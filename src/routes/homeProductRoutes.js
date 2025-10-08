@@ -3,6 +3,6 @@ const { addHomeProductsGrid, updateHomeProducts, getHomeProductsGrid } = require
 const router = express.Router();
 
 router.post('/addhomeproduct',addHomeProductsGrid)
-router.put('/updatehomeproduct',updateHomeProducts)
+router.put('/updatehomeproduct/:id',updateHomeProducts)
 router.get('/',getHomeProductsGrid)
 module.exports = router;
