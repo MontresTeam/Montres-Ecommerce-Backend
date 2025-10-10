@@ -19,7 +19,11 @@ connectDB();
 
 
 // Middlewares
-app.use(cors());  
+app.use(cors({
+  origin: "http://localhost:3000",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true, // if you want to send cookies
+})); 
 app.use(bodyParser.json());
 // app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
 app.use(express.json());

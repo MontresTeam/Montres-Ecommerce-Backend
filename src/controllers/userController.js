@@ -128,6 +128,23 @@ const Login = async (req, res) => {
   }
 };
 
+
+ const logout = async (req, res) => {
+  try {
+    // ✅ Clear refresh token cookie
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+
+    return res.status(200).json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout Error:", error);
+    return res.status(500).json({ message: "Logout failed" });
+  }
+};
+
 // forgotPassword -> with email send verification
 
 const forgotPassword = async (req, res) => {
@@ -1045,6 +1062,7 @@ module.exports = {
   updateCart,
   recommendationsProduct,
   getCartCount,
-  getWishlistCount
+  getWishlistCount,
+  logout
   };
 
