@@ -105,6 +105,24 @@ const Login = async (req, res) => {
   }
 };
 
+
+ const logout = async (req, res) => {
+  try {
+    // ✅ Clear refresh token cookie
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+
+    return res.status(200).json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout Error:", error);
+    return res.status(500).json({ message: "Logout failed" });
+  }
+};
+
+
   // RefreshToken
 
 
@@ -127,6 +145,7 @@ const Login = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 
@@ -975,8 +994,9 @@ module.exports = {
   getCart,
   updateCart,
   recommendationsProduct,
-  refreshToken
+  refreshToken,
   getCartCount,
-  getWishlistCount
+  getWishlistCount,
+  logout
   };
 

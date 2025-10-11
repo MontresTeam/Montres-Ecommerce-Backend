@@ -42,7 +42,7 @@ const productSchema = new mongoose.Schema(
     lowStockAmount: { type: Number },
     backordersAllowed: { type: Boolean, default: false },
     soldIndividually: { type: Boolean, default: false },
-    categorisOne: {tyep:String},
+    categorisOne: {type:String},
     subcategory: [{ type: String }],
     gender: {type:String ,enum:['men','women','unisex']},
     // Shipping
@@ -98,5 +98,102 @@ const productSchema = new mongoose.Schema(
   { timestamps: true ,collection: "products"  }
   
 );
+
+// 🔥 CRITICAL INDEXES FOR PERFORMANCE 🔥
+
+// Single Field Indexes
+productSchema.index({ published: 1 }); // For filtering published products
+productSchema.index({ featured: 1 }); // For featured products
+productSchema.index({ inStock: 1 }); // For stock availability
+productSchema.index({ type: 1 }); // For product type filtering
+productSchema.index({ gender: 1 }); // For gender-based filtering
+productSchema.index({ categorisOne: 1 }); // For main category filtering
+productSchema.index({ createdAt: -1 }); // For newest products
+productSchema.index({ updatedAt: -1 }); // For recently updated products
+
+// Array Field Indexes (for categories, brands, subcategory arrays)
+productSchema.index({ categories: 1 }); // For category filtering
+productSchema.index({ subcategory: 1 }); // For subcategory filtering
+productSchema.index({ brands: 1 }); // For brand filtering
+productSchema.index({ tags: 1 }); // For tag filtering
+
+// Price-related Indexes
+productSchema.index({ salePrice: 1 }); // For price low to high sorting
+productSchema.index({ regularPrice: 1 }); // For regular price filtering
+productSchema.index({ salePrice: -1 }); // For price high to low sorting
+
+// Date-based Indexes for sales
+productSchema.index({ dateSaleStart: 1, dateSaleEnd: 1 }); // For active sales queries
+
+// 🔥 COMPOUND INDEXES FOR COMMON QUERY PATTERNS 🔥
+
+// Main product listing queries
+productSchema.index({ 
+  published: 1, 
+  inStock: 1, 
+  categories: 1, 
+  createdAt: -1 
+});
+
+// Category + Brand filtering
+productSchema.index({ 
+  categories: 1, 
+  brands: 1, 
+  published: 1 
+});
+
+// Search and filter combinations
+productSchema.index({ 
+  name: 'text', 
+  categories: 1, 
+  published: 1 
+});
+
+// Price range filtering within categories
+productSchema.index({ 
+  categories: 1, 
+  salePrice: 1, 
+  published: 1 
+});
+
+// Gender + Category combinations
+productSchema.index({ 
+  gender: 1, 
+  categories: 1, 
+  published: 1 
+});
+
+// Featured products with categories
+productSchema.index({ 
+  featured: 1, 
+  categories: 1, 
+  published: 1 
+});
+
+// Stock + Category combinations
+productSchema.index({ 
+  inStock: 1, 
+  categories: 1, 
+  published: 1 
+});
+
+// 🔥 TEXT INDEX FOR SEARCH FUNCTIONALITY 🔥
+productSchema.index({
+  name: 'text',
+  shortDescription: 'text',
+  description: 'text',
+  sku: 'text',
+  tags: 'text'
+}, {
+  name: 'product_search_index',
+  weights: {
+    name: 10,
+    sku: 8,
+    tags: 5,
+    shortDescription: 3,
+    description: 1
+  }
+});
+
 
 module.exports = mongoose.model("Product", productSchema, "products");

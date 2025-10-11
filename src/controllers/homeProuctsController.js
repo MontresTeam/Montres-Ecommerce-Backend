@@ -68,6 +68,8 @@ const updateHomeProducts = async (req, res) => {
 };
 const getHomeProductsGrid = async (req, res) => {
   try {
+    console.log('hello');
+    
     // Fetch all documents and populate product details
     const homeProducts = await HomeProducts.find()
       .populate("products"); // assuming 'products' is an array of ObjectIds referencing Product
