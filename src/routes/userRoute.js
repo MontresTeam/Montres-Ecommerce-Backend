@@ -1,5 +1,6 @@
 const express = require("express");
-const { Registration, Login, forgotPassword, ResetPassword, convertprice, refreshToken} = require("../controllers/userController");
+const { Registration, Login, forgotPassword, ResetPassword, convertprice, logout,refreshToken} = require("../controllers/userController");
+
 
 const router = express.Router();
 
@@ -16,5 +17,6 @@ router.post("/reset-password/:id/:token", ResetPassword);
 
 router.get("/convert-price",convertprice)
 
+router.post("/logout", logout);
 
 module.exports = router;

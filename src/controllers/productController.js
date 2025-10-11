@@ -1,11 +1,23 @@
 const Product = require("../models/product");
 const SProduct = require("../models/ProductModal");
 const WatchService = require("../models/repairserviceModal");
-
 const getProducts = async (req, res) => {
   try {
-    const { id, page = 1, limit = 15 } = req.query; // ✅ default page=1, limit=12
+    const {
+      id,
+      page = 1,
+      limit = 15,
+      category,
+      brand,
+      price,
+      availability,
+      gender,
+      search,
+    } = req.query;
 
+    console.log("Incoming Query:", req.query);
+
+    // ✅ Single Product by ID
     if (id) {
       const product = await Product.findById(id);
       if (!product) {
@@ -14,28 +26,150 @@ const getProducts = async (req, res) => {
       return res.json(product);
     }
 
-    // ✅ Convert to numbers
-    const pageNum = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
+    // ✅ Convert pagination params
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
 
-    // ✅ Count total products
-    const totalProducts = await Product.countDocuments();
+    // ✅ Base Filter
+    const filterQuery = { published: true };
+    const andConditions = [];
 
-    // ✅ Fetch paginated products
-    const products = await Product.find()
+    // 🔹 Helper to normalize comma-separated or array inputs
+    const normalizeArray = (value) => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value;
+      return value.split(",").map((v) => v.trim()).filter(Boolean);
+    };
+
+    // ✅ Category Filter (categoryOne)
+    const categoryList = normalizeArray(category);
+    console.log(categoryList, "vs");
+    if (categoryList.length > 0) {
+      andConditions.push({
+        $or: categoryList.map((cat) => ({
+          categorisOne: { $regex: `^${cat}$`, $options: "i" },
+        })),
+      });
+    }
+
+    // ✅ Brand Filter (meta.Brands)
+    const brandList = normalizeArray(brand);
+    if (brandList.length > 0) {
+      andConditions.push({
+        "meta.Brands": { $in: brandList.map((br) => new RegExp(br, "i")) },
+      });
+    }
+
+    // ✅ Price Filter
+    const priceList = normalizeArray(price);
+    if (priceList.length > 0) {
+      const priceConditions = [];
+      priceList.forEach((range) => {
+        const [min, max] = range.split("-").map(Number);
+        if (!isNaN(min) && !isNaN(max)) {
+          priceConditions.push({ salePrice: { $gte: min, $lte: max } });
+        } else if (!isNaN(min)) {
+          priceConditions.push({ salePrice: { $gte: min } });
+        }
+      });
+      if (priceConditions.length > 0) {
+        andConditions.push({ $or: priceConditions });
+      }
+    }
+
+    // ✅ Availability Filter
+    const availList = normalizeArray(availability);
+    const availConditions = [];
+    availList.forEach((avail) => {
+      if (avail === "in_stock") {
+        andConditions.push({ inStock: true });
+      } else if (avail === "out_of_stock") {
+        availConditions.push({ stockQuantity: { $lte: 0 } });
+      }
+    });
+    if (availConditions.length > 0) {
+      andConditions.push({ $or: availConditions });
+    }
+
+    // ✅ Gender Filter
+    const genderList = normalizeArray(gender);
+    if (genderList.length > 0) {
+      andConditions.push({ gender: { $in: genderList } });
+    }
+
+    // ✅ Search Filter
+    if (search && search.trim()) {
+      andConditions.push({ name: new RegExp(search.trim(), "i") });
+    }
+
+    // ✅ Merge all AND filters
+    if (andConditions.length > 0) {
+      filterQuery.$and = andConditions;
+    }
+
+    console.log("Filter Query:", JSON.stringify(filterQuery, null, 2));
+
+    // ✅ Sort by recent
+    const sortObj = { createdAt: -1 };
+
+    // ✅ Count total
+    const totalProducts = await Product.countDocuments(filterQuery);
+
+    if (totalProducts === 0) {
+      return res.json({
+        totalProducts: 0,
+        totalPages: 0,
+        currentPage: pageNum,
+        products: [],
+        message: "No products found",
+      });
+    }
+
+    // ✅ Query only essential fields
+    const products = await Product.find(filterQuery)
+      .select(
+        "name salePrice regularPrice images meta.Brands categoryOne stockQuantity gender createdAt"
+      )
+      .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
+      .limit(limitNum)
+      .lean();
 
-    return res.json({
+    const totalPages = Math.ceil(totalProducts / limitNum);
+
+    // ✅ Format response
+    const formattedProducts = products.map((p) => ({
+      ...p,
+      brand: Array.isArray(p.meta?.Brands)
+        ? p.meta.Brands.join(", ")
+        : p.meta?.Brands || "",
+      category: p.categoryOne || "",
+      image: p.images?.[0]?.url || "",
+      available: p.stockQuantity > 0,
+      discount:
+        p.regularPrice && p.salePrice
+          ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
+          : 0,
+    }));
+
+    res.json({
       totalProducts,
-      totalPages: Math.ceil(totalProducts / limitNum),
+      totalPages,
       currentPage: pageNum,
-      products,
+      products: formattedProducts,
+      hasNextPage: pageNum < totalPages,
+      hasPrevPage: pageNum > 1,
+      nextPage: pageNum < totalPages ? pageNum + 1 : null,
+      prevPage: pageNum > 1 ? pageNum - 1 : null,
     });
   } catch (err) {
+    console.error("❌ Error fetching products:", err);
     res.status(500).json({
       message: "❌ Error fetching products",
-      error: err.message,
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : err.message,
     });
   }
 };
@@ -117,7 +251,6 @@ const addProduct = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
 
 // 📌 Add Service Form (Create new booking)
 const addServiceForm = async (req, res) => {
@@ -230,8 +363,8 @@ const getAllProductwithSearch = async (req, res) => {
     if (search.trim()) {
       query = {
         $or: [
-          { name: { $regex: search, $options: "i" } }, 
-          { brand: { $regex: search, $options: "i" } }
+          { name: { $regex: search, $options: "i" } },
+          { brand: { $regex: search, $options: "i" } },
         ],
       };
     }
@@ -251,6 +384,7 @@ const getAllProductwithSearch = async (req, res) => {
     });
   }
 };
+
 
 
  const SimilarProduct = async (req, res) => {
@@ -297,6 +431,7 @@ const getAllProductwithSearch = async (req, res) => {
     });
   }
 };
+
 
 
 module.exports = {
