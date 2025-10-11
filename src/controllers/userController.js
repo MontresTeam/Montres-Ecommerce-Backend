@@ -47,7 +47,7 @@ const Registration = async (req, res) => {
     res
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: false, // false for local dev
         sameSite: "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       })
@@ -90,7 +90,7 @@ const Login = async (req, res) => {
     res
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: false, // false for local dev
         sameSite: "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       })
@@ -128,6 +128,21 @@ const Login = async (req, res) => {
   }
 };
 
+
+
+// --- Google Login ---
+
+
+const googleLogin = async (req,res)=>{
+  try {
+   
+  } catch (error) {
+    
+  }
+}
+
+
+// --- faceboock Login ---
 
 
 // forgotPassword -> with email send verification
@@ -975,8 +990,9 @@ module.exports = {
   getCart,
   updateCart,
   recommendationsProduct,
-  refreshToken
+  refreshToken,
   getCartCount,
-  getWishlistCount
+  getWishlistCount,
+
   };
 

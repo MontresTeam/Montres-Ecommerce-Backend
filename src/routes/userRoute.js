@@ -1,5 +1,5 @@
 const express = require("express");
-const { Registration, Login, forgotPassword, ResetPassword, convertprice, refreshToken} = require("../controllers/userController");
+const { Registration, Login, forgotPassword, ResetPassword, convertprice, refreshToken, logout} = require("../controllers/userController");
 
 const router = express.Router();
 
@@ -7,6 +7,8 @@ const router = express.Router();
 router.post("/register", Registration);
 
 router.post("/refresh-token",refreshToken)
+
+// router.post("/logout",logout)
 
 router.post("/login", Login);
 // 🔑 Forgot Password (send reset link to email)

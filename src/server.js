@@ -12,13 +12,21 @@ const watchesRoute = require('./routes/watchesRoute')
 const leatherRoute = require('./routes/leatheRouter')
 const accessoriesRoute = require('./routes/accessoriesRouter')
 const homeProductsRoute =require('./routes/homeProductRoutes')
+const orderRoute = require('./routes/orderRoutes');
+const passport = require('passport');
 connectDB();
 
+// Passport strategies
+require("./strategies/googleStrategy");
+require("./strategies/facebookStrategy");
 
 
+app.use(cors({
+  origin: process.env.CLIENT_URL, // or your frontend URL
+  credentials: true
+}));
 
-// Middlewares
-app.use(cors({ origin: "http://localhost:3000", credentials: true }));
+app.use(passport.initialize());
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.json());
@@ -35,7 +43,7 @@ app.use((err, req, res, next) => {
     res.status(500).send('Something broke!');
 });
 
-
+app.use("/api/order",orderRoute)
 app.use("/api/products", productRoutes);
 app.use("/api",productRoutes)
 app.use("/api/createProduct",productRoutes)
