@@ -4,11 +4,8 @@ const mongoose = require("mongoose");
 const orderItemSchema = new mongoose.Schema({
   productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: false },
   name: { type: String },
-  price: { type: Number, required: true },
+  price: { type: Number, required: true }, // already includes VAT if applicable
   quantity: { type: Number, required: true },
-  size: { type: String },
-  color: { type: String },
-  sku: { type: String },
 }, { _id: false });
 
 const addressSchema = new mongoose.Schema({
@@ -20,19 +17,16 @@ const addressSchema = new mongoose.Schema({
   state: String,
   city: String,
   street: String,
-  building: String,
-  apartment: String,
-  landmark: String,
   postalCode: String,
 }, { _id: false });
 
 const orderSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: false },
   items: [orderItemSchema],
-  subtotal: { type: Number, required: true, default: 0 },
-  vat: { type: Number, required: true, default: 0 },
+  subtotal: { type: Number, required: true, default: 0 }, // sum of item prices
+  vat: { type: Number, required: true, default: 0 }, // 0 if prices include VAT
   shippingFee: { type: Number, required: true, default: 0 },
-  total: { type: Number, required: true, default: 0 },
+  total: { type: Number, required: true, default: 0 }, // subtotal + shippingFee
   currency: { type: String, default: "AED" },
   region: { type: String, enum: ["local", "gcc", "worldwide"], default: "local" },
   shippingAddress: addressSchema,
