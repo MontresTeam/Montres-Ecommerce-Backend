@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config(); // <--- MUST be at the top, before using process.env
 const express = require('express');
 const connectDB = require("./config/db");
 const cors = require('cors');
@@ -22,7 +22,7 @@ require("./strategies/facebookStrategy");
 
 
 app.use(cors({
-  origin: process.env.CLIENT_URL, // or your frontend URL
+  origin:process.env.CLIENT_URL, // or your frontend URL
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));

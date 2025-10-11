@@ -1,3 +1,4 @@
+require('dotenv').config(); // <--- MUST be at the top, before using process.env
 const passport = require("passport");
 const FacebookStrategy = require("passport-facebook").Strategy;
 const jwt = require("jsonwebtoken");
@@ -7,7 +8,7 @@ passport.use(
     {
       clientID: process.env.FB_APP_ID,
       clientSecret: process.env.FB_APP_SECRET,
-      callbackURL: "/auth/facebook/callback",
+      callbackURL: "http://localhost:9000/api/Auth/facebook/callback",
       profileFields: ["id", "displayName", "photos", "email"],
     },
     (accessToken, refreshToken, profile, done) => {
