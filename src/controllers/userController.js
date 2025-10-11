@@ -105,6 +105,24 @@ const Login = async (req, res) => {
   }
 };
 
+
+ const logout = async (req, res) => {
+  try {
+    // ✅ Clear refresh token cookie
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+
+    return res.status(200).json({ message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Logout Error:", error);
+    return res.status(500).json({ message: "Logout failed" });
+  }
+};
+
+
   // RefreshToken
 
 
@@ -130,6 +148,7 @@ const Login = async (req, res) => {
 
 
 
+
 // --- Google Login ---
 
 
@@ -143,6 +162,7 @@ const googleLogin = async (req,res)=>{
 
 
 // --- faceboock Login ---
+
 
 
 // forgotPassword -> with email send verification
@@ -993,6 +1013,6 @@ module.exports = {
   refreshToken,
   getCartCount,
   getWishlistCount,
-
+  logout
   };
 

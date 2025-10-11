@@ -23,10 +23,16 @@ require("./strategies/facebookStrategy");
 
 app.use(cors({
   origin: process.env.CLIENT_URL, // or your frontend URL
+  methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
 
+
 app.use(passport.initialize());
+
+// Middlewares
+
+
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.json());
