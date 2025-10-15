@@ -15,7 +15,6 @@ const getProducts = async (req, res) => {
       search,
     } = req.query;
 
-    console.log("Incoming Query:", req.query);
 
     // ✅ Single Product by ID
     if (id) {
@@ -107,7 +106,6 @@ const getProducts = async (req, res) => {
       filterQuery.$and = andConditions;
     }
 
-    console.log("Filter Query:", JSON.stringify(filterQuery, null, 2));
 
     // ✅ Sort by recent
     const sortObj = { createdAt: -1 };
@@ -128,7 +126,7 @@ const getProducts = async (req, res) => {
     // ✅ Query only essential fields
     const products = await Product.find(filterQuery)
       .select(
-        "name salePrice regularPrice images meta.Brands categoryOne stockQuantity gender createdAt"
+        "name salePrice regularPrice images meta.Brands stockQuantity gender createdAt categorisOne"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -143,7 +141,7 @@ const getProducts = async (req, res) => {
       brand: Array.isArray(p.meta?.Brands)
         ? p.meta.Brands.join(", ")
         : p.meta?.Brands || "",
-      category: p.categoryOne || "",
+      category: p.categorisOne || "",
       image: p.images?.[0]?.url || "",
       available: p.stockQuantity > 0,
       discount:
@@ -151,7 +149,6 @@ const getProducts = async (req, res) => {
           ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
           : 0,
     }));
-
     res.json({
       totalProducts,
       totalPages,
