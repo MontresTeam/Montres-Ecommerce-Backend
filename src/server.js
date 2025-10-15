@@ -12,6 +12,7 @@ const watchesRoute = require('./routes/watchesRoute')
 const leatherRoute = require('./routes/leatheRouter')
 const accessoriesRoute = require('./routes/accessoriesRouter')
 const homeProductsRoute =require('./routes/homeProductRoutes')
+const adminProductRoute=require('./routes/adminPrdouctRouter')
 const orderRoute = require('./routes/orderRoutes');
 const passport = require('passport');
 connectDB();
@@ -58,7 +59,7 @@ app.use('/api/watches', watchesRoute);
 app.use('/api/leather', leatherRoute);
 app.use('/api/accessories', accessoriesRoute);
 app.use('/api/home',homeProductsRoute );
-
+app.use('/api/admin/product',adminProductRoute)
 
 // Start server
 app.listen(PORT, () => {
