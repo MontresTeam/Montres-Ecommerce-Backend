@@ -6,9 +6,9 @@ const jwt = require("jsonwebtoken");
 passport.use(
   new FacebookStrategy(
     {
-      clientID: process.env.FB_APP_ID,
-      clientSecret: process.env.FB_APP_SECRET,
-      callbackURL: process.env.FACEBOOK_CALLBACK_URL,
+      clientID:process.env.FB_APP_ID,
+      clientSecret:process.env.FB_APP_SECRET,
+      callbackURL:process.env.FACEBOOK_CALLBACK_URL,
       profileFields: ["id", "name", "emails", "picture.type(large)"],
     },
     (accessToken, refreshToken, profile, done) => {
