@@ -8,16 +8,33 @@ passport.use(
     {
       clientID: process.env.FB_APP_ID,
       clientSecret: process.env.FB_APP_SECRET,
-      callbackURL: "http://localhost:9000/api/Auth/facebook/callback",
-      profileFields: ["id", "displayName", "photos", "email"],
+      callbackURL: "https://api.montres.ae/api/Auth/facebook/callback",
+      profileFields: ["id", "name", "emails", "picture.type(large)"],
     },
     (accessToken, refreshToken, profile, done) => {
+      // Fallback for name
+      const name =
+        profile.displayName ||
+        (profile.name
+          ? `${profile.name.givenName || ""} ${profile.name.familyName || ""}`.trim()
+          : "Facebook User");
+
+      const email =
+        profile.emails?.[0]?.value || `${profile.id}@facebook.com`;
+
+      const picture =
+        profile.photos?.[0]?.value || null;
+
       const token = jwt.sign(
-        { id: profile.id, name: profile.displayName, email: profile.emails[0]?.value, photo: profile.photos[0]?.value },
-        process.env.JWT_SECRET,
-        { expiresIn: "1d" }
+        { id: profile.id, name, email, picture },
+        process.env.USER_ACCESS_TOKEN_SECRET,
+        { expiresIn: "7d" }
       );
-      return done(null, { token, profile });
+
+      const frontendUser = { id: profile.id, name, email, picture, provider: "facebook" };
+
+      done(null, { token, profile: frontendUser });
     }
   )
 );
+
