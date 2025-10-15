@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config(); // <--- MUST be at the top, before using process.env
 const express = require('express');
 const connectDB = require("./config/db");
 const cors = require('cors');
@@ -13,18 +13,26 @@ const leatherRoute = require('./routes/leatheRouter')
 const accessoriesRoute = require('./routes/accessoriesRouter')
 const homeProductsRoute =require('./routes/homeProductRoutes')
 const adminProductRoute=require('./routes/adminPrdouctRouter')
+const orderRoute = require('./routes/orderRoutes');
+const passport = require('passport');
 connectDB();
 
+// Passport strategies
+require("./strategies/googleStrategy");
+require("./strategies/facebookStrategy");
 
 
+app.use(cors({
+  origin:process.env.CLIENT_URL, // or your frontend URL
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
+
+
+app.use(passport.initialize());
 
 // Middlewares
 
-app.use(cors({
-  origin: "http://localhost:3000",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true, // if you want to send cookies
-})); 
 
 app.use(bodyParser.json());
 app.use(cookieParser());
@@ -42,7 +50,7 @@ app.use((err, req, res, next) => {
     res.status(500).send('Something broke!');
 });
 
-
+app.use("/api/order",orderRoute)
 app.use("/api/products", productRoutes);
 app.use("/api",productRoutes)
 app.use("/api/createProduct",productRoutes)

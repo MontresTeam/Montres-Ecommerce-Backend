@@ -1,116 +1,205 @@
 // controllers/orderController.js
-const asyncHandler = require("express-async-handler");
-const Order = require("../models/Order");
-const { calculateShippingFee, getRegionFromCountry } = require("../utils/shippingCalculator");
+const Order = require("../models/OrderModel");
+const Product = require("../models/product");
+const userModel = require("../models/UserModel")
+const { calculateShippingFee } = require("../utils/shippingCalculator");
 const stripePkg = require("stripe");
-const VAT_RATE = parseFloat(process.env.VAT_RATE || 0.05);
+
+
 
 const stripe = process.env.STRIPE_SECRET_KEY ? stripePkg(process.env.STRIPE_SECRET_KEY) : null;
 
-/**
- * POST /api/orders
- * Body expected:
- * {
- *   userId?, // optional if you use auth middleware
- *   items: [{ productId, name, price, quantity, size, color, sku }],
- *   shippingAddress: { country, state, city, street, ... },
- *   billingAddress?,
- *   paymentMethod: 'stripe' | 'cash',
- *   createPaymentIntent: boolean  // optional
- * }
- */
-const createOrder = asyncHandler(async (req, res) => {
-  const {
-    items,
-    shippingAddress,
-    billingAddress,
-    paymentMethod = "stripe",
-    createPaymentIntent = false,
-  } = req.body;
+const createOrder = async (req, res) => {
+  try {
+    const { userId } = req.user; // from JWT middleware
+    const {
+      items,
+      shippingAddress,
+      billingAddress,
+      paymentMethod = "stripe",
+      calculateOnly = false, // Add this flag
+    } = req.body;
 
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ message: "Cart items are required" });
-  }
-  if (!shippingAddress || !shippingAddress.country) {
-    return res.status(400).json({ message: "Shipping address with country is required" });
-  }
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Cart items are required" });
+    }
 
-  // Calculate subtotal (digit-by-digit safe)
-  let subtotal = 0;
-  for (const it of items) {
-    const price = Number(it.price) || 0;
-    const qty = Number(it.quantity) || 0;
-    // multiply carefully:
-    const line = price * qty;
-    subtotal = subtotal + line;
-  }
+    if (!shippingAddress || !shippingAddress.country) {
+      return res
+        .status(400)
+        .json({ message: "Shipping address with country is required" });
+    }
 
-  // VAT
-  const vat = subtotal * VAT_RATE;
+    // ✅ Populate product details for each cart item
+    const populatedItems = await Promise.all(
+      items.map(async (it) => {
+        const product = await Product.findById(it.productId)
+          .select("name images salePrice")
+          .lean();
 
-  // Shipping
-  const { shippingFee, region } = calculateShippingFee({
-    country: shippingAddress.country,
-    subtotal,
-  });
+        if (!product) throw new Error(`Product not found: ${it.productId}`);
 
-  // Total
-  const total = subtotal + vat + shippingFee;
+        return {
+          productId: product._id,
+          name: product.name,
+          image: product.images?.[0]?.url || product.images?.[0] || "",
+          price: product.salePrice || 0,
+          quantity: it.quantity || 1,
+        };
+      })
+    );
 
-  // Build order
-  const orderData = {
-    userId: (req.user && req.user.id) || req.body.userId || null,
-    items,
-    subtotal,
-    vat,
-    shippingFee,
-    total,
-    region,
-    shippingAddress,
-    billingAddress: billingAddress || shippingAddress,
-    paymentMethod,
-    paymentStatus: paymentMethod === "cash" ? "pending" : "pending",
-  };
+    // ✅ Calculate subtotal
+    const subtotal = populatedItems.reduce(
+      (acc, item) => acc + (item.price || 0) * (item.quantity || 0),
+      0
+    );
 
-  // Optionally create Stripe PaymentIntent if using Stripe
-  if (paymentMethod === "stripe" && createPaymentIntent && stripe) {
-    try {
-      // Note: Stripe expects amount in the smallest currency unit (e.g., fils)
-      const amountInFils = Math.round(total * 100); // AED -> fils
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: amountInFils,
-        currency: "aed",
-        // optionally: metadata, receipt_email, description
-        metadata: {
-          integration_check: "tyem",
+    // ✅ Calculate shipping fee
+    const { shippingFee, region } = calculateShippingFee({
+      country: shippingAddress.country,
+      subtotal,
+    });
+
+    const total = subtotal + shippingFee;
+
+    // ✅ If it's only a calculation request, return the totals without creating order
+    if (calculateOnly) {
+      return res.status(200).json({
+        success: true,
+        subtotal,
+        shippingFee,
+        total,
+        vatAmount: 0,
+        region,
+        items: populatedItems, // Optional: return populated items for verification
+      });
+    }
+
+    // ✅ Save order (plain JSON-safe data) - Only if not calculateOnly
+    const orderData = {
+      userId,
+      items: populatedItems.map((item) => ({
+        productId: item.productId,
+        name: item.name,
+        image: item.image,
+        price: item.price,
+        quantity: item.quantity,
+      })),
+      subtotal,
+      vat: 0,
+      shippingFee,
+      total,
+      region,
+      shippingAddress,
+      billingAddress: billingAddress || shippingAddress,
+      paymentMethod,
+      paymentStatus: "pending",
+      currency: "AED",
+    };
+
+    const order = await Order.create(orderData);
+
+     // ✅ Clear the user's cart in the User model
+    await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
+
+    // ✅ Stripe Checkout Session with image support
+    if (paymentMethod === "stripe" && stripe) {
+      const lineItems = populatedItems.map((item) => ({
+        price_data: {
+          currency: "aed",
+          product_data: {
+            name: item.name,
+            images: item.image ? [item.image] : [],
+          },
+          unit_amount: Math.round(item.price * 100),
         },
+        quantity: item.quantity || 1,
+      }));
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: lineItems,
+        mode: "payment",
+        success_url: `http://localhost:3000/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
+        cancel_url: `http://localhost:3000/paymentcancel?orderId=${order._id}`,
       });
 
-      orderData.stripePaymentIntentId = paymentIntent.id;
-      // Do not mark paid until webhook or client confirms
-    } catch (err) {
-      console.error("Stripe error:", err);
-      return res.status(500).json({ message: "Failed to create payment intent" });
+      order.stripeSessionId = session.id;
+      await order.save();
+
+      return res.status(201).json({
+        success: true,
+        order: order.toObject(),
+        checkoutUrl: session.url,
+      });
     }
+
+    return res.status(201).json({ success: true, order: order.toObject() });
+  } catch (error) {
+    console.error("CreateOrder Error:", error);
+    return res.status(500).json({ message: error.message || "Server error" });
   }
+};
+const getShippingAddresses = async (req, res) => {
+  try {
+    // Fetch only the shippingAddress field from all orders
+    const orders = await Order.find()
+      .select("shippingAddress userId total createdAt") // pick fields you need
+      .lean(); // return plain JSON objects
 
-  const order = await Order.create(orderData);
-  return res.status(201).json({ success: true, order });
-});
+    // Optionally, remove duplicates by country + city or full address
+    const uniqueAddresses = [];
+    const map = new Map();
 
-const getOrderById = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const order = await Order.findById(id).lean();
-  if (!order) return res.status(404).json({ message: "Order not found" });
-  return res.json({ order });
-});
+    orders.forEach((order) => {
+      const key = JSON.stringify(order.shippingAddress); // can adjust for country/city
+      if (!map.has(key)) {
+        map.set(key, true);
+        uniqueAddresses.push(order.shippingAddress);
+      }
+    });
 
-// List orders for a user (if using auth)
-const getMyOrders = asyncHandler(async (req, res) => {
-  const userId = req.user && req.user.id;
-  if (!userId) return res.status(400).json({ message: "User not provided" });
-  const orders = await Order.find({ userId }).sort({ createdAt: -1 });
-  return res.json({ orders });
-});
+    return res.status(200).json({
+      success: true,
+      count: uniqueAddresses.length,
+      addresses: uniqueAddresses,
+    });
+  } catch (error) {
+    console.error("getShippingAddresses Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
 
-module.exports = { createOrder, getOrderById, getMyOrders };
+
+/**
+ * Get order by ID
+ */
+const getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = await Order.findById(id).lean();
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    return res.json({ order });
+  } catch (error) {
+    console.error("getOrderById Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * List orders for logged-in user
+ */
+const getMyOrders = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(400).json({ message: "User not provided" });
+    const orders = await Order.find({ userId }).sort({ createdAt: -1 });
+    return res.json({ orders });
+  } catch (error) {
+    console.error("getMyOrders Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+module.exports = { createOrder, getOrderById, getMyOrders ,getShippingAddresses};

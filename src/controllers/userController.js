@@ -1,3 +1,4 @@
+require('dotenv').config(); // <--- MUST be at the top, before using process.env
 const userModel = require("../models/UserModel");
 const ProductModel = require("../models/product");
 const bcrypt = require("bcryptjs");
@@ -9,6 +10,8 @@ const {
   generateAccessToken,
   generateRefreshToken,
 } = require("../utils/generateToken");
+
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -20,8 +23,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// const API_KEY = process.env.EXCHANGE_API_KEY;
-// const BASE = process.env.BASE_CURRENCY || "AED";
+
 
 // ✅ User Registration
 const Registration = async (req, res) => {
@@ -47,7 +49,7 @@ const Registration = async (req, res) => {
     res
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: false, // false for local dev
         sameSite: "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       })
@@ -90,7 +92,7 @@ const Login = async (req, res) => {
     res
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: false, // false for local dev
         sameSite: "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       })
@@ -147,6 +149,68 @@ const Login = async (req, res) => {
 };
 
 
+
+
+// Google Login
+const googleLogin = async (req, res) => {
+  try {
+    const profile = req.user; // populated by passport after Google OAuth
+    if (!profile) return res.status(400).json({ message: "Google login failed" });
+
+        // Make sure the secret is loaded
+    if (!process.env.USER_ACCESS_TOKEN_SECRET) {
+      return res.status(500).json({ message: "JWT secret is missing" });
+    }
+
+    // Create JWT token
+    const token = jwt.sign(
+      {
+        id: profile.id,
+        name: profile.displayName,
+        email: profile.emails[0]?.value,
+        photo: profile.photos[0]?.value,
+      },
+      process.env.USER_ACCESS_TOKEN_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    console.log("JWT Secret:", process.env.USER_ACCESS_TOKEN_SECRET);
+
+    // Send token to frontend (you can send as cookie or JSON)
+    res.redirect(`${process.env.CLIENT_URL}/?token=${token}`);
+  } catch (error) {
+    console.error("Google login error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Facebook Login
+const facebookLogin = async (req, res) => {
+  try {
+    const profile = req.user; // populated by passport after Facebook OAuth
+    if (!profile) return res.status(400).json({ message: "Facebook login failed" });
+
+    // Create JWT token
+    const token = jwt.sign(
+      {
+        id: profile.id,
+        name: profile.displayName,
+        email: profile.emails[0]?.value,
+        photo: profile.photos[0]?.value,
+      },
+      process.env.USER_ACCESS_TOKEN_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    console.log("JWT Secret:", process.env.USER_ACCESS_TOKEN_SECRET);
+
+
+    res.redirect(`${process.env.CLIENT_URL}/?token=${token}`);
+  } catch (error) {
+    console.error("Facebook login error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 
 
 // forgotPassword -> with email send verification
@@ -997,6 +1061,8 @@ module.exports = {
   refreshToken,
   getCartCount,
   getWishlistCount,
-  logout
+  logout,
+  googleLogin,
+  facebookLogin
   };
 
