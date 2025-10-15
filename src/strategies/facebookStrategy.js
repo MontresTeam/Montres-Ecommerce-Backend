@@ -8,7 +8,7 @@ passport.use(
     {
       clientID: process.env.FB_APP_ID,
       clientSecret: process.env.FB_APP_SECRET,
-      callbackURL: "https://api.montres.ae/api/Auth/facebook/callback",
+      callbackURL: process.env.FACEBOOK_CALLBACK_URL,
       profileFields: ["id", "name", "emails", "picture.type(large)"],
     },
     (accessToken, refreshToken, profile, done) => {

@@ -7,7 +7,7 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: "https://api.montres.ae/api/Auth/google/callback",
+      callbackURL: process.env.GOOGLE_CALLBACK_URL,
       scope: ["profile", "email"],
     },
     (accessToken, refreshToken, profile, done) => {
