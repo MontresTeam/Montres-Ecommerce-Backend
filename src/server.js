@@ -23,15 +23,15 @@ connectDB();
 
 
 const allowedOrigins = [
-  process.env.CLIENT_URL, 
+  process.env.CLIENT_URL,
   process.env.ADMIN_URL,
-  process.env.LOCAL_URL
+  process.env.LOCAL_URL,
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
+      if (!origin) return callback(null, true); // allow requests like Postman
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
