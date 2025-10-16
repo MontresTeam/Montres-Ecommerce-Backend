@@ -23,10 +23,13 @@ require("./strategies/facebookStrategy");
 
 
 app.use(cors({
-  origin: [process.env.CLIENT_URL,process.env.ADMIN_URL],
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  origin: [
+    'http://localhost:3000',                   // main site
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true
 }));
+
 
 
 app.use(passport.initialize());
