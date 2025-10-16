@@ -158,7 +158,7 @@ const updateProduct = async (req, res) => {
       brands: parseJSON(productData.brands),
       tags: parseJSON(productData.tags),
       attributes: parseJSON(productData.attributes),
-      images: productData.images || product.images,
+      images:product.images,
       meta: productData.meta || product.meta,
       weight: productData.weight ?? product.weight,
       height: productData.height ?? product.height,
