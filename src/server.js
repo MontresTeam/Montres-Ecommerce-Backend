@@ -23,7 +23,7 @@ require("./strategies/facebookStrategy");
 
 
 app.use(cors({
-  origin:process.env.CLIENT_URL, // or your frontend URL
+  origin: [process.env.CLIENT_URL,process.env.ADMIN_URL],
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
