@@ -32,7 +32,7 @@ const imageUploadUpdate = (req, res, next) => {
     }
 
     try {
-      let uploadedImages = [];
+      let uploadedImages = [];   
 
       // 🧩 Upload new images if any
       if (req.files && req.files.length > 0) {

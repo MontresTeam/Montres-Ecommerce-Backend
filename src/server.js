@@ -2,6 +2,7 @@ require('dotenv').config(); // <--- MUST be at the top, before using process.env
 const express = require('express');
 const connectDB = require("./config/db");
 const cors = require('cors');
+const path = require("path");
 const PORT = process.env.PORT || 9000;
 const app = express();
 const bodyParser = require("body-parser");
@@ -13,30 +14,41 @@ const leatherRoute = require('./routes/leatheRouter')
 const accessoriesRoute = require('./routes/accessoriesRouter')
 const homeProductsRoute =require('./routes/homeProductRoutes')
 const adminProductRoute=require('./routes/adminPrdouctRouter')
+const contactRoutes = require("./routes/contactFormRoutes");
 const orderRoute = require('./routes/orderRoutes');
 const passport = require('passport');
 connectDB();
 
 // Passport strategies
-require("./strategies/googleStrategy");
-require("./strategies/facebookStrategy");
+// require("./strategies/googleStrategy");
+// require("./strategies/facebookStrategy");
 
 
-app.use(cors({
-  origin: [
-    'http://localhost:3000',                   // main site
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  credentials: true
-}));
 
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.ADMIN_URL,
+  process.env.LOCAL_URL,
+];
+console.log("Allowed Origins:", allowedOrigins);
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow requests like Postman
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
 
 
 app.use(passport.initialize());
-
-// Middlewares
-
-
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.json());
@@ -63,6 +75,7 @@ app.use('/api/leather', leatherRoute);
 app.use('/api/accessories', accessoriesRoute);
 app.use('/api/home',homeProductsRoute );
 app.use('/api/admin/product',adminProductRoute)
+app.use("/api/contact",contactRoutes)
 
 // Start server
 app.listen(PORT, () => {
