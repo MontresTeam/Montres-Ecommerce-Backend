@@ -29,6 +29,7 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.ADMIN_URL,
   process.env.LOCAL_URL,
+  "https://montres.ae"
 ];
 console.log("Allowed Origins:", allowedOrigins);
 
