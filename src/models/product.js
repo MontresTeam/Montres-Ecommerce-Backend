@@ -12,11 +12,14 @@ const attributeSchema = new mongoose.Schema(
 
 const imageSchema = new mongoose.Schema(
   {
-    url: { type: String },
+    url: { type: String, required: true },
     alt: { type: String },
+    type: { type: String, enum: ["main", "cover"], default: "cover" }, // ✅ main or cover
   },
   { _id: false }
 );
+
+
 
 const productSchema = new mongoose.Schema(
   {
@@ -24,6 +27,7 @@ const productSchema = new mongoose.Schema(
     productId: { type: Number, index: true }, // WooCommerce ID
     type: { type: String }, // simple, variable, grouped, etc.
     sku: { type: String, unique: false },
+    serialNumber:{type:String},
     gtin: { type: String }, // UPC, EAN, ISBN
     name: { type: String, required: true },
     published: { type: Boolean, default: true },
@@ -44,13 +48,22 @@ const productSchema = new mongoose.Schema(
     soldIndividually: { type: Boolean, default: false },
     categorisOne: {type:String},
     subcategory: [{ type: String }],
-    gender: {type:String ,enum:['men','women','unisex']},
+    gender: {type:String },
     // Shipping
     weight: { type: Number },
     length: { type: Number },
     width: { type: Number },
     height: { type: Number },
     shippingClass: { type: String },
+
+    //new
+    CaseDiameter:{type:Number},
+    Movement:{type:String,enum:['automatic','quartz','manual','solar','kinetic']},
+    Dial:{type:String},
+    WristSize:{type:Number},
+    Accessories:{type:String},
+    Condition:{type:String,enum:['new','like-new','excellent','very-good','good','fair']},
+    ProductionYear:{type:Number},
 
     // Review & Notes
     allowReviews: { type: Boolean, default: true },

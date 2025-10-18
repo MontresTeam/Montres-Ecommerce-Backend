@@ -35,7 +35,7 @@ const router = express.Router();
 /* ----------------- Product Routes ----------------- */
 router.get("/products", getProducts);                       // Fetch all products
 router.post("/products", ImageUpload, addProduct);          // Add a new product
-router.post("/products/createBooking", ImageUpload, addServiceForm); // Create service form
+router.post("/products/createBooking",protect, ImageUpload, addServiceForm); // Create service form
 router.get("/products/home", productHome);                 // Products for homepage
 router.get('/productall',getAllProductwithSearch)
 /* ----------------- Cart Routes ----------------- */
