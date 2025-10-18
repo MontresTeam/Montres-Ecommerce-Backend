@@ -33,7 +33,6 @@ const productSchema = new mongoose.Schema(
     published: { type: Boolean, default: true },
     featured: { type: Boolean, default: false },
     visibility: { type: String }, // visible, hidden, catalog, etc.
-    shortDescription: { type: String },
     description: { type: String },
     salePrice: { type: Number },
     regularPrice: { type: Number },

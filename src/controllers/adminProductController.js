@@ -33,12 +33,10 @@ const addProduct = async (req, res) => {
   try {
     const productData = req.body;
 
-    // Basic validation
     if (!productData.name) {
       return res.status(400).json({ message: "Product name is required." });
     }
 
-    // Helper: safely parse JSON if it’s sent as string
     const parseJSON = (field) => {
       if (!field) return [];
       try {
@@ -48,30 +46,15 @@ const addProduct = async (req, res) => {
       }
     };
 
-    // 🖼️ Handle main and cover images
-    let images = [];
-    if (productData.images) {
-      const mainImage =
-        productData.images.main && typeof productData.images.main === "string"
-          ? [{ url: productData.images.main, type: "main" }]
-          : [];
+    // ✅ Use images directly from middleware
+    const images = productData.images || [];
 
-      const coverImages = parseJSON(productData.images.covers).map((url) => ({
-        url,
-        type: "cover",
-      }));
-
-      images = [...mainImage, ...coverImages];
-    }
-
-    // Prepare product data
     const newProduct = new Product({
       name: productData.name,
       type: productData.type || "simple",
       sku: productData.sku || "",
       serialNumber: productData.serialNumber || "",
       gtin: productData.gtin || "",
-      shortDescription: productData.shortDescription || "",
       description: productData.description || "",
       salePrice: productData.salePrice || 0,
       regularPrice: productData.regularPrice || 0,
@@ -86,14 +69,13 @@ const addProduct = async (req, res) => {
       brands: parseJSON(productData.brands),
       tags: parseJSON(productData.tags),
       attributes: parseJSON(productData.attributes),
-      images,
+      images, // ✅ directly from middleware
       meta: productData.meta || {},
       weight: productData.weight || 0,
       height: productData.height || 0,
       width: productData.width || 0,
       length: productData.length || 0,
 
-      // ✅ Use lowercase keys to match frontend or Postman
       CaseDiameter: productData.caseDiameter,
       Movement: productData.movement,
       Dial: productData.dial,
@@ -106,11 +88,10 @@ const addProduct = async (req, res) => {
       updatedAt: new Date(),
     });
 
-    // Save product
     const savedProduct = await newProduct.save();
 
     const response = await Product.findById(savedProduct._id).select(
-      "name salePrice regularPrice images meta brands stockQuantity gender createdAt categoriesOne caseDiameter movement dial wristSize accessories condition productionYear"
+      "name salePrice regularPrice images meta brands stockQuantity gender createdAt categorisOne CaseDiameter Movement Dial WristSize Accessories Condition ProductionYear description sku"
     );
 
     res.status(201).json({
@@ -122,6 +103,7 @@ const addProduct = async (req, res) => {
     res.status(500).json({ message: error.message || "Server error" });
   }
 };
+
 
 const updateProduct = async (req, res) => {
   try {
