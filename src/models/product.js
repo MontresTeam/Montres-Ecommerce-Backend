@@ -27,6 +27,7 @@ const productSchema = new mongoose.Schema(
     productId: { type: Number, index: true }, // WooCommerce ID
     type: { type: String }, // simple, variable, grouped, etc.
     sku: { type: String, unique: false },
+    serialNumber:{type:String},
     gtin: { type: String }, // UPC, EAN, ISBN
     name: { type: String, required: true },
     published: { type: Boolean, default: true },
@@ -47,7 +48,7 @@ const productSchema = new mongoose.Schema(
     soldIndividually: { type: Boolean, default: false },
     categorisOne: {type:String},
     subcategory: [{ type: String }],
-    gender: {type:String ,enum:['men','women','unisex']},
+    gender: {type:String },
     // Shipping
     weight: { type: Number },
     length: { type: Number },

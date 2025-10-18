@@ -69,6 +69,7 @@ const addProduct = async (req, res) => {
       name: productData.name,
       type: productData.type || "simple",
       sku: productData.sku || "",
+      serialNumber: productData.serialNumber || "",
       gtin: productData.gtin || "",
       shortDescription: productData.shortDescription || "",
       description: productData.description || "",
@@ -151,6 +152,7 @@ const updateProduct = async (req, res) => {
       ...(productData.name && { name: productData.name }),
       ...(productData.type && { type: productData.type }),
       ...(productData.sku && { sku: productData.sku }),
+      ...(productData.serialNumber && { sku: productData.serialNumber }),
       ...(productData.gtin && { gtin: productData.gtin }),
       ...(productData.shortDescription && {
         shortDescription: productData.shortDescription,
