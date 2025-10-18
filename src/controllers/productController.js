@@ -126,7 +126,7 @@ const getProducts = async (req, res) => {
     // ✅ Query only essential fields
     const products = await Product.find(filterQuery)
       .select(
-        "name salePrice regularPrice images meta.Brands stockQuantity gender createdAt categorisOne"
+        "name salePrice regularPrice images meta brands stockQuantity gender createdAt categorisOne CaseDiameter Movement Dial WristSize Accessories Condition ProductionYear description sku"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
