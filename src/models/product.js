@@ -12,11 +12,14 @@ const attributeSchema = new mongoose.Schema(
 
 const imageSchema = new mongoose.Schema(
   {
-    url: { type: String },
+    url: { type: String, required: true },
     alt: { type: String },
+    type: { type: String, enum: ["main", "cover"], default: "cover" }, // ✅ main or cover
   },
   { _id: false }
 );
+
+
 
 const productSchema = new mongoose.Schema(
   {
@@ -52,6 +55,15 @@ const productSchema = new mongoose.Schema(
     width: { type: Number },
     height: { type: Number },
     shippingClass: { type: String },
+
+    //new
+    CaseDiameter:{type:Number},
+    Movement:{type:String,enum:['automatic','quartz','manual','solar','kinetic']},
+    Dial:{type:String},
+    WristSize:{type:Number},
+    Accessories:{type:String},
+    Condition:{type:String,enum:['new','like-new','excellent','very-good','good','fair']},
+    ProductionYear:{type:Number},
 
     // Review & Notes
     allowReviews: { type: Boolean, default: true },

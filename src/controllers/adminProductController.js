@@ -1,6 +1,5 @@
 const Product = require("../models/product");
 
-
 const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -8,7 +7,9 @@ const deleteProduct = async (req, res) => {
     // Check if product exists
     const product = await Product.findById(id);
     if (!product) {
-      return res.status(404).json({ success: false, message: "Product not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
     }
 
     // Delete product
@@ -28,7 +29,6 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-
 const addProduct = async (req, res) => {
   try {
     const productData = req.body;
@@ -47,6 +47,22 @@ const addProduct = async (req, res) => {
         return Array.isArray(field) ? field : [field];
       }
     };
+
+    // 🖼️ Handle main and cover images
+    let images = [];
+    if (productData.images) {
+      const mainImage =
+        productData.images.main && typeof productData.images.main === "string"
+          ? [{ url: productData.images.main, type: "main" }]
+          : [];
+
+      const coverImages = parseJSON(productData.images.covers).map((url) => ({
+        url,
+        type: "cover",
+      }));
+
+      images = [...mainImage, ...coverImages];
+    }
 
     // Prepare product data
     const newProduct = new Product({
@@ -70,12 +86,22 @@ const addProduct = async (req, res) => {
       brands: parseJSON(productData.brands),
       tags: parseJSON(productData.tags),
       attributes: parseJSON(productData.attributes),
-      images: productData.images || [],
+      images,
       meta: productData.meta || {},
       weight: productData.weight || 0,
       height: productData.height || 0,
       width: productData.width || 0,
       length: productData.length || 0,
+
+      // ✅ Use lowercase keys to match frontend or Postman
+      CaseDiameter: productData.caseDiameter,
+      Movement: productData.movement,
+      Dial: productData.dial,
+      WristSize: productData.wristSize,
+      Accessories: productData.accessories,
+      Condition: productData.condition,
+      ProductionYear: productData.productionYear,
+
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -83,9 +109,8 @@ const addProduct = async (req, res) => {
     // Save product
     const savedProduct = await newProduct.save();
 
-    // Select only relevant fields for response
     const response = await Product.findById(savedProduct._id).select(
-      "name salePrice regularPrice images meta brands stockQuantity gender createdAt categorisOne"
+      "name salePrice regularPrice images meta brands stockQuantity gender createdAt categoriesOne caseDiameter movement dial wristSize accessories condition productionYear"
     );
 
     res.status(201).json({
@@ -120,8 +145,8 @@ const updateProduct = async (req, res) => {
         return Array.isArray(field) ? field : [field];
       }
     };
-    
-    console.log(productData,'prdocts')
+
+    console.log(productData, "prdocts");
     // Update only provided fields (prevent overwriting with undefined)
     const updatedFields = {
       ...(productData.name && { name: productData.name }),
@@ -160,7 +185,7 @@ const updateProduct = async (req, res) => {
       brands: parseJSON(productData.brands),
       tags: parseJSON(productData.tags),
       attributes: parseJSON(productData.attributes),
-      images:product.images,
+      images: product.images,
       meta: productData.meta || product.meta,
       weight: productData.weight ?? product.weight,
       height: productData.height ?? product.height,
@@ -192,7 +217,8 @@ const updateProduct = async (req, res) => {
   }
 };
 
-
-module.exports={
-    addProduct,deleteProduct,updateProduct
-}
+module.exports = {
+  addProduct,
+  deleteProduct,
+  updateProduct,
+};
