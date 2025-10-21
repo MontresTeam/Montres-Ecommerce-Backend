@@ -52,8 +52,9 @@ app.use(
 app.use(passport.initialize());
 app.use(bodyParser.json());
 app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true })); 
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 
 // Routes
 app.get('/', (req, res) => {
@@ -66,6 +67,7 @@ app.use((err, req, res, next) => {
     res.status(500).send('Something broke!');
 });
 
+app.use("/api/contact",contactRoutes)
 app.use("/api/order",orderRoute)
 app.use("/api/products", productRoutes);
 app.use("/api",productRoutes)
@@ -76,7 +78,7 @@ app.use('/api/leather', leatherRoute);
 app.use('/api/accessories', accessoriesRoute);
 app.use('/api/home',homeProductsRoute );
 app.use('/api/admin/product',adminProductRoute)
-app.use("/api/contact",contactRoutes)
+
 
 // Start server
 app.listen(PORT, () => {

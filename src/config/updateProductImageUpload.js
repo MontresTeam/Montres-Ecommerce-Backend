@@ -1,3 +1,4 @@
+// config/updateProductImageUpload.js
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
@@ -18,8 +19,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Middleware - FIXED VERSION
-const addProductImageUpload = async (req, res, next) => {
+// Middleware for UPDATE operations
+const updateProductImageUpload = async (req, res, next) => {
   const uploader = upload.fields([
     { name: "main", maxCount: 1 },
     { name: "covers", maxCount: 5 }
@@ -64,7 +65,6 @@ const addProductImageUpload = async (req, res, next) => {
       }
 
       // **FIX: Only set images if new files were uploaded**
-      // For UPDATE operations, don't overwrite images if no new files
       if (uploadedImages.length > 0) {
         req.body.uploadedImages = uploadedImages; // Use different field name
       }
@@ -77,4 +77,4 @@ const addProductImageUpload = async (req, res, next) => {
   });
 };
 
-module.exports = addProductImageUpload;
+module.exports = updateProductImageUpload;

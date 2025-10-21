@@ -46,44 +46,46 @@ const addProduct = async (req, res) => {
       }
     };
 
-    // ✅ Use images directly from middleware
     const images = productData.images || [];
+    console.log(images,"images");
+    
 
-    const newProduct = new Product({
+   const newProduct = new Product({
+      // Basic Info
       name: productData.name,
-      type: productData.type || "simple",
       sku: productData.sku || "",
       serialNumber: productData.serialNumber || "",
-      gtin: productData.gtin || "",
-      description: productData.description || "",
-      salePrice: productData.salePrice || 0,
       regularPrice: productData.regularPrice || 0,
+      salePrice: productData.salePrice || 0,
+      discount: productData.discount || 0,
       stockQuantity: productData.stockQuantity || 0,
-      inStock: productData.inStock ?? true,
-      featured: productData.featured ?? false,
+      taxStatus: productData.taxStatus || "taxable",
+      RefenceNumber: productData.RefenceNumber || "",
+      description: productData.description || "",
       published: productData.published ?? true,
-      gender: productData.gender || "unisex",
-      categorisOne: productData.categorisOne || "",
-      subcategory: parseJSON(productData.subcategory),
-      categories: parseJSON(productData.categories),
+      featured: productData.featured ?? false,
+      inStock: productData.inStock ?? true,
+
+      // Collection & Classification
+      categories: productData.categories || "",
+      subcategory: productData.subcategory || "",
+      collection: productData.collection || "None",
       brands: parseJSON(productData.brands),
       tags: parseJSON(productData.tags),
-      attributes: parseJSON(productData.attributes),
-      images, // ✅ directly from middleware
+
+      // Watch Details
+      CaseDiameter: productData.CaseDiameter || 0,
+      Movement: productData.Movement || "",
+      Dial: productData.Dial || "",
+      WristSize: productData.WristSize || 0,
+      Condition: productData.Condition || "",
+      ProductionYear: productData.ProductionYear || "",
+      Accessories: productData.Accessories || "",
+
+      // Misc
+      gender: productData.gender || "unisex",
+      images,
       meta: productData.meta || {},
-      weight: productData.weight || 0,
-      height: productData.height || 0,
-      width: productData.width || 0,
-      length: productData.length || 0,
-
-      CaseDiameter: productData.caseDiameter,
-      Movement: productData.movement,
-      Dial: productData.dial,
-      WristSize: productData.wristSize,
-      Accessories: productData.accessories,
-      Condition: productData.condition,
-      ProductionYear: productData.productionYear,
-
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -91,34 +93,37 @@ const addProduct = async (req, res) => {
     const savedProduct = await newProduct.save();
 
     const response = await Product.findById(savedProduct._id).select(
-      "name salePrice regularPrice images meta brands stockQuantity gender createdAt categorisOne CaseDiameter Movement Dial WristSize Accessories Condition ProductionYear description sku"
+      "name sku serialNumber regularPrice salePrice stockQuantity taxStatus RefenceNumber collection categories subcategory brands tags CaseDiameter Movement Dial WristSize Condition ProductionYear Accessories gender images description discount createdAt"
     );
 
+
     res.status(201).json({
+      success: true,
       message: "Product added successfully!",
       product: response,
     });
   } catch (error) {
-    console.error("Add product error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    console.log("Add product error:", error);
+    res.status(500).json({ success: false, message: error.message || "Server error" });
   }
 };
 
 
+// ====================== UPDATE PRODUCT ======================
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const productData = req.body;
+    
+    console.log("Request files:", req.files);
+    console.log("Request body:", req.body);
+    console.log("Uploaded images:", req.body.uploadedImages);
 
-    // Check if product exists
     const product = await Product.findById(id);
     if (!product) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Product not found" });
+      return res.status(404).json({ success: false, message: "Product not found" });
     }
 
-    // Helper: safely parse JSON fields if they come as strings
+    // ✅ Add this helper
     const parseJSON = (field) => {
       if (!field) return [];
       try {
@@ -128,60 +133,60 @@ const updateProduct = async (req, res) => {
       }
     };
 
-    console.log(productData, "prdocts");
-    // Update only provided fields (prevent overwriting with undefined)
+    // **FIX: Handle images properly**
+    let updatedImages = [...product.images]; // Start with existing images
+
+    // If new images were uploaded, replace the images array
+    if (req.body.uploadedImages && req.body.uploadedImages.length > 0) {
+      updatedImages = req.body.uploadedImages;
+    }
+    // If no new images uploaded, preserve existing images (they stay as they are)
+
+    console.log("Final images array:", updatedImages);
+
     const updatedFields = {
-      ...(productData.name && { name: productData.name }),
-      ...(productData.type && { type: productData.type }),
-      ...(productData.sku && { sku: productData.sku }),
-      ...(productData.serialNumber && { sku: productData.serialNumber }),
-      ...(productData.gtin && { gtin: productData.gtin }),
-      ...(productData.shortDescription && {
-        shortDescription: productData.shortDescription,
-      }),
-      ...(productData.description && { description: productData.description }),
-      ...(productData.salePrice !== undefined && {
-        salePrice: productData.salePrice,
-      }),
-      ...(productData.regularPrice !== undefined && {
-        regularPrice: productData.regularPrice,
-      }),
-      ...(productData.stockQuantity !== undefined && {
-        stockQuantity: productData.stockQuantity,
-      }),
-      ...(productData.inStock !== undefined && {
-        inStock: productData.inStock,
-      }),
-      ...(productData.featured !== undefined && {
-        featured: productData.featured,
-      }),
-      ...(productData.published !== undefined && {
-        published: productData.published,
-      }),
-      ...(productData.gender && { gender: productData.gender }),
-      ...(productData.categorisOne && {
-        categorisOne: productData.categorisOne,
-      }),
-      subcategory: parseJSON(productData.subcategory),
-      categories: parseJSON(productData.categories),
-      brands: parseJSON(productData.brands),
-      tags: parseJSON(productData.tags),
-      attributes: parseJSON(productData.attributes),
-      images: product.images,
-      meta: productData.meta || product.meta,
-      weight: productData.weight ?? product.weight,
-      height: productData.height ?? product.height,
-      width: productData.width ?? product.width,
-      length: productData.length ?? product.length,
+      // Basic Info
+      ...(req.body.name && { name: req.body.name }),
+      ...(req.body.sku && { sku: req.body.sku }),
+      ...(req.body.serialNumber && { serialNumber: req.body.serialNumber }),
+      ...(req.body.discount !== undefined && { discount: parseFloat(req.body.discount) || 0 }),
+      regularPrice: parseFloat(req.body.regularPrice) || product.regularPrice,
+      salePrice: parseFloat(req.body.salePrice) || product.salePrice,
+      stockQuantity: parseInt(req.body.stockQuantity) || product.stockQuantity,
+      taxStatus: req.body.taxStatus || product.taxStatus,
+      RefenceNumber: req.body.RefenceNumber || product.RefenceNumber,
+      description: req.body.description || product.description,
+      published: req.body.published !== undefined ? req.body.published === "true" : product.published,
+      featured: req.body.featured !== undefined ? req.body.featured === "true" : product.featured,
+      inStock: req.body.inStock !== undefined ? req.body.inStock === "true" : product.inStock,
+
+      // Collection & Classification
+      categories: req.body.categories || product.categories,
+      subcategory: req.body.subcategory || product.subcategory,
+      collection: req.body.collection || product.collection,
+      brands: req.body.brands ? parseJSON(req.body.brands) : product.brands,
+      tags: req.body.tags ? parseJSON(req.body.tags) : product.tags,
+
+      // Watch Details
+      CaseDiameter: parseFloat(req.body.CaseDiameter) || product.CaseDiameter,
+      Movement: req.body.Movement || product.Movement,
+      Dial: req.body.Dial || product.Dial,
+      WristSize: parseFloat(req.body.WristSize) || product.WristSize,
+      Condition: req.body.Condition || product.Condition,
+      ProductionYear: req.body.ProductionYear || product.ProductionYear,
+      Accessories: req.body.Accessories || product.Accessories,
+
+      // Misc
+      gender: req.body.gender || product.gender,
+      images: updatedImages, // **FIX: This now preserves existing images**
       updatedAt: new Date(),
     };
 
-    // Update in DB
     const updatedProduct = await Product.findByIdAndUpdate(id, updatedFields, {
-      new: true, // Return the updated document
-      runValidators: true, // Run schema validations
+      new: true,
+      runValidators: true,
     }).select(
-      "name salePrice regularPrice images meta brands stockQuantity gender createdAt categorisOne"
+      "name sku serialNumber regularPrice salePrice stockQuantity taxStatus RefenceNumber collection categories subcategory brands tags CaseDiameter discount Movement Dial WristSize Condition ProductionYear Accessories gender images description updatedAt"
     );
 
     res.status(200).json({
@@ -190,7 +195,7 @@ const updateProduct = async (req, res) => {
       product: updatedProduct,
     });
   } catch (error) {
-    console.error("Error updating product:", error);
+    console.log("Error updating product:", error);
     res.status(500).json({
       success: false,
       message: "Server error while updating product",
@@ -198,6 +203,7 @@ const updateProduct = async (req, res) => {
     });
   }
 };
+
 
 module.exports = {
   addProduct,

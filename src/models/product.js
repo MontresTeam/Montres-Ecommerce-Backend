@@ -19,96 +19,131 @@ const imageSchema = new mongoose.Schema(
   { _id: false }
 );
 
-
-
+// ✅ Product Schema
 const productSchema = new mongoose.Schema(
   {
-    // Core WooCommerce Fields
-    productId: { type: Number, index: true }, // WooCommerce ID
-    type: { type: String }, // simple, variable, grouped, etc.
+    // ────────────── CORE PRODUCT INFO ──────────────
+    productId: { type: Number, index: true }, // WooCommerce or external ID
+    type: { type: String, default: "simple" }, // simple, variable, grouped
     sku: { type: String, unique: false },
-    serialNumber:{type:String},
-    gtin: { type: String }, // UPC, EAN, ISBN
+    RefenceNumber: { type: String, unique: false },
+    serialNumber: { type: String },
+    gtin: { type: String }, // UPC / EAN / ISBN
     name: { type: String, required: true },
+    description: { type: String },
+    salePrice: { type: Number, default: 0 },
+    discount: { type: Number, default: 0, min: 0 }, // ✅ New discount field
+    regularPrice: { type: Number, default: 0 },
     published: { type: Boolean, default: true },
     featured: { type: Boolean, default: false },
-    visibility: { type: String }, // visible, hidden, catalog, etc.
-    description: { type: String },
-    salePrice: { type: Number },
-    regularPrice: { type: Number },
-    dateSaleStart: { type: Date },
-    dateSaleEnd: { type: Date },
-    taxStatus: { type: String }, // taxable, shipping, none
-    taxClass: { type: String },
+    visibility: { type: String, default: "visible" },
     inStock: { type: Boolean, default: true },
     stockQuantity: { type: Number, default: 0 },
-    lowStockAmount: { type: Number },
-    backordersAllowed: { type: Boolean, default: false },
-    soldIndividually: { type: Boolean, default: false },
-    categorisOne: {type:String},
-    subcategory: [{ type: String }],
-    gender: {type:String },
-    // Shipping
+
+    // ────────────── TAX FIELDS ──────────────
+    taxStatus: {
+      type: String,
+      enum: ["taxable", "shipping", "none"],
+      default: "taxable",
+    },
+    taxClass: { type: String },
+
+    // ────────────── CATEGORY & CLASSIFICATION ──────────────
+    categories: {
+      type: String,
+      enum: ["Luxury", "Classic watch", "Sports watch", "Vintage watch"],
+      required: true,
+    },
+    subcategory: {
+      type: String,
+      enum: [
+        "Quartz",
+        "Automatic",
+        "Chronograph",
+        "Dress watch",
+        "Limited edition",
+        "Pilot watch",
+        "Diver’s watch",
+        "Swiss made",
+        "Moonphase",
+      ],
+    },
+    // ✅ Added Collection field
+    collection: {
+      type: String,
+      enum: [
+        "Classic Collection",
+        "Limited Collection",
+        "Heritage Collection",
+        "Prestige Collection",
+        "Signature Collection",
+        "None",
+      ],
+      default: "None",
+    },
+
+    // ────────────── WATCH SPECIFICATIONS ──────────────
+    CaseDiameter: { type: Number }, // mm
+    Movement: {
+      type: String,
+      enum: ["automatic", "quartz", "manual", "solar", "kinetic"],
+    },
+    Dial: { type: String },
+    WristSize: { type: Number }, // cm
+    Condition: {
+      type: String,
+      enum: ["new", "like-new", "excellent", "very-good", "good", "fair"],
+    },
+    Accessories: { type: String },
+    ProductionYear: { type: String },
+
+    // ────────────── GENDER ──────────────
+    gender: {
+      type: String,
+      enum: ["men/unisex", "women"], // ✅ exactly what you want
+      default: "men/unisex", // ✅ must be one of the enum values
+    },
+
+    // ────────────── SHIPPING & DIMENSIONS ──────────────
     weight: { type: Number },
     length: { type: Number },
     width: { type: Number },
     height: { type: Number },
     shippingClass: { type: String },
 
-    //new
-    CaseDiameter:{type:Number},
-    Movement:{type:String,enum:['automatic','quartz','manual','solar','kinetic']},
-    Dial:{type:String},
-    WristSize:{type:Number},
-    Accessories:{type:String},
-    Condition:{type:String,enum:['new','like-new','excellent','very-good','good','fair']},
-    ProductionYear:{type:Number},
-
-    // Review & Notes
-    allowReviews: { type: Boolean, default: true },
-    purchaseNote: { type: String },
-
-    // Categories & Tags
-    categories: [{ type: String }],
+    // ────────────── TAGS & BRANDS ──────────────
     tags: [{ type: String }],
     brands: [{ type: String }],
 
-    // Media
+    // ────────────── MEDIA ──────────────
     images: [imageSchema],
 
-    // Linked Products
+    // ────────────── META & ATTRIBUTES ──────────────
+    meta: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    attributes: [attributeSchema],
+
+    // ────────────── ADDITIONAL INFO ──────────────
+    allowReviews: { type: Boolean, default: true },
+    purchaseNote: { type: String },
+    externalUrl: { type: String },
+    buttonText: { type: String },
+    costOfGoods: { type: Number },
+
+    // ────────────── RELATIONAL FIELDS ──────────────
     parent: { type: Number },
     groupedProducts: [{ type: Number }],
     upsells: [{ type: Number }],
     crossSells: [{ type: Number }],
 
-    // External / Affiliate
-    externalUrl: { type: String },
-    buttonText: { type: String },
-
-    // Inventory / Cost
-    costOfGoods: { type: Number },
-
-    // Custom Meta (WooCommerce plugins, themes, Elementor, Woodmart, etc.)
-    meta: {
-      type: Map,
-      of: mongoose.Schema.Types.Mixed, // store any meta key:value pairs
-    },
-
-    // Attributes
-    attributes: [attributeSchema],
-
-    // WooCommerce extra
-    position: { type: Number },
-    downloadLimit: { type: Number },
-    downloadExpiry: { type: Number },
-
-    // Tracking
+    // ────────────── TRACKING ──────────────
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },
-  { timestamps: true ,collection: "products"  }
-  
+  { timestamps: true, collection: "products" }
 );
 
 // 🔥 CRITICAL INDEXES FOR PERFORMANCE 🔥
@@ -140,72 +175,74 @@ productSchema.index({ dateSaleStart: 1, dateSaleEnd: 1 }); // For active sales q
 // 🔥 COMPOUND INDEXES FOR COMMON QUERY PATTERNS 🔥
 
 // Main product listing queries
-productSchema.index({ 
-  published: 1, 
-  inStock: 1, 
-  categories: 1, 
-  createdAt: -1 
+productSchema.index({
+  published: 1,
+  inStock: 1,
+  categories: 1,
+  createdAt: -1,
 });
 
 // Category + Brand filtering
-productSchema.index({ 
-  categories: 1, 
-  brands: 1, 
-  published: 1 
+productSchema.index({
+  categories: 1,
+  brands: 1,
+  published: 1,
 });
 
 // Search and filter combinations
-productSchema.index({ 
-  name: 'text', 
-  categories: 1, 
-  published: 1 
+productSchema.index({
+  name: "text",
+  categories: 1,
+  published: 1,
 });
 
 // Price range filtering within categories
-productSchema.index({ 
-  categories: 1, 
-  salePrice: 1, 
-  published: 1 
+productSchema.index({
+  categories: 1,
+  salePrice: 1,
+  published: 1,
 });
 
 // Gender + Category combinations
-productSchema.index({ 
-  gender: 1, 
-  categories: 1, 
-  published: 1 
+productSchema.index({
+  gender: 1,
+  categories: 1,
+  published: 1,
 });
 
 // Featured products with categories
-productSchema.index({ 
-  featured: 1, 
-  categories: 1, 
-  published: 1 
+productSchema.index({
+  featured: 1,
+  categories: 1,
+  published: 1,
 });
 
 // Stock + Category combinations
-productSchema.index({ 
-  inStock: 1, 
-  categories: 1, 
-  published: 1 
+productSchema.index({
+  inStock: 1,
+  categories: 1,
+  published: 1,
 });
 
 // 🔥 TEXT INDEX FOR SEARCH FUNCTIONALITY 🔥
-productSchema.index({
-  name: 'text',
-  shortDescription: 'text',
-  description: 'text',
-  sku: 'text',
-  tags: 'text'
-}, {
-  name: 'product_search_index',
-  weights: {
-    name: 10,
-    sku: 8,
-    tags: 5,
-    shortDescription: 3,
-    description: 1
+productSchema.index(
+  {
+    name: "text",
+    shortDescription: "text",
+    description: "text",
+    sku: "text",
+    tags: "text",
+  },
+  {
+    name: "product_search_index",
+    weights: {
+      name: 10,
+      sku: 8,
+      tags: 5,
+      shortDescription: 3,
+      description: 1,
+    },
   }
-});
-
+);
 
 module.exports = mongoose.model("Product", productSchema, "products");
