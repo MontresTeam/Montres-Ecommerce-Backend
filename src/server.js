@@ -68,6 +68,7 @@ app.use((err, req, res, next) => {
 });
 
 app.use("/api/contact",contactRoutes)
+app.use("/api/admin/order",orderRoute)
 app.use("/api/order",orderRoute)
 app.use("/api/products", productRoutes);
 app.use("/api",productRoutes)

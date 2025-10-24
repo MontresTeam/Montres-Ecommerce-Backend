@@ -558,13 +558,19 @@ const recommendationsProduct = async (req, res) => {
 
     const user = await userModel.findById(userId).populate("cart.productId");
     if (!user) return res.status(404).json({ message: "User not found" });
-    const cartItems = user.cart.map((item) => ({
+
+    // ✅ Filter out null product references
+    const validCartItems = user.cart.filter((item) => item.productId);
+
+    const cartItems = validCartItems.map((item) => ({
       productId: item.productId._id,
       quantity: item.quantity,
     }));
+
     const recommended = await getRecommendations(cartItems);
+
     return res.status(200).json({
-      message: "Cart fetched successfully",
+      message: "Recommendations fetched successfully",
       recommended,
     });
   } catch (error) {
@@ -671,6 +677,7 @@ const getAllwishlist = async (req, res) => {
     const user = await userModel
       .findById(userId)
       .populate("wishlistGroups.items.productId");
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -679,18 +686,18 @@ const getAllwishlist = async (req, res) => {
       id: wishlist._id,
       name: wishlist.name,
       isDefault: wishlist.isDefault,
-      items: wishlist.items.map((item) => ({
-        id: item.productId._id,
-        name: item.productId.name,
-        salePrice: item.productId.salePrice,
-        regularPrice: item.productId.regularPrice,
-        image: item.productId.images?.[0] || null,
-      })),
+      items: wishlist.items
+        .filter((item) => item.productId) // ✅ Skip null products
+        .map((item) => ({
+          id: item.productId._id,
+          name: item.productId.name,
+          salePrice: item.productId.salePrice,
+          regularPrice: item.productId.regularPrice,
+          image: item.productId.images?.[0] || null,
+        })),
     }));
 
-    res.status(200).json({
-      wishlists,
-    });
+    res.status(200).json({ wishlists });
   } catch (error) {
     console.error("Error fetching wishlists:", error);
     res.status(500).json({ message: error.message });
@@ -939,6 +946,8 @@ const getMyOrders = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
 
 const convertprice = async (req, res) => {
   const { amount, from, to } = req.query;

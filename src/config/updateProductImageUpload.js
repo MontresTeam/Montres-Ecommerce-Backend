@@ -23,7 +23,7 @@ const upload = multer({ storage });
 const updateProductImageUpload = async (req, res, next) => {
   const uploader = upload.fields([
     { name: "main", maxCount: 1 },
-    { name: "covers", maxCount: 5 }
+    { name: "covers", maxCount: 10 }
   ]);
 
   uploader(req, res, async (err) => {

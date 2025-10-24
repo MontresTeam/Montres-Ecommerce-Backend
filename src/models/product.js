@@ -1,5 +1,19 @@
 // import mongoose from "mongoose";
 const mongoose = require("mongoose");
+const {
+  ALL_FUNCTIONS,
+  SCOPE_OF_DELIVERY_OPTIONS,
+  WATCH_TYPES,
+  GENDERS,
+  MOVEMENTS,
+  COLORS,
+  MATERIALS,
+  STRAP_MATERIALS,
+  CRYSTALS,
+  BEZEL_MATERIALS,
+  CONDITIONS,
+  REPLACEMENT_PARTS,
+} = require("../utils/productConstants");
 const attributeSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -19,101 +33,73 @@ const imageSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// ✅ Product Schema
+// ✅ Updated Product Schema with SKU that can be manually set
 const productSchema = new mongoose.Schema(
   {
-    // ────────────── CORE PRODUCT INFO ──────────────
-    productId: { type: Number, index: true }, // WooCommerce or external ID
-    type: { type: String, default: "simple" }, // simple, variable, grouped
-    sku: { type: String, unique: false },
-    RefenceNumber: { type: String, unique: false },
+    // ────────────── BASIC INFORMATION ──────────────
+    brand: { type: String, required: true },
+    model: { type: String, required: true },
+    sku: { type: String },
+    referenceNumber: { type: String },
     serialNumber: { type: String },
-    gtin: { type: String }, // UPC / EAN / ISBN
-    name: { type: String, required: true },
-    description: { type: String },
-    salePrice: { type: Number, default: 0 },
-    discount: { type: Number, default: 0, min: 0 }, // ✅ New discount field
-    regularPrice: { type: Number, default: 0 },
-    published: { type: Boolean, default: true },
-    featured: { type: Boolean, default: false },
-    visibility: { type: String, default: "visible" },
-    inStock: { type: Boolean, default: true },
-    stockQuantity: { type: Number, default: 0 },
+    additionalTitle: { type: String },
+    watchType: { type: String, enum: WATCH_TYPES },
+    scopeOfDelivery: { type: String, enum: SCOPE_OF_DELIVERY_OPTIONS },
+    includedAccessories: { type: String },
 
-    // ────────────── TAX FIELDS ──────────────
+    // ────────────── ITEM FEATURES ──────────────
+    productionYear: { type: String },
+    approximateYear: { type: Boolean, default: false },
+    unknownYear: { type: Boolean, default: false },
+    gender: { type: String, enum: GENDERS, default: "Men/Unisex" },
+    movement: { type: String, enum: MOVEMENTS },
+    dialColor: { type: String, enum: COLORS },
+    caseMaterial: { type: String, enum: MATERIALS },
+    strapMaterial: { type: String, enum: STRAP_MATERIALS },
+
+    // ────────────── ADDITIONAL INFORMATION ──────────────
+    strapColor: { type: String, enum: COLORS },
+    strapSize: { type: Number }, // mm
+    caseSize: { type: Number }, // mm
+    caseColor: { type: String, enum: COLORS },
+    crystal: { type: String, enum: CRYSTALS },
+    bezelMaterial: { type: String, enum: BEZEL_MATERIALS },
+    dialNumerical: { type: String },
+    caliber: { type: String },
+    powerReserve: { type: Number }, // hours
+    jewels: { type: Number },
+    functions: [{ type: String, enum: ALL_FUNCTIONS }],
+    condition: { type: String, enum: CONDITIONS },
+    replacementParts: [{ type: String, enum: REPLACEMENT_PARTS }],
+
+    // ────────────── PRICING & INVENTORY ──────────────
+    regularPrice: { type: Number, default: 0 },
+    salePrice: { type: Number, default: 0 },
     taxStatus: {
       type: String,
       enum: ["taxable", "shipping", "none"],
       default: "taxable",
     },
-    taxClass: { type: String },
+    stockQuantity: { type: Number, default: 0 },
 
-    // ────────────── CATEGORY & CLASSIFICATION ──────────────
-    categories: {
+    // ────────────── DESCRIPTION & META ──────────────
+    description: { type: String },
+    visibility: {
       type: String,
-      enum: ["Luxury", "Classic watch", "Sports watch", "Vintage watch"],
-      required: true,
-    },
-    subcategory: {
-      type: String,
-      enum: [
-        "Quartz",
-        "Automatic",
-        "Chronograph",
-        "Dress watch",
-        "Limited edition",
-        "Pilot watch",
-        "Diver’s watch",
-        "Swiss made",
-        "Moonphase",
-      ],
-    },
-    // ✅ Added Collection field
-    collection: {
-      type: String,
-      enum: [
-        "Classic Collection",
-        "Limited Collection",
-        "Heritage Collection",
-        "Prestige Collection",
-        "Signature Collection",
-        "None",
-      ],
-      default: "None",
+      enum: ["visible", "hidden"],
+      default: "visible",
     },
 
-    // ────────────── WATCH SPECIFICATIONS ──────────────
-    CaseDiameter: { type: Number }, // mm
-    Movement: {
-      type: String,
-      enum: ["automatic", "quartz", "manual", "solar", "kinetic"],
-    },
-    Dial: { type: String },
-    WristSize: { type: Number }, // cm
-    Condition: {
-      type: String,
-      enum: ["new", "like-new", "excellent", "very-good", "good", "fair"],
-    },
-    Accessories: { type: String },
-    ProductionYear: { type: String },
+    // ────────────── SEO FIELDS ──────────────
+    seoTitle: { type: String },
+    seoDescription: { type: String },
+    seoKeywords: [{ type: String }],
 
-    // ────────────── GENDER ──────────────
-    gender: {
-      type: String,
-      enum: ["men/unisex", "women"], // ✅ exactly what you want
-      default: "men/unisex", // ✅ must be one of the enum values
-    },
-
-    // ────────────── SHIPPING & DIMENSIONS ──────────────
-    weight: { type: Number },
-    length: { type: Number },
-    width: { type: Number },
-    height: { type: Number },
-    shippingClass: { type: String },
-
-    // ────────────── TAGS & BRANDS ──────────────
-    tags: [{ type: String }],
-    brands: [{ type: String }],
+    // ────────────── CORE PRODUCT INFO (Legacy fields - keep for compatibility) ──────────────
+    name: { type: String }, // Now optional, can be generated from brand + model
+    published: { type: Boolean, default: true },
+    featured: { type: Boolean, default: false },
+    inStock: { type: Boolean, default: true },
 
     // ────────────── MEDIA ──────────────
     images: [imageSchema],
@@ -126,24 +112,16 @@ const productSchema = new mongoose.Schema(
     },
     attributes: [attributeSchema],
 
-    // ────────────── ADDITIONAL INFO ──────────────
-    allowReviews: { type: Boolean, default: true },
-    purchaseNote: { type: String },
-    externalUrl: { type: String },
-    buttonText: { type: String },
-    costOfGoods: { type: Number },
-
-    // ────────────── RELATIONAL FIELDS ──────────────
-    parent: { type: Number },
-    groupedProducts: [{ type: Number }],
-    upsells: [{ type: Number }],
-    crossSells: [{ type: Number }],
-
     // ────────────── TRACKING ──────────────
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },
-  { timestamps: true, collection: "products" }
+  {
+    timestamps: true,
+    collection: "products",
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
 );
 
 // 🔥 CRITICAL INDEXES FOR PERFORMANCE 🔥

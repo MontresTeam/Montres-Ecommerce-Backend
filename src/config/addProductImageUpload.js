@@ -18,7 +18,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Middleware - FIXED VERSION
+// Middleware for uploading product images
 const addProductImageUpload = async (req, res, next) => {
   const uploader = upload.fields([
     { name: "main", maxCount: 1 },
@@ -63,12 +63,12 @@ const addProductImageUpload = async (req, res, next) => {
         }
       }
 
-      // **FIX: Only set images if new files were uploaded**
-      // For UPDATE operations, don't overwrite images if no new files
+      // If we have uploaded images, replace the images array
       if (uploadedImages.length > 0) {
-        req.body.uploadedImages = uploadedImages; // Use different field name
+        req.body.images = uploadedImages;
       }
-      
+
+      console.log("Processed images:", req.body.images);
       next();
     } catch (error) {
       console.error("Cloudinary upload error:", error);
