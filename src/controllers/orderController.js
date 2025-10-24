@@ -4,12 +4,17 @@ const Product = require("../models/product");
 const userModel = require("../models/UserModel")
 const { calculateShippingFee } = require("../utils/shippingCalculator");
 const stripePkg = require("stripe");
+const axios = require("axios")
 
 
 
 const stripe = process.env.STRIPE_SECRET_KEY ? stripePkg(process.env.STRIPE_SECRET_KEY) : null;
 
-const createOrder = async (req, res) => {
+
+
+
+
+const createStripeOrder = async (req, res) => {
   try {
     const { userId } = req.user; // from JWT middleware
     const {
@@ -141,6 +146,107 @@ const createOrder = async (req, res) => {
     return res.status(500).json({ message: error.message || "Server error" });
   }
 };
+
+// Tabby sandbox keys
+const TABBY_PUBLIC_KEY = "pk_test_0194a887-5d2c-c408-94f4-65ee1ca745e8";
+const TABBY_SECRET_KEY = "sk_test_0194a887-5d2c-c408-94f4-65eeeb1ab113";
+const TABBY_MERCHANT_CODE = "MTAE";
+
+const createTabbyOrder = async (req, res) => {
+  try {
+    // Sample test data
+ const subtotal = 0.99;
+const shippingFee = 30;
+
+// ensure each item >= 1
+const itemPrice = subtotal < 1 ? 1 : subtotal;
+
+const total = itemPrice + shippingFee;
+
+const tabbyItems = [
+  {
+    name: "Test Product",
+    quantity: 1,
+    price: itemPrice,
+    total: itemPrice
+  },
+  {
+    name: "Shipping Fee",
+    quantity: 1,
+    price: shippingFee,
+    total: shippingFee
+  }
+];
+
+
+    // Tabby payload
+    const tabbyPayload = {
+      merchant_code:TABBY_MERCHANT_CODE,
+      amount: parseFloat(total.toFixed(2)),
+      currency: "AED",
+      order_reference: "TESTORDER123",
+      items: tabbyItems,
+      customer: {
+        first_name: "Muhammad Shamin",
+        last_name: "Farhan",
+        email: "farhan.dev24@gmail.com",
+        phone: "+971556384774"
+      },
+      shipping_address: {
+        firstName: "Muhammad Shamin",
+        lastName: "Farhan",
+        phone: "+971556384774",
+        email: "farhan.dev24@gmail.com",
+        country: "AE",
+        state: "Dubai",
+        city: "Business Bay",
+        street1: "Office 123",
+        postcode: "00000"
+      },
+      billing_address: {
+        firstName: "Muhammad Shamin",
+        lastName: "Farhan",
+        phone: "+971556384774",
+        email: "farhan.dev24@gmail.com",
+        country: "AE",
+        state: "Dubai",
+        city: "Business Bay",
+        street1: "Office 123",
+        postcode: "00000"
+      },
+      merchant_urls: {
+        success: "http://localhost:3000/paymentsuccess?orderId=TESTORDER123",
+        cancel: "http://localhost:3000/paymentcancel?orderId=TESTORDER123",
+        failure: "http://localhost:3000/paymentfailure?orderId=TESTORDER123"
+      }
+    };
+
+    // Call Tabby API
+    const response = await axios.post(
+      "https://api.tabby.ai/api/v2/checkout",
+      tabbyPayload,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      checkoutUrl: response.data.checkout_url,
+      tabbyData: response.data
+    });
+  } catch (error) {
+    console.error("Tabby Test Error:", error.response?.data || error.message);
+    return res.status(500).json({
+      message: error.response?.data || error.message
+    });
+  }
+};
+
+
 const getShippingAddresses = async (req, res) => {
   try {
     // Fetch only the shippingAddress field from all orders
@@ -190,9 +296,21 @@ const getOrderById = async (req, res) => {
 /**
  * List orders for logged-in user
  */
+const getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 });
+    return res.json({ orders });
+  } catch (error) {
+    console.error("getAllOrders Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// get user My orders
 const getMyOrders = async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user.userId; // ✅ Correct field
+    console.log(userId,"userId")
     if (!userId) return res.status(400).json({ message: "User not provided" });
     const orders = await Order.find({ userId }).sort({ createdAt: -1 });
     return res.json({ orders });
@@ -202,4 +320,7 @@ const getMyOrders = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, getOrderById, getMyOrders ,getShippingAddresses};
+
+
+
+module.exports = { createStripeOrder, getOrderById, getAllOrders ,getShippingAddresses,createTabbyOrder};

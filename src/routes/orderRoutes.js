@@ -1,19 +1,24 @@
 // routes/orderRoutes.js
 const express = require("express");
 const router = express.Router();
-const { createOrder, getOrderById, getMyOrders, getShippingAddresses, calculateShipping } = require("../controllers/orderController");
-const { protect } = require("../middlewares/authMiddleware"); // optional
+const {
+  getOrderById,
+  getMyOrders,
+  getShippingAddresses,
+  createStripeOrder,
+  createTabbyOrder,
+  getAllOrders,
+} = require("../controllers/orderController");
+const { protect } = require("../middlewares/authMiddleware");
 
-// Create order (open route or protected)
-router.post("/", protect, createOrder);
+router.post("/", protect, createStripeOrder);
 
-router.get("/shipping-addresses",protect, getShippingAddresses);
+router.post("/tabby/", createTabbyOrder);
 
+router.get("/shipping-addresses", protect, getShippingAddresses);
 
-// Get a single order
-router.get("/:id", protect, getOrderById);
+router.get("/:id",  getOrderById);
 
-// Get current user's orders
-router.get("/", protect, getMyOrders);
+router.get("/", getAllOrders);
 
 module.exports = router;
