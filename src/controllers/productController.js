@@ -126,7 +126,11 @@ const getProducts = async (req, res) => {
     // ✅ Query only essential fields
     const products = await Product.find(filterQuery)
       .select(
-        "name salePrice regularPrice images meta.Brands stockQuantity gender createdAt categorisOne"
+      "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
+      "productionYear gender movement dialColor caseMaterial strapMaterial " +
+      "regularPrice salePrice stockQuantity taxStatus " +
+      "condition description visibility published featured inStock " +
+      "images createdAt updatedAt"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -390,34 +394,30 @@ const getAllProductwithSearch = async (req, res) => {
 
     // 1️⃣ Find the main product
     const product = await Product.findById(id);
-
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
-    // 2️⃣ Build a dynamic query for similar products
+    // 2️⃣ Build the query using only fields that exist in your schema
     const query = {
-      _id: { $ne: product._id }, // exclude the current product
+      _id: { $ne: product._id }, // exclude current product
       $or: [
-        { categories: { $in: product.categories } },
-        { subcategory: { $in: product.subcategory } },
-        { brands: { $in: product.brands } },
-        { tags: { $in: product.tags } },
-        { gender: product.gender },
+        { brand: product.brand || null },
+        { watchType: product.watchType || null },
+        { gender: product.gender || null },
+        { movement: product.movement || null },
+        { condition: product.condition || null },
       ],
     };
 
-    // 3️⃣ Find similar products
+    // 3️⃣ Fetch similar products (limit to 10)
     const similarProducts = await Product.find(query).limit(10);
-
-    console.log(similarProducts,"similarProducts");
-    
 
     // 4️⃣ Send response
     res.status(200).json({
       success: true,
       product,
-      products: similarProducts, // ✅ Changed from similarProducts to products
+      products: similarProducts,
     });
   } catch (error) {
     console.error("Error fetching product:", error);
