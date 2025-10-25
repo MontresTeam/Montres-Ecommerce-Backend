@@ -47,17 +47,26 @@ const MOVEMENTS = [
 ];
 
 const COLORS = [
-  "Black", "White", "Silver", "Gold", "Rose Gold", "Blue", "Green", "Red",
+  "Black", "White", "Gold/Silver", "Silver", "Gold", "Rose Gold", "Blue", "Green", "Red",
   "Brown", "Gray", "Yellow", "Orange", "Purple", "Pink", "Champagne"
 ];
 
 const MATERIALS = [
-  "Stainless Steel", "Gold", "Rose Gold", "Platinum", "Titanium", "Ceramic",
+ "Stainless Steel", "Gold/Steel", "Gold","Steel","Rose Gold", "Platinum", "Titanium", "Ceramic",
   "Carbon Fiber", "Brass", "Bronze", "Aluminum"
 ];
 
+const DIALNUMERALS = [
+   "Arabic Numerals",
+    "Roman Numerals",
+    "No Numerals",
+    "Lines",
+    "Gemstone",
+    "Dot/round marker"
+]
+
 const STRAP_MATERIALS = [
-  "Leather", "Metal Bracelet", "Rubber", "Nylon", "Fabric", "Silicone",
+  "Leather", "Metal Bracelet", "Gold","Steel", "Gold/Steel","Rubber", "Nylon", "Fabric", "Silicone",
   "Alligator", "Crocodile", "Suede", "Canvas"
 ];
 
@@ -66,17 +75,41 @@ const CRYSTALS = [
 ];
 
 const BEZEL_MATERIALS = [
-  "Stainless Steel", "Ceramic", "Aluminum", "Gold", "Titanium", "Carbon Fiber"
+   "Stainless Steel",
+    "Ceramic",
+    "Aluminum",
+    "Gold",
+    "18k yellowGold",
+    "Titanium",
+    "Gold Plated",
+    "Rubber"
 ];
 
+
 const CONDITIONS = [
-  "New", "Like New", "Excellent", "Very Good", "Good", "Fair", "Poor"
+    "New",
+    "Like New",
+    "Excellent",
+    "Very Good",
+    "Good",
+    "Fair",
+    "Poor",
 ];
 
 const REPLACEMENT_PARTS = [
-  "Dial", "Crown", "Clasp", "Leather strap", "Bezel", "Hands", "Pusher",
-  "Crystal", "Coating", "Diamond finishing", "Metal bracelet", "Case back",
-  "Movement replacement parts"
+    "Dial",
+    "Crown",
+    "Clasp",
+    "Leather strap",
+    "Bezel",
+    "Hands",
+    "Pusher",
+    "Crystal",
+    "Coating",
+    "Diamond finishing",
+    "Metal bracelet",
+    "Case back",
+    "Movement replacement parts",
 ];
 
 module.exports = {
@@ -92,5 +125,6 @@ module.exports = {
   CRYSTALS,
   BEZEL_MATERIALS,
   CONDITIONS,
-  REPLACEMENT_PARTS
+  REPLACEMENT_PARTS,
+  DIALNUMERALS
 };
