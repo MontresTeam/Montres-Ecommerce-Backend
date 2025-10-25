@@ -49,7 +49,7 @@ const productSchema = new mongoose.Schema(
     includedAccessories: { type: String },
     category: {
     type: String,
-    enum: ["Watche", "Jewellery", "Gold", "Accessories", "Home Accessories","Personal Accessories","Pens"],
+    enum: ["Watch", "Jewellery", "Gold", "Accessories", "Home Accessories","Personal Accessories","Pens"],
     required: true
   },
 

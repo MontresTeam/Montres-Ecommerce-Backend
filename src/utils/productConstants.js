@@ -57,7 +57,12 @@ const MATERIALS = [
 ];
 
 const DIALNUMERALS = [
-  "Arabic Numerals" ,"Roman Numerals","No Numerals","Lines","Gemstone","Dot/round marker"
+   "Arabic Numerals",
+    "Roman Numerals",
+    "No Numerals",
+    "Lines",
+    "Gemstone",
+    "Dot/round marker"
 ]
 
 const STRAP_MATERIALS = [
@@ -70,22 +75,41 @@ const CRYSTALS = [
 ];
 
 const BEZEL_MATERIALS = [
-  "Stainless Steel",
-  "Gold",
-  "Ceramic",
-  "Titanium",
-  "Gold Plated", // ✅ Add this
+   "Stainless Steel",
+    "Ceramic",
+    "Aluminum",
+    "Gold",
+    "18k yellowGold",
+    "Titanium",
+    "Gold Plated",
+    "Rubber"
 ];
 
 
 const CONDITIONS = [
-  "New", "Like New", "Excellent", "Very Good", "Good", "Fair", "Poor"
+    "New",
+    "Like New",
+    "Excellent",
+    "Very Good",
+    "Good",
+    "Fair",
+    "Poor",
 ];
 
 const REPLACEMENT_PARTS = [
-  "Dial", "Crown", "Clasp", "Leather strap", "Bezel", "Hands", "Pusher",
-  "Crystal", "Coating", "Diamond finishing", "Metal bracelet", "Case back",
-  "Movement replacement parts"
+    "Dial",
+    "Crown",
+    "Clasp",
+    "Leather strap",
+    "Bezel",
+    "Hands",
+    "Pusher",
+    "Crystal",
+    "Coating",
+    "Diamond finishing",
+    "Metal bracelet",
+    "Case back",
+    "Movement replacement parts",
 ];
 
 module.exports = {
