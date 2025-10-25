@@ -15,7 +15,6 @@ const getProducts = async (req, res) => {
       search,
     } = req.query;
 
-
     // ✅ Single Product by ID
     if (id) {
       const product = await Product.findById(id);
@@ -37,7 +36,10 @@ const getProducts = async (req, res) => {
     const normalizeArray = (value) => {
       if (!value) return [];
       if (Array.isArray(value)) return value;
-      return value.split(",").map((v) => v.trim()).filter(Boolean);
+      return value
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
     };
 
     // ✅ Category Filter (categoryOne)
@@ -106,7 +108,6 @@ const getProducts = async (req, res) => {
       filterQuery.$and = andConditions;
     }
 
-
     // ✅ Sort by recent
     const sortObj = { createdAt: -1 };
 
@@ -126,11 +127,11 @@ const getProducts = async (req, res) => {
     // ✅ Query only essential fields
     const products = await Product.find(filterQuery)
       .select(
-      "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
-      "productionYear gender movement dialColor caseMaterial strapMaterial " +
-      "regularPrice salePrice stockQuantity taxStatus " +
-      "condition description visibility published featured inStock " +
-      "images createdAt updatedAt"
+        "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
+        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
+        "regularPrice salePrice stockQuantity taxStatus strapSize category caseSize includedAccessories" +
+        "condition description visibility published featured inStock " +
+        "images createdAt updatedAt"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -142,10 +143,8 @@ const getProducts = async (req, res) => {
     // ✅ Format response
     const formattedProducts = products.map((p) => ({
       ...p,
-      brand: Array.isArray(p.meta?.Brands)
-        ? p.meta.Brands.join(", ")
-        : p.meta?.Brands || "",
-      category: p.categorisOne || "",
+      brand: p.brand || "", // ✅ Use the direct brand field
+      category: p.category || "", // ✅ corrected from `categorisOne`
       image: p.images?.[0]?.url || "",
       available: p.stockQuantity > 0,
       discount:
@@ -153,6 +152,7 @@ const getProducts = async (req, res) => {
           ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
           : 0,
     }));
+
     res.json({
       totalProducts,
       totalPages,
@@ -174,11 +174,6 @@ const getProducts = async (req, res) => {
     });
   }
 };
-
-
-
-
-
 
 const productHome = async (req, res) => {
   try {
@@ -386,9 +381,7 @@ const getAllProductwithSearch = async (req, res) => {
   }
 };
 
-
-
- const SimilarProduct = async (req, res) => {
+const SimilarProduct = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -429,8 +422,6 @@ const getAllProductwithSearch = async (req, res) => {
   }
 };
 
-
-
 module.exports = {
   getProducts,
   addProduct,
@@ -438,5 +429,5 @@ module.exports = {
   productHome,
   getRecommendations,
   getAllProductwithSearch,
-  SimilarProduct
+  SimilarProduct,
 };

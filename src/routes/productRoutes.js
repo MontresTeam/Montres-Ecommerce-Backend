@@ -67,5 +67,5 @@ router.get("/orders/my", protect, getMyOrders);             // My orders
 
 
 /* ----------------- Simillar product ----------------- */
-router.get("/:id/similar",protect,SimilarProduct)
+router.get("/:id/similar",SimilarProduct)
 module.exports = router;

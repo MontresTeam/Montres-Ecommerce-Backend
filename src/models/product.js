@@ -13,6 +13,7 @@ const {
   BEZEL_MATERIALS,
   CONDITIONS,
   REPLACEMENT_PARTS,
+  DIALNUMERALS
 } = require("../utils/productConstants");
 const attributeSchema = new mongoose.Schema(
   {
@@ -46,6 +47,11 @@ const productSchema = new mongoose.Schema(
     watchType: { type: String, enum: WATCH_TYPES },
     scopeOfDelivery: { type: String, enum: SCOPE_OF_DELIVERY_OPTIONS },
     includedAccessories: { type: String },
+    category: {
+    type: String,
+    enum: ["Watche", "Jewellery", "Gold", "Accessories", "Home Accessories","Personal Accessories","Pens"],
+    required: true
+  },
 
     // ────────────── ITEM FEATURES ──────────────
     productionYear: { type: String },
@@ -64,7 +70,7 @@ const productSchema = new mongoose.Schema(
     caseColor: { type: String, enum: COLORS },
     crystal: { type: String, enum: CRYSTALS },
     bezelMaterial: { type: String, enum: BEZEL_MATERIALS },
-    dialNumerical: { type: String },
+    dialNumerals: { type: String,enum:DIALNUMERALS },
     caliber: { type: String },
     powerReserve: { type: Number }, // hours
     jewels: { type: Number },
