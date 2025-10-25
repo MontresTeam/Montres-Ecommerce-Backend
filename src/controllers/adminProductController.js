@@ -80,6 +80,7 @@ const addProduct = async (req, res) => {
       watchType: productData.watchType || "",
       scopeOfDelivery: productData.scopeOfDelivery || "",
       includedAccessories: productData.includedAccessories || "",
+      category: productData.category || "",
 
       // ────────────── ITEM FEATURES ──────────────
       productionYear: productData.productionYear || "",
@@ -98,7 +99,7 @@ const addProduct = async (req, res) => {
       caseColor: productData.caseColor || "",
       crystal: productData.crystal || "",
       bezelMaterial: productData.bezelMaterial || "",
-      dialNumerical: productData.dialNumerical || "",
+      dialNumerals: productData.dialNumerical || "",
       caliber: productData.caliber || "",
       powerReserve: parseNumber(productData.powerReserve),
       jewels: parseInteger(productData.jewels),
@@ -145,9 +146,9 @@ const addProduct = async (req, res) => {
     // SELECTED RESPONSE FIELDS
     const response = await Product.findById(savedProduct._id).select(
       "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
-      "productionYear gender movement dialColor caseMaterial strapMaterial " +
-      "regularPrice salePrice stockQuantity taxStatus " +
-      "condition description visibility published featured inStock " +
+      "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
+      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories" +
+      "condition category description visibility published featured inStock " +
       "images createdAt updatedAt"
     );
 
@@ -248,6 +249,8 @@ const updateProduct = async (req, res) => {
       ...(req.body.watchType !== undefined && { watchType: req.body.watchType }),
       ...(req.body.scopeOfDelivery !== undefined && { scopeOfDelivery: req.body.scopeOfDelivery }),
       ...(req.body.includedAccessories !== undefined && { includedAccessories: req.body.includedAccessories }),
+      ...(req.body.category !== undefined && { category: req.body.category }),
+
 
       // ────────────── ITEM FEATURES ──────────────
       ...(req.body.productionYear !== undefined && { productionYear: req.body.productionYear }),
@@ -322,9 +325,9 @@ const updateProduct = async (req, res) => {
       }
     ).select(
       "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
-      "productionYear gender movement dialColor caseMaterial strapMaterial " +
-      "regularPrice salePrice stockQuantity taxStatus " +
-      "condition description visibility published featured inStock " +
+      "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
+      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories" +
+      "condition description visibility published featured inStock category" +
       "images createdAt updatedAt"
     );
 

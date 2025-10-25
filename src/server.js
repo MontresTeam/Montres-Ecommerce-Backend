@@ -16,6 +16,7 @@ const homeProductsRoute =require('./routes/homeProductRoutes')
 const adminProductRoute=require('./routes/adminPrdouctRouter')
 const contactRoutes = require("./routes/contactFormRoutes");
 const orderRoute = require('./routes/orderRoutes');
+const customerRoutes = require('./routes/customerRoutes')
 const passport = require('passport');
 connectDB();
 
@@ -79,6 +80,7 @@ app.use('/api/leather', leatherRoute);
 app.use('/api/accessories', accessoriesRoute);
 app.use('/api/home',homeProductsRoute );
 app.use('/api/admin/product',adminProductRoute)
+app.use("/api/customers", customerRoutes);
 
 
 // Start server
