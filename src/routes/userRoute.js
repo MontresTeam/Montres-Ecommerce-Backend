@@ -11,6 +11,9 @@ const {
   googleLogin,
   facebookLogin,
 } = require("../controllers/userController");
+const imageUploadUpdate = require("../config/ProfileUploadin");
+const { updateUserProfile } = require("../controllers/userProfileController");
+const {protect} = require('../middlewares/authMiddleware')
 
 const router = express.Router();
 
@@ -30,6 +33,8 @@ router.post("/reset-password/:id/:token", ResetPassword);
 router.get("/convert-price", convertprice);
 
 router.post("/logout", logout);
+
+router.put("/profile",protect,imageUploadUpdate,updateUserProfile)
 
 
 // Google

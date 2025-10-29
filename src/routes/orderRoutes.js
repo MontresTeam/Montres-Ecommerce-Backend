@@ -1,24 +1,25 @@
-// routes/orderRoutes.js
 const express = require("express");
 const router = express.Router();
+const { protect } = require("../middlewares/authMiddleware");
 const {
+  createStripeOrder,
   getOrderById,
+  getAllOrders,
   getMyOrders,
   getShippingAddresses,
-  createStripeOrder,
-  createTabbyOrder,
-  getAllOrders,
 } = require("../controllers/orderController");
-const { protect } = require("../middlewares/authMiddleware");
 
-router.post("/", protect, createStripeOrder);
+// ✅ Place this route BEFORE /:id
+router.get("/myorders", protect, getMyOrders);
 
-router.post("/tabby/", createTabbyOrder);
-
-router.get("/shipping-addresses", protect, getShippingAddresses);
-
-router.get("/:id",  getOrderById);
-
+// Example: get all orders
 router.get("/", getAllOrders);
+
+// ✅ Keep this LAST
+router.get("/:id", getOrderById);
+
+// Optional additional routes
+router.post("/create", protect, createStripeOrder);
+router.get("/shipping/addresses", getShippingAddresses);
 
 module.exports = router;

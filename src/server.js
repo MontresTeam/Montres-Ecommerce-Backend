@@ -57,6 +57,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 
+
 // Routes
 app.get('/', (req, res) => {
     res.send("Welcome To Montres Store"); 
@@ -71,6 +72,7 @@ app.use((err, req, res, next) => {
 app.use("/api/contact",contactRoutes)
 app.use("/api/admin/order",orderRoute)
 app.use("/api/order",orderRoute)
+app.use("/api/MyOrders", orderRoute);
 app.use("/api/products", productRoutes);
 app.use("/api",productRoutes)
 app.use("/api/createProduct",productRoutes)
