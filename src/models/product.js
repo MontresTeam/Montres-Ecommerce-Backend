@@ -70,7 +70,7 @@ const productSchema = new mongoose.Schema(
     caseColor: { type: String, enum: COLORS },
     crystal: { type: String, enum: CRYSTALS },
     bezelMaterial: { type: String, enum: BEZEL_MATERIALS },
-    dialNumerals: { type: String,enum:DIALNUMERALS },
+    dialNumerals: { type: String,enum: DIALNUMERALS },
     caliber: { type: String },
     powerReserve: { type: Number }, // hours
     jewels: { type: Number },

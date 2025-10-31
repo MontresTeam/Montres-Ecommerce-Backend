@@ -57,7 +57,7 @@ const MATERIALS = [
 ];
 
 const DIALNUMERALS = [
-   "Arabic Numerals",
+    "Arabic Numerals",
     "Roman Numerals",
     "No Numerals",
     "Lines",

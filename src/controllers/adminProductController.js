@@ -31,21 +31,20 @@ const deleteProduct = async (req, res) => {
 
 const addProduct = async (req, res) => {
   try {
-    // ✅ Safe parsing for body
-    const productData = req.body || {};
+    const productData = req.body;
+  // Parse images added by middleware
+    const images = productData.images || [];
+    
+   console.log("Images received:", req.body.images);
 
-    // ✅ Log body to confirm incoming data
-    console.log("Incoming product data:", productData);
 
-    // ✅ Required field validation
+    // Required field validation
     if (!productData.brand || !productData.model) {
-      return res.status(400).json({
-        success: false,
-        message: "Brand and model are required fields.",
+      return res.status(400).json({ 
+        message: "Brand and model are required fields." 
       });
     }
 
-    // ✅ Safe JSON parser
     const parseJSON = (field) => {
       if (!field) return [];
       try {
@@ -55,28 +54,25 @@ const addProduct = async (req, res) => {
       }
     };
 
-    const parseNumber = (value) =>
-      value !== undefined && value !== null ? parseFloat(value) || 0 : 0;
+    const parseNumber = (value) => {
+      if (value === undefined || value === null) return 0;
+      return parseFloat(value) || 0;
+    };
 
-    const parseInteger = (value) =>
-      value !== undefined && value !== null ? parseInt(value) || 0 : 0;
+    const parseInteger = (value) => {
+      if (value === undefined || value === null) return 0;
+      return parseInt(value) || 0;
+    };
 
-    // ✅ Auto-generate product name
-    const productName =
-      productData.name || `${productData.brand} ${productData.model}`;
+    // Generate name from brand and model if not provided
+    const productName = productData.name || `${productData.brand} ${productData.model}`;
 
-    // ✅ Handle images from upload middleware (like Multer)
-    let images = [];
-    if (req.files && req.files.length > 0) {
-      images = req.files.map((file) => file.path || file.filename);
-    } else if (Array.isArray(productData.images)) {
-      images = productData.images;
-    } else if (typeof productData.images === "string") {
-      images = [productData.images];
-    }
 
-    // ✅ Create product object
+
+    
+
     const newProduct = new Product({
+      // ────────────── BASIC INFORMATION ──────────────
       brand: productData.brand,
       model: productData.model,
       name: productName,
@@ -88,6 +84,8 @@ const addProduct = async (req, res) => {
       scopeOfDelivery: productData.scopeOfDelivery || "",
       includedAccessories: productData.includedAccessories || "",
       category: productData.category || "",
+
+      // ────────────── ITEM FEATURES ──────────────
       productionYear: productData.productionYear || "",
       approximateYear: productData.approximateYear || false,
       unknownYear: productData.unknownYear || false,
@@ -96,48 +94,65 @@ const addProduct = async (req, res) => {
       dialColor: productData.dialColor || "",
       caseMaterial: productData.caseMaterial || "",
       strapMaterial: productData.strapMaterial || "",
+
+      // ────────────── ADDITIONAL INFORMATION ──────────────
       strapColor: productData.strapColor || "",
       strapSize: parseNumber(productData.strapSize),
       caseSize: parseNumber(productData.caseSize),
       caseColor: productData.caseColor || "",
       crystal: productData.crystal || "",
       bezelMaterial: productData.bezelMaterial || "",
-      dialNumerals: productData.dialNumerical || "",
+      dialNumerals: productData.dialNumerals || "No Numerals",
       caliber: productData.caliber || "",
       powerReserve: parseNumber(productData.powerReserve),
       jewels: parseInteger(productData.jewels),
       functions: parseJSON(productData.functions),
       condition: productData.condition || "",
       replacementParts: parseJSON(productData.replacementParts),
+
+      // ────────────── PRICING & INVENTORY ──────────────
       regularPrice: parseNumber(productData.regularPrice),
       salePrice: parseNumber(productData.salePrice),
       taxStatus: productData.taxStatus || "taxable",
       stockQuantity: parseInteger(productData.stockQuantity),
+
+      // ────────────── DESCRIPTION & META ──────────────
       description: productData.description || "",
       visibility: productData.visibility || "visible",
+
+      // ────────────── SEO FIELDS ──────────────
       seoTitle: productData.seoTitle || "",
       seoDescription: productData.seoDescription || "",
       seoKeywords: parseJSON(productData.seoKeywords),
+
+      // ────────────── CORE PRODUCT INFO ──────────────
       published: productData.published ?? true,
       featured: productData.featured ?? false,
       inStock: productData.inStock ?? true,
-      images, // ✅ handled safely
+
+       // ────────────── MEDIA ──────────────
+      images, // ✅ Cloudinary images here
+
+      // ────────────── META & ATTRIBUTES ──────────────
       meta: productData.meta || {},
       attributes: productData.attributes || [],
+
+      // ────────────── TRACKING ──────────────
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    // ✅ Save to DB
     const savedProduct = await newProduct.save();
 
-    // ✅ Fetch selected fields for response
+
+
+    // SELECTED RESPONSE FIELDS
     const response = await Product.findById(savedProduct._id).select(
       "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
-        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
-        "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
-        "condition category description visibility published featured inStock " +
-        "images createdAt updatedAt"
+      "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories" +
+      "condition category description visibility published featured inStock " +
+      "images createdAt updatedAt"
     );
 
     res.status(201).json({
@@ -145,15 +160,16 @@ const addProduct = async (req, res) => {
       message: "Product added successfully!",
       product: response,
     });
+
+
   } catch (error) {
-    console.error("Add product error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message || "Server error",
+    console.log("Add product error:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || "Server error" 
     });
   }
 };
-
 
 
 // ====================== UPDATE PRODUCT ======================
