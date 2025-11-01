@@ -1,7 +1,7 @@
-// require('dotenv').config(); // <--- MUST be at the top, before using process.env
-// const passport = require("passport");
-// const FacebookStrategy = require("passport-facebook").Strategy;
-// const jwt = require("jsonwebtoken");
+require('dotenv').config(); // <--- MUST be at the top, before using process.env
+const passport = require("passport");
+const FacebookStrategy = require("passport-facebook").Strategy;
+const jwt = require("jsonwebtoken");
 
 
 passport.use(

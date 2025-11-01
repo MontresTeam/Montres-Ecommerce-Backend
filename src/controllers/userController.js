@@ -171,9 +171,10 @@ const googleLogin = async (req, res) => {
     };
 
     // Redirect with token + user
-    const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(
+ const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(
       JSON.stringify(frontendUser)
     )}`;
+    console.log("✅ Redirecting to:", redirectUrl);
     return res.redirect(redirectUrl);
   } catch (err) {
     console.error("Google login error:", err);

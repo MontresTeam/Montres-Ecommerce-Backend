@@ -1,5 +1,6 @@
 const Product = require("../models/product");
 const SProduct = require("../models/ProductModal");
+const RestockSubscription = require('../models/RestockSubscription')
 const WatchService = require("../models/repairserviceModal");
 const getProducts = async (req, res) => {
   try {
@@ -293,6 +294,35 @@ const addServiceForm = async (req, res) => {
   }
 };
 
+// Subscribe to restock notifications
+
+const restockSubscribe = async (req,res)=>{
+  const { productId, email } = req.body;
+
+  if (!productId || !email) {
+    return res.status(400).json({ success: false, message: "Product and email are required" });
+  }
+
+  try {
+    // Check if already subscribed
+    const existing = await RestockSubscription.findOne({ productId, email });
+    if (existing) {
+      return res.status(400).json({ success: false, message: "Already subscribed" });
+    }
+
+    const subscription = new RestockSubscription({ productId, email });
+    await subscription.save();
+
+    res.json({ success: true, message: "Subscribed for restock notification!" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+}
+
+
+
+
 const getRecommendations = async (cartItems, limit = 4) => {
   try {
     const cartProductIds = cartItems.map((item) => item.productId);
@@ -429,5 +459,6 @@ module.exports = {
   productHome,
   getRecommendations,
   getAllProductwithSearch,
+  restockSubscribe,
   SimilarProduct,
 };

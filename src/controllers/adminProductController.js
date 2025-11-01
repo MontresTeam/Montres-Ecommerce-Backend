@@ -1,4 +1,6 @@
 const Product = require("../models/product");
+const notifyRestock = require("../utils/notifyRestock"); // Restock notification utility
+
 
 const deleteProduct = async (req, res) => {
   try {
@@ -172,11 +174,10 @@ const addProduct = async (req, res) => {
 };
 
 
-// ====================== UPDATE PRODUCT ======================
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     console.log("Request files:", req.files);
     console.log("Request body:", req.body);
     console.log("Uploaded images:", req.body.images);
@@ -214,25 +215,19 @@ const updateProduct = async (req, res) => {
       return value === "true" || value === true;
     };
 
-    // **FIX: Handle images based on your schema structure**
-    let updatedImages = [...(product.images || [])]; // Start with existing images
+    // Handle images
+    let updatedImages = [...(product.images || [])];
 
-    // If new images were uploaded via multer middleware
     if (req.body.images && req.body.images.length > 0) {
-      // Replace images array with new uploaded images
       updatedImages = req.body.images;
-    }
-    // If images are sent via request body (for manual updates)
-    else if (req.body.uploadedImages) {
+    } else if (req.body.uploadedImages) {
       const parsedImages = parseJSON(req.body.uploadedImages);
-      if (parsedImages.length > 0) {
-        updatedImages = parsedImages;
-      }
+      if (parsedImages.length > 0) updatedImages = parsedImages;
     }
 
     console.log("Final images array:", updatedImages);
 
-    // Generate name from brand and model if not provided
+    // Generate product name
     let productName = product.name;
     if (req.body.brand || req.body.model) {
       const brand = req.body.brand || product.brand;
@@ -253,7 +248,6 @@ const updateProduct = async (req, res) => {
       ...(req.body.scopeOfDelivery !== undefined && { scopeOfDelivery: req.body.scopeOfDelivery }),
       ...(req.body.includedAccessories !== undefined && { includedAccessories: req.body.includedAccessories }),
       ...(req.body.category !== undefined && { category: req.body.category }),
-
 
       // ────────────── ITEM FEATURES ──────────────
       ...(req.body.productionYear !== undefined && { productionYear: req.body.productionYear }),
@@ -301,7 +295,7 @@ const updateProduct = async (req, res) => {
       ...(req.body.inStock !== undefined && { inStock: parseBoolean(req.body.inStock) }),
 
       // ────────────── MEDIA ──────────────
-      images: updatedImages, // This uses your image schema structure
+      images: updatedImages,
 
       // ────────────── META & ATTRIBUTES ──────────────
       ...(req.body.meta !== undefined && { meta: req.body.meta }),
@@ -313,26 +307,35 @@ const updateProduct = async (req, res) => {
 
     // Remove undefined fields
     Object.keys(updatedFields).forEach(key => {
-      if (updatedFields[key] === undefined) {
-        delete updatedFields[key];
-      }
+      if (updatedFields[key] === undefined) delete updatedFields[key];
     });
 
-    // SELECTED RESPONSE FIELDS
+    // Update product in DB
     const updatedProduct = await Product.findByIdAndUpdate(
-      id, 
-      updatedFields, 
-      {
-        new: true,
-        runValidators: true,
-      }
+      id,
+      updatedFields,
+      { new: true, runValidators: true }
     ).select(
       "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
       "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
-      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories" +
-      "condition description visibility published featured inStock category" +
-      "images createdAt updatedAt"
+      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+      "condition description visibility published featured inStock category images createdAt updatedAt"
     );
+
+    // ────────────── TRIGGER RESTOCK NOTIFICATIONS ──────────────
+    if (
+      updatedFields.stockQuantity !== undefined &&
+      updatedFields.stockQuantity > 0 &&
+      product.stockQuantity === 0
+    ) {
+      try {
+      const response =  await notifyRestock(product._id);
+      console.log(response,"response");
+      
+      } catch (err) {
+        console.error("Error sending restock notifications:", err);
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -348,6 +351,11 @@ const updateProduct = async (req, res) => {
     });
   }
 };
+
+
+// Update product stock (admin)
+
+
 
 
 module.exports = {
