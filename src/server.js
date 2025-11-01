@@ -2,6 +2,7 @@ require('dotenv').config(); // <--- MUST be at the top, before using process.env
 const express = require('express');
 const connectDB = require("./config/db");
 const cors = require('cors');
+const path = require("path");
 const PORT = process.env.PORT || 9000;
 const app = express();
 const bodyParser = require("body-parser");
@@ -13,7 +14,9 @@ const leatherRoute = require('./routes/leatheRouter')
 const accessoriesRoute = require('./routes/accessoriesRouter')
 const homeProductsRoute =require('./routes/homeProductRoutes')
 const adminProductRoute=require('./routes/adminPrdouctRouter')
+const contactRoutes = require("./routes/contactFormRoutes");
 const orderRoute = require('./routes/orderRoutes');
+const customerRoutes = require('./routes/customerRoutes')
 const passport = require('passport');
 connectDB();
 
@@ -22,11 +25,13 @@ connectDB();
 // require("./strategies/facebookStrategy");
 
 
+
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.ADMIN_URL,
   process.env.LOCAL_URL,
   'http://localhost:3001'
+
 ];
 console.log("Allowed Origins:", allowedOrigins);
 
@@ -47,14 +52,11 @@ app.use(
 
 
 app.use(passport.initialize());
-
-// Middlewares
-
-
 app.use(bodyParser.json());
 app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true })); 
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 
 // Routes
 app.get('/', (req, res) => {
@@ -67,6 +69,8 @@ app.use((err, req, res, next) => {
     res.status(500).send('Something broke!');
 });
 
+app.use("/api/contact",contactRoutes)
+app.use("/api/admin/order",orderRoute)
 app.use("/api/order",orderRoute)
 app.use("/api/products", productRoutes);
 app.use("/api",productRoutes)
@@ -77,6 +81,8 @@ app.use('/api/leather', leatherRoute);
 app.use('/api/accessories', accessoriesRoute);
 app.use('/api/home',homeProductsRoute );
 app.use('/api/admin/product',adminProductRoute)
+app.use("/api/customers", customerRoutes);
+
 
 // Start server
 app.listen(PORT, () => {

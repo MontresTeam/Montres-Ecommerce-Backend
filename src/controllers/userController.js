@@ -150,67 +150,58 @@ const Login = async (req, res) => {
 
 
 
-
-// Google Login
 const googleLogin = async (req, res) => {
   try {
-    const profile = req.user; // populated by passport after Google OAuth
-    if (!profile) return res.status(400).json({ message: "Google login failed" });
+    const { profile, token } = req.user; // <-- already normalized
 
-        // Make sure the secret is loaded
-    if (!process.env.USER_ACCESS_TOKEN_SECRET) {
-      return res.status(500).json({ message: "JWT secret is missing" });
+    if (!profile || !profile.email) {
+      console.error("Google profile missing email:", profile);
+      return res
+        .status(400)
+        .json({ message: "Email is required from Google account" });
     }
 
-    // Create JWT token
-    const token = jwt.sign(
-      {
-        id: profile.id,
-        name: profile.displayName,
-        email: profile.emails[0]?.value,
-        photo: profile.photos[0]?.value,
-      },
-      process.env.USER_ACCESS_TOKEN_SECRET,
-      { expiresIn: "1d" }
+    // Create user object for frontend
+    const frontendUser = {
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      picture: profile.picture,
+      provider: profile.provider,
+    };
+
+    // Redirect with token + user
+    const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(
+      JSON.stringify(frontendUser)
+    )}`;
+    return res.redirect(redirectUrl);
+  } catch (err) {
+    console.error("Google login error:", err);
+    return res.redirect(
+      `${process.env.CLIENT_URL}/auth/login?error=google_login_failed`
     );
-
-    console.log("JWT Secret:", process.env.USER_ACCESS_TOKEN_SECRET);
-
-    // Send token to frontend (you can send as cookie or JSON)
-    res.redirect(`${process.env.CLIENT_URL}/?token=${token}`);
-  } catch (error) {
-    console.error("Google login error:", error);
-    res.status(500).json({ message: "Internal server error" });
   }
 };
 
-// Facebook Login
+
 const facebookLogin = async (req, res) => {
   try {
-    const profile = req.user; // populated by passport after Facebook OAuth
-    if (!profile) return res.status(400).json({ message: "Facebook login failed" });
+    const profile = req.user?.profile;
+    const token = req.user?.token;
 
-    // Create JWT token
-    const token = jwt.sign(
-      {
-        id: profile.id,
-        name: profile.displayName,
-        email: profile.emails[0]?.value,
-        photo: profile.photos[0]?.value,
-      },
-      process.env.USER_ACCESS_TOKEN_SECRET,
-      { expiresIn: "1d" }
-    );
+    if (!profile || !token) {
+      return res.redirect(`${process.env.CLIENT_URL}/auth/login?error=facebook_login_failed`);
+    }
 
-    console.log("JWT Secret:", process.env.USER_ACCESS_TOKEN_SECRET);
-
-
-    res.redirect(`${process.env.CLIENT_URL}/?token=${token}`);
+    const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(JSON.stringify(profile))}`;
+    res.redirect(redirectUrl);
   } catch (error) {
     console.error("Facebook login error:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.redirect(`${process.env.CLIENT_URL}/auth/login?error=facebook_login_failed`);
   }
 };
+
+
 
 
 // forgotPassword -> with email send verification
@@ -567,13 +558,19 @@ const recommendationsProduct = async (req, res) => {
 
     const user = await userModel.findById(userId).populate("cart.productId");
     if (!user) return res.status(404).json({ message: "User not found" });
-    const cartItems = user.cart.map((item) => ({
+
+    // ✅ Filter out null product references
+    const validCartItems = user.cart.filter((item) => item.productId);
+
+    const cartItems = validCartItems.map((item) => ({
       productId: item.productId._id,
       quantity: item.quantity,
     }));
+
     const recommended = await getRecommendations(cartItems);
+
     return res.status(200).json({
-      message: "Cart fetched successfully",
+      message: "Recommendations fetched successfully",
       recommended,
     });
   } catch (error) {
@@ -680,6 +677,7 @@ const getAllwishlist = async (req, res) => {
     const user = await userModel
       .findById(userId)
       .populate("wishlistGroups.items.productId");
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -688,18 +686,18 @@ const getAllwishlist = async (req, res) => {
       id: wishlist._id,
       name: wishlist.name,
       isDefault: wishlist.isDefault,
-      items: wishlist.items.map((item) => ({
-        id: item.productId._id,
-        name: item.productId.name,
-        salePrice: item.productId.salePrice,
-        regularPrice: item.productId.regularPrice,
-        image: item.productId.images?.[0] || null,
-      })),
+      items: wishlist.items
+        .filter((item) => item.productId) // ✅ Skip null products
+        .map((item) => ({
+          id: item.productId._id,
+          name: item.productId.name,
+          salePrice: item.productId.salePrice,
+          regularPrice: item.productId.regularPrice,
+          image: item.productId.images?.[0] || null,
+        })),
     }));
 
-    res.status(200).json({
-      wishlists,
-    });
+    res.status(200).json({ wishlists });
   } catch (error) {
     console.error("Error fetching wishlists:", error);
     res.status(500).json({ message: error.message });
@@ -948,6 +946,8 @@ const getMyOrders = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
 
 const convertprice = async (req, res) => {
   const { amount, from, to } = req.query;
