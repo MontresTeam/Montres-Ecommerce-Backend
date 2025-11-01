@@ -26,6 +26,7 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.ADMIN_URL,
   process.env.LOCAL_URL,
+  'http://localhost:3001'
 ];
 console.log("Allowed Origins:", allowedOrigins);
 
