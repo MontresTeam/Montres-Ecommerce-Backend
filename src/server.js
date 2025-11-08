@@ -17,10 +17,13 @@ const adminProductRoute = require("./routes/adminPrdouctRouter");
 const contactRoutes = require("./routes/contactFormRoutes");
 const orderRoute = require("./routes/orderRoutes");
 const customerRoutes = require("./routes/customerRoutes");
+const filterRouter = require('./routes/filterRouter') 
+
 
 const PORT = process.env.PORT || 9000;
 
-// ✅ Connect to MongoDB
+
+
 connectDB();
 
 // ✅ Load Passport Strategies
@@ -89,6 +92,7 @@ app.use("/api/accessories", accessoriesRoute);
 app.use("/api/home", homeProductsRoute);
 app.use("/api/admin/product", adminProductRoute);
 app.use("/api/customers", customerRoutes);
+app.use("/api/filter",filterRouter);
 
 // ✅ Error Handler
 app.use((err, req, res, next) => {
