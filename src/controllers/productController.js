@@ -128,11 +128,11 @@ const getProducts = async (req, res) => {
     // ✅ Query only essential fields
     const products = await Product.find(filterQuery)
       .select(
-        "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
-        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
-        "regularPrice salePrice stockQuantity taxStatus strapSize category caseSize includedAccessories" +
-        "condition description visibility published featured inStock " +
-        "images createdAt updatedAt"
+        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
+        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+        "condition itemCondition category description visibility published featured inStock " +
+        "Badges images createdAt updatedAt"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -414,43 +414,60 @@ const getAllProductwithSearch = async (req, res) => {
 const SimilarProduct = async (req, res) => {
   try {
     const { id } = req.params;
-
-    // 1️⃣ Find the main product
     const product = await Product.findById(id);
-    if (!product) {
-      return res.status(404).json({ message: "Product not found" });
-    }
 
-    // 2️⃣ Build the query using only fields that exist in your schema
-    const query = {
-      _id: { $ne: product._id }, // exclude current product
-      $or: [
-        { brand: product.brand || null },
-        { watchType: product.watchType || null },
-        { gender: product.gender || null },
-        { movement: product.movement || null },
-        { condition: product.condition || null },
-      ],
-    };
+    if (!product) return res.status(404).json({ message: "Product not found" });
 
-    // 3️⃣ Fetch similar products (limit to 10)
-    const similarProducts = await Product.find(query).limit(10);
+    const similarProducts = await Product.find({
+      _id: { $ne: product._id },
+      brand: product.brand,
+      category: product.category,
+      watchType: product.watchType,
+      gender: product.gender,
+      movement: product.movement,
+      condition: product.condition,
+    }).limit(10);
 
-    // 4️⃣ Send response
     res.status(200).json({
       success: true,
-      product,
       products: similarProducts,
     });
+
   } catch (error) {
-    console.error("Error fetching product:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
+
+
+const YouMayAlsoLike = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await Product.findById(id);
+
+    if (!product) return res.status(404).json({ message: "Product not found" });
+
+    const suggestions = await Product.find({
+      _id: { $ne: product._id },
+      category: product.category,     // broad match
+      $or: [
+        { featured: true },           // trending
+        { discount: { $gte: 5 } },    // offers
+        { brand: { $ne: product.brand } }, // DIFFERENT brand
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .limit(12);
+
+    res.status(200).json({
+      success: true,
+      products: suggestions,
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 
 module.exports = {
   getProducts,
@@ -461,4 +478,5 @@ module.exports = {
   getAllProductwithSearch,
   restockSubscribe,
   SimilarProduct,
+  YouMayAlsoLike
 };

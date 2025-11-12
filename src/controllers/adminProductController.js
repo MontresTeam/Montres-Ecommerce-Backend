@@ -31,22 +31,22 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+
 const addProduct = async (req, res) => {
   try {
     const productData = req.body;
-  // Parse images added by middleware
-    const images = productData.images || [];
-    
-   console.log("Images received:", req.body.images);
 
+    // Parse images added by middleware
+    const images = productData.images || [];
 
     // Required field validation
-    if (!productData.brand || !productData.model) {
-      return res.status(400).json({ 
-        message: "Brand and model are required fields." 
+    if (!productData.brand || !productData.model || !productData.category) {
+      return res.status(400).json({
+        message: "Brand, model and category are required fields.",
       });
     }
 
+    // ------------ Parsing Helpers ------------
     const parseJSON = (field) => {
       if (!field) return [];
       try {
@@ -56,25 +56,39 @@ const addProduct = async (req, res) => {
       }
     };
 
-    const parseNumber = (value) => {
-      if (value === undefined || value === null) return 0;
-      return parseFloat(value) || 0;
+    const parseNumber = (val) => (val ? parseFloat(val) || 0 : 0);
+    const parseIntNum = (val) => (val ? parseInt(val) || 0 : 0);
+    const parseBoolean = (val) => val === "true" || val === true;
+
+    const parseCondition = (value) => {
+      if (!value) return "";
+      if (Array.isArray(value)) return value[0] || "";
+      if (typeof value === "string" && value.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed[0] : parsed;
+        } catch {
+          return value;
+        }
+      }
+      return value;
     };
 
-    const parseInteger = (value) => {
-      if (value === undefined || value === null) return 0;
-      return parseInt(value) || 0;
-    };
+    // ----------- Production Year Logic -----------
+    let productionYearValue = productData.productionYear || "";
 
-    // Generate name from brand and model if not provided
-    const productName = productData.name || `${productData.brand} ${productData.model}`;
+    if (parseBoolean(productData.unknownYear)) {
+      productionYearValue = "Unknown";
+    } else if (parseBoolean(productData.approximateYear) && productionYearValue) {
+      productionYearValue = `Approx. ${productionYearValue}`;
+    }
 
-
-
-    
+    // Generate product name if missing
+    const productName =
+      productData.name || `${productData.brand} ${productData.model}`;
 
     const newProduct = new Product({
-      // ────────────── BASIC INFORMATION ──────────────
+      // BASIC INFORMATION
       brand: productData.brand,
       model: productData.model,
       name: productName,
@@ -83,22 +97,31 @@ const addProduct = async (req, res) => {
       serialNumber: productData.serialNumber || "",
       additionalTitle: productData.additionalTitle || "",
       watchType: productData.watchType || "",
-      scopeOfDelivery: productData.scopeOfDelivery || "",
-      includedAccessories: productData.includedAccessories || "",
-      category: productData.category || "",
+      watchStyle: productData.watchStyle || "",
 
-      // ────────────── ITEM FEATURES ──────────────
-      productionYear: productData.productionYear || "",
-      approximateYear: productData.approximateYear || false,
-      unknownYear: productData.unknownYear || false,
+      // 🔥 FIXED: ARRAY ENUM FIELD MUST BE PARSED
+      scopeOfDelivery: parseJSON(productData.scopeOfDelivery),
+
+      includedAccessories: parseJSON(productData.includedAccessories),
+      category: productData.category,
+
+      // CONDITION
+      condition: parseCondition(productData.condition),
+      itemCondition: parseCondition(productData.itemCondition),
+
+      // YEAR LOGIC APPLIED
+      productionYear: productionYearValue,
+      approximateYear: parseBoolean(productData.approximateYear),
+      unknownYear: parseBoolean(productData.unknownYear),
+
+      // FEATURES
       gender: productData.gender || "Men/Unisex",
       movement: productData.movement || "",
       dialColor: productData.dialColor || "",
       caseMaterial: productData.caseMaterial || "",
       strapMaterial: productData.strapMaterial || "",
-
-      // ────────────── ADDITIONAL INFORMATION ──────────────
       strapColor: productData.strapColor || "",
+      Badges: parseJSON(productData.Badges),
       strapSize: parseNumber(productData.strapSize),
       caseSize: parseNumber(productData.caseSize),
       caseColor: productData.caseColor || "",
@@ -107,54 +130,49 @@ const addProduct = async (req, res) => {
       dialNumerals: productData.dialNumerals || "No Numerals",
       caliber: productData.caliber || "",
       powerReserve: parseNumber(productData.powerReserve),
-      jewels: parseInteger(productData.jewels),
+      jewels: parseIntNum(productData.jewels),
       functions: parseJSON(productData.functions),
-      condition: productData.condition || "",
       replacementParts: parseJSON(productData.replacementParts),
 
-      // ────────────── PRICING & INVENTORY ──────────────
+      // PRICING
       regularPrice: parseNumber(productData.regularPrice),
       salePrice: parseNumber(productData.salePrice),
       taxStatus: productData.taxStatus || "taxable",
-      stockQuantity: parseInteger(productData.stockQuantity),
+      stockQuantity: parseIntNum(productData.stockQuantity),
 
-      // ────────────── DESCRIPTION & META ──────────────
+      // DESCRIPTION & VISIBILITY
       description: productData.description || "",
       visibility: productData.visibility || "visible",
 
-      // ────────────── SEO FIELDS ──────────────
+      // SEO
       seoTitle: productData.seoTitle || "",
       seoDescription: productData.seoDescription || "",
       seoKeywords: parseJSON(productData.seoKeywords),
 
-      // ────────────── CORE PRODUCT INFO ──────────────
+      // PRODUCT META
       published: productData.published ?? true,
       featured: productData.featured ?? false,
       inStock: productData.inStock ?? true,
 
-       // ────────────── MEDIA ──────────────
-      images, // ✅ Cloudinary images here
+      // IMAGES
+      images,
 
-      // ────────────── META & ATTRIBUTES ──────────────
+      // EXTRA
       meta: productData.meta || {},
       attributes: productData.attributes || [],
 
-      // ────────────── TRACKING ──────────────
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
     const savedProduct = await newProduct.save();
 
-
-
-    // SELECTED RESPONSE FIELDS
     const response = await Product.findById(savedProduct._id).select(
-      "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
-      "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories" +
-      "condition category description visibility published featured inStock " +
-      "images createdAt updatedAt"
+        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
+        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+        "condition itemCondition category description visibility published featured inStock " +
+        "Badges images createdAt updatedAt"
     );
 
     res.status(201).json({
@@ -162,16 +180,17 @@ const addProduct = async (req, res) => {
       message: "Product added successfully!",
       product: response,
     });
-
-
   } catch (error) {
     console.log("Add product error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message || "Server error" 
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+      details: error.errors,
     });
   }
 };
+
+
 
 
 const updateProduct = async (req, res) => {
@@ -190,7 +209,7 @@ const updateProduct = async (req, res) => {
       });
     }
 
-    // Helper functions
+    // Helper functions (same as before)
     const parseJSON = (field) => {
       if (!field) return [];
       try {
@@ -215,7 +234,7 @@ const updateProduct = async (req, res) => {
       return value === "true" || value === true;
     };
 
-    // Handle images
+    // Handle images (same as before)
     let updatedImages = [...(product.images || [])];
 
     if (req.body.images && req.body.images.length > 0) {
@@ -245,9 +264,16 @@ const updateProduct = async (req, res) => {
       ...(req.body.serialNumber !== undefined && { serialNumber: req.body.serialNumber }),
       ...(req.body.additionalTitle !== undefined && { additionalTitle: req.body.additionalTitle }),
       ...(req.body.watchType !== undefined && { watchType: req.body.watchType }),
+      ...(req.body.watchStyle !== undefined && { watchStyle: req.body.watchStyle }), // NEW FIELD
       ...(req.body.scopeOfDelivery !== undefined && { scopeOfDelivery: req.body.scopeOfDelivery }),
-      ...(req.body.includedAccessories !== undefined && { includedAccessories: req.body.includedAccessories }),
+      ...(req.body.includedAccessories !== undefined && { 
+        includedAccessories: parseJSON(req.body.includedAccessories) 
+      }),
       ...(req.body.category !== undefined && { category: req.body.category }),
+
+      // ────────────── CONDITION INFORMATION ──────────────
+      ...(req.body.condition !== undefined && { condition: req.body.condition }),
+      ...(req.body.itemCondition !== undefined && { itemCondition: req.body.itemCondition }),
 
       // ────────────── ITEM FEATURES ──────────────
       ...(req.body.productionYear !== undefined && { productionYear: req.body.productionYear }),
@@ -261,17 +287,17 @@ const updateProduct = async (req, res) => {
 
       // ────────────── ADDITIONAL INFORMATION ──────────────
       ...(req.body.strapColor !== undefined && { strapColor: req.body.strapColor }),
+      ...(req.body.Badges !== undefined && { Badges: parseJSON(req.body.Badges) }),
       ...(req.body.strapSize !== undefined && { strapSize: parseNumber(req.body.strapSize) }),
       ...(req.body.caseSize !== undefined && { caseSize: parseNumber(req.body.caseSize) }),
       ...(req.body.caseColor !== undefined && { caseColor: req.body.caseColor }),
       ...(req.body.crystal !== undefined && { crystal: req.body.crystal }),
       ...(req.body.bezelMaterial !== undefined && { bezelMaterial: req.body.bezelMaterial }),
-      ...(req.body.dialNumerical !== undefined && { dialNumerical: req.body.dialNumerical }),
+      ...(req.body.dialNumerals !== undefined && { dialNumerals: req.body.dialNumerals }),
       ...(req.body.caliber !== undefined && { caliber: req.body.caliber }),
       ...(req.body.powerReserve !== undefined && { powerReserve: parseNumber(req.body.powerReserve) }),
       ...(req.body.jewels !== undefined && { jewels: parseInteger(req.body.jewels) }),
       ...(req.body.functions !== undefined && { functions: parseJSON(req.body.functions) }),
-      ...(req.body.condition !== undefined && { condition: req.body.condition }),
       ...(req.body.replacementParts !== undefined && { replacementParts: parseJSON(req.body.replacementParts) }),
 
       // ────────────── PRICING & INVENTORY ──────────────
@@ -316,10 +342,11 @@ const updateProduct = async (req, res) => {
       updatedFields,
       { new: true, runValidators: true }
     ).select(
-      "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
+      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
       "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
       "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
-      "condition description visibility published featured inStock category images createdAt updatedAt"
+      "condition itemCondition description visibility published featured inStock category " +
+      "Badges images createdAt updatedAt"
     );
 
     // ────────────── TRIGGER RESTOCK NOTIFICATIONS ──────────────
@@ -329,9 +356,8 @@ const updateProduct = async (req, res) => {
       product.stockQuantity === 0
     ) {
       try {
-      const response =  await notifyRestock(product._id);
-      console.log(response,"response");
-      
+        const response = await notifyRestock(product._id);
+        console.log(response, "response");
       } catch (err) {
         console.error("Error sending restock notifications:", err);
       }
@@ -351,8 +377,6 @@ const updateProduct = async (req, res) => {
     });
   }
 };
-
-
 // Update product stock (admin)
 
 

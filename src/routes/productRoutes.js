@@ -6,7 +6,8 @@ const {
   productHome,
   getAllProductwithSearch,
   SimilarProduct,
-  restockSubscribe
+  restockSubscribe,
+  YouMayAlsoLike
 } = require("../controllers/productController");
 const {
   addToCart,
@@ -68,5 +69,7 @@ router.get("/orders/my", protect, getMyOrders);             // My orders
 router.post("/restock-notifications/subscribe",restockSubscribe)
 
 /* ----------------- Simillar product ----------------- */
-router.get("/:id/similar",SimilarProduct)
+router.get("/:id/similar", SimilarProduct);
+router.get("/:id/you-may-also-like", YouMayAlsoLike);
+
 module.exports = router;

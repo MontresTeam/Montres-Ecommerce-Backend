@@ -14,12 +14,11 @@ router.get("/myorders", protect, getMyOrders);
 
 // Example: get all orders
 router.get("/", getAllOrders);
-
-// ✅ Keep this LAST
-router.get("/:id", getOrderById);
-
-// Optional additional routes
+// Specific routes FIRST
 router.post("/create", protect, createStripeOrder);
-router.get("/shipping/addresses", getShippingAddresses);
+router.get("/shipping-addresses", getShippingAddresses);
+
+// Dynamic route LAST
+router.get("/:id", getOrderById);
 
 module.exports = router;
