@@ -126,17 +126,18 @@ const STRAP_MATERIALS = [
 const CRYSTALS = [
   "Sapphire", "Mineral", "Acrylic", "Hardlex", "Plexiglass"
 ];
-
 const BEZEL_MATERIALS = [
-  "Stainless Steel",
+  "Aluminum",
   "Ceramic",
-  "Aluminum", 
   "Gold",
-  "18k yellowGold",
-  "Titanium",
+  "18k Yellow Gold",
   "Gold Plated",
-  "Rubber"
+  "Rubber",
+  "Stainless Steel",
+  "Titanium",
+  "Tungsten"
 ];
+
 
 const REPLACEMENT_PARTS = [
   "Dial",

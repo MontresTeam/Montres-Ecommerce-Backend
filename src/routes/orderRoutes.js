@@ -7,6 +7,7 @@ const {
   getAllOrders,
   getMyOrders,
   getShippingAddresses,
+  createTabbyOrder,
 } = require("../controllers/orderController");
 
 // ✅ Place this route BEFORE /:id
@@ -17,6 +18,8 @@ router.get("/", getAllOrders);
 // Specific routes FIRST
 router.post("/create", protect, createStripeOrder);
 router.get("/shipping-addresses", getShippingAddresses);
+
+router.post("/Tabby", createTabbyOrder);
 
 // Dynamic route LAST
 router.get("/:id", getOrderById);
