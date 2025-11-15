@@ -10,6 +10,7 @@ const {
   refreshToken,
   googleLogin,
   facebookLogin,
+  Newsletter,
 } = require("../controllers/userController");
 const imageUploadUpdate = require("../config/ProfileUploadin");
 const { updateUserProfile } = require("../controllers/userProfileController");
@@ -54,5 +55,7 @@ router.get(
 router.get("/facebook", passport.authenticate("facebook", { scope: ["email"] }));
 router.get("/facebook/callback", passport.authenticate("facebook", { session: false }), facebookLogin);
 
+
+router.post("/newsletter/subscribe", Newsletter)
 
 module.exports = router;

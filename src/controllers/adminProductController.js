@@ -87,6 +87,10 @@ const addProduct = async (req, res) => {
     const productName =
       productData.name || `${productData.brand} ${productData.model}`;
 
+    // 🔥 FIX: Auto-calculate inStock based on stockQuantity
+    const stockQuantity = parseIntNum(productData.stockQuantity);
+    const inStock = stockQuantity > 0; // Auto-calculate inStock
+
     const newProduct = new Product({
       // BASIC INFORMATION
       brand: productData.brand,
@@ -121,7 +125,7 @@ const addProduct = async (req, res) => {
       caseMaterial: productData.caseMaterial || "",
       strapMaterial: productData.strapMaterial || "",
       strapColor: productData.strapColor || "",
-      Badges: parseJSON(productData.Badges),
+      badges: [...new Set(parseJSON(productData.badges))],
       strapSize: parseNumber(productData.strapSize),
       caseSize: parseNumber(productData.caseSize),
       caseColor: productData.caseColor || "",
@@ -138,7 +142,10 @@ const addProduct = async (req, res) => {
       regularPrice: parseNumber(productData.regularPrice),
       salePrice: parseNumber(productData.salePrice),
       taxStatus: productData.taxStatus || "taxable",
-      stockQuantity: parseIntNum(productData.stockQuantity),
+      stockQuantity: stockQuantity,
+      
+      // 🔥 FIX: Auto-calculated inStock
+      inStock: inStock,
 
       // DESCRIPTION & VISIBILITY
       description: productData.description || "",
@@ -152,7 +159,7 @@ const addProduct = async (req, res) => {
       // PRODUCT META
       published: productData.published ?? true,
       featured: productData.featured ?? false,
-      inStock: productData.inStock ?? true,
+      // inStock: productData.inStock ?? true, // REMOVED - using auto-calculated value
 
       // IMAGES
       images,
@@ -172,7 +179,7 @@ const addProduct = async (req, res) => {
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
         "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition category description visibility published featured inStock " +
-        "Badges images createdAt updatedAt"
+        "badges images createdAt updatedAt"
     );
 
     res.status(201).json({
@@ -189,7 +196,6 @@ const addProduct = async (req, res) => {
     });
   }
 };
-
 
 
 
@@ -254,6 +260,23 @@ const updateProduct = async (req, res) => {
       productName = `${brand} ${model}`;
     }
 
+    // 🔥 FIX: Auto-calculate inStock based on stockQuantity
+    let stockQuantity = product.stockQuantity;
+    if (req.body.stockQuantity !== undefined) {
+      stockQuantity = parseInteger(req.body.stockQuantity);
+    }
+    
+    // Auto-calculate inStock - if stockQuantity is provided, use it to determine inStock
+    // Otherwise, if inStock is explicitly provided, use that
+    let inStock;
+    if (req.body.stockQuantity !== undefined) {
+      inStock = stockQuantity > 0; // Auto-calculate from stockQuantity
+    } else if (req.body.inStock !== undefined) {
+      inStock = parseBoolean(req.body.inStock); // Use explicit value
+    } else {
+      inStock = product.inStock; // Keep existing value
+    }
+
     const updatedFields = {
       // ────────────── BASIC INFORMATION ──────────────
       ...(req.body.brand && { brand: req.body.brand }),
@@ -264,7 +287,7 @@ const updateProduct = async (req, res) => {
       ...(req.body.serialNumber !== undefined && { serialNumber: req.body.serialNumber }),
       ...(req.body.additionalTitle !== undefined && { additionalTitle: req.body.additionalTitle }),
       ...(req.body.watchType !== undefined && { watchType: req.body.watchType }),
-      ...(req.body.watchStyle !== undefined && { watchStyle: req.body.watchStyle }), // NEW FIELD
+      ...(req.body.watchStyle !== undefined && { watchStyle: req.body.watchStyle }),
       ...(req.body.scopeOfDelivery !== undefined && { scopeOfDelivery: req.body.scopeOfDelivery }),
       ...(req.body.includedAccessories !== undefined && { 
         includedAccessories: parseJSON(req.body.includedAccessories) 
@@ -287,7 +310,7 @@ const updateProduct = async (req, res) => {
 
       // ────────────── ADDITIONAL INFORMATION ──────────────
       ...(req.body.strapColor !== undefined && { strapColor: req.body.strapColor }),
-      ...(req.body.Badges !== undefined && { Badges: parseJSON(req.body.Badges) }),
+      ...(req.body.badges !== undefined && { badges: parseJSON(req.body.badges) }),
       ...(req.body.strapSize !== undefined && { strapSize: parseNumber(req.body.strapSize) }),
       ...(req.body.caseSize !== undefined && { caseSize: parseNumber(req.body.caseSize) }),
       ...(req.body.caseColor !== undefined && { caseColor: req.body.caseColor }),
@@ -304,7 +327,10 @@ const updateProduct = async (req, res) => {
       ...(req.body.regularPrice !== undefined && { regularPrice: parseNumber(req.body.regularPrice) }),
       ...(req.body.salePrice !== undefined && { salePrice: parseNumber(req.body.salePrice) }),
       ...(req.body.taxStatus !== undefined && { taxStatus: req.body.taxStatus }),
-      ...(req.body.stockQuantity !== undefined && { stockQuantity: parseInteger(req.body.stockQuantity) }),
+      ...(req.body.stockQuantity !== undefined && { stockQuantity: stockQuantity }),
+      
+      // 🔥 FIX: Auto-calculated inStock
+      inStock: inStock,
 
       // ────────────── DESCRIPTION & META ──────────────
       ...(req.body.description !== undefined && { description: req.body.description }),
@@ -318,7 +344,7 @@ const updateProduct = async (req, res) => {
       // ────────────── CORE PRODUCT INFO ──────────────
       ...(req.body.published !== undefined && { published: parseBoolean(req.body.published) }),
       ...(req.body.featured !== undefined && { featured: parseBoolean(req.body.featured) }),
-      ...(req.body.inStock !== undefined && { inStock: parseBoolean(req.body.inStock) }),
+      // inStock: inStock, // Already set above
 
       // ────────────── MEDIA ──────────────
       images: updatedImages,
@@ -346,7 +372,7 @@ const updateProduct = async (req, res) => {
       "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
       "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
       "condition itemCondition description visibility published featured inStock category " +
-      "Badges images createdAt updatedAt"
+      "badges images createdAt updatedAt"
     );
 
     // ────────────── TRIGGER RESTOCK NOTIFICATIONS ──────────────

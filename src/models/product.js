@@ -21,7 +21,7 @@ const {
 const attributeSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    values: [{ type: String }], // multiple values possible
+    values: [{ type: String }],
     visible: { type: Boolean, default: false },
     global: { type: Boolean, default: false },
   },
@@ -32,12 +32,11 @@ const imageSchema = new mongoose.Schema(
   {
     url: { type: String, required: true },
     alt: { type: String },
-    type: { type: String, enum: ["main", "cover"], default: "cover" }, // ✅ main or cover
+    type: { type: String, enum: ["main", "cover"], default: "cover" },
   },
   { _id: false }
 );
 
-// ✅ Updated Product Schema with watchStyle field
 const productSchema = new mongoose.Schema(
   {
     // ────────────── BASIC INFORMATION ──────────────
@@ -56,19 +55,14 @@ const productSchema = new mongoose.Schema(
       type: String,
       enum: WATCHSTYLE_CATEGORY,
     },
-    scopeOfDelivery: [
-      {
-        type: String,
-        enum: SCOPE_OF_DELIVERY_OPTIONS,
-      },
-    ],
-
-    includedAccessories: [
-      {
-        type: String,
-        enum: INCLUDE_ACCESSORIES,
-      },
-    ],
+    scopeOfDelivery: [{
+      type: String,
+      enum: SCOPE_OF_DELIVERY_OPTIONS,
+    }],
+    includedAccessories: [{
+      type: String,
+      enum: INCLUDE_ACCESSORIES,
+    }],
     category: {
       type: String,
       enum: [
@@ -76,8 +70,8 @@ const productSchema = new mongoose.Schema(
         "Jewellery",
         "Gold",
         "Accessories",
-        "Home Accessories",
-        "Personal Accessories",
+        "Leather Goods",
+        "Leather Bags",
       ],
       required: true,
     },
@@ -124,12 +118,8 @@ const productSchema = new mongoose.Schema(
       type: String,
       enum: COLORS,
     },
-    Badges: {
-      type: [String],
-      enum: ["Popular", "New Arrivals"],
-    },
-    strapSize: { type: Number }, // mm
-    caseSize: { type: Number }, // mm
+    strapSize: { type: Number },
+    caseSize: { type: Number },
     caseColor: {
       type: String,
       enum: COLORS,
@@ -147,30 +137,34 @@ const productSchema = new mongoose.Schema(
       enum: DIALNUMERALS,
     },
     caliber: { type: String },
-    powerReserve: { type: Number }, // hours
+    powerReserve: { type: Number },
     jewels: { type: Number },
-    functions: [
-      {
-        type: String,
-        enum: ALL_FUNCTIONS,
-      },
-    ],
-    replacementParts: [
-      {
-        type: String,
-        enum: REPLACEMENT_PARTS,
-      },
-    ],
+    functions: [{
+      type: String,
+      enum: ALL_FUNCTIONS,
+    }],
+    replacementParts: [{
+      type: String,
+      enum: REPLACEMENT_PARTS,
+    }],
 
     // ────────────── PRICING & INVENTORY ──────────────
-    regularPrice: { type: Number, default: 0 }, // Retail Price
-    salePrice: { type: Number, default: 0 }, //Selling Price
+    regularPrice: { type: Number, default: 0 },
+    salePrice: { type: Number, default: 0 },
     taxStatus: {
       type: String,
       enum: ["taxable", "shipping", "none"],
       default: "taxable",
     },
     stockQuantity: { type: Number, default: 0 },
+    inStock: { type: Boolean, default: true },
+
+    // ───────── TAGS / BADGES ─────────
+    badges: {
+      type: [String],
+      enum: ["Popular", "New Arrivals"],
+      default: [],
+    },
 
     // ────────────── DESCRIPTION & META ──────────────
     description: { type: String },
@@ -185,11 +179,10 @@ const productSchema = new mongoose.Schema(
     seoDescription: { type: String },
     seoKeywords: [{ type: String }],
 
-    // ────────────── CORE PRODUCT INFO (Legacy fields - keep for compatibility) ──────────────
-    name: { type: String }, // Now optional, can be generated from brand + model
+    // ────────────── CORE PRODUCT INFO ──────────────
+    name: { type: String },
     published: { type: Boolean, default: true },
     featured: { type: Boolean, default: false },
-    inStock: { type: Boolean, default: true },
 
     // ────────────── MEDIA ──────────────
     images: [imageSchema],
@@ -201,10 +194,6 @@ const productSchema = new mongoose.Schema(
       default: {},
     },
     attributes: [attributeSchema],
-
-    // ────────────── TRACKING ──────────────
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now },
   },
   {
     timestamps: true,
@@ -213,6 +202,7 @@ const productSchema = new mongoose.Schema(
     toObject: { virtuals: true },
   }
 );
+
 
 // 🔥 CRITICAL INDEXES FOR PERFORMANCE 🔥
 

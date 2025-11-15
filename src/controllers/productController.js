@@ -2,6 +2,7 @@ const Product = require("../models/product");
 const SProduct = require("../models/ProductModal");
 const RestockSubscription = require('../models/RestockSubscription')
 const WatchService = require("../models/repairserviceModal");
+
 const getProducts = async (req, res) => {
   try {
     const {
@@ -10,10 +11,20 @@ const getProducts = async (req, res) => {
       limit = 15,
       category,
       brand,
+      model,
       price,
       availability,
       gender,
+      condition,
+      itemCondition,
+      scopeOfDelivery,
+      badges,
       search,
+      minPrice,
+      maxPrice,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      featured
     } = req.query;
 
     // ✅ Single Product by ID
@@ -29,7 +40,7 @@ const getProducts = async (req, res) => {
     const pageNum = Math.max(1, parseInt(page, 10));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
 
-    // ✅ Base Filter
+    // ✅ Base Filter - only published products
     const filterQuery = { published: true };
     const andConditions = [];
 
@@ -43,65 +54,150 @@ const getProducts = async (req, res) => {
         .filter(Boolean);
     };
 
-    // ✅ Category Filter (categoryOne)
+    // ✅ Category Filter
     const categoryList = normalizeArray(category);
-    console.log(categoryList, "vs");
     if (categoryList.length > 0) {
       andConditions.push({
-        $or: categoryList.map((cat) => ({
-          categorisOne: { $regex: `^${cat}$`, $options: "i" },
-        })),
+        category: { $in: categoryList.map(cat => new RegExp(cat, "i")) }
       });
     }
 
-    // ✅ Brand Filter (meta.Brands)
+    // ✅ Brand Filter
     const brandList = normalizeArray(brand);
     if (brandList.length > 0) {
       andConditions.push({
-        "meta.Brands": { $in: brandList.map((br) => new RegExp(br, "i")) },
+        brand: { $in: brandList.map(br => new RegExp(br, "i")) }
+      });
+    }
+
+    // ✅ Model Filter
+    const modelList = normalizeArray(model);
+    if (modelList.length > 0) {
+      andConditions.push({
+        model: { $in: modelList.map(m => new RegExp(m, "i")) }
       });
     }
 
     // ✅ Price Filter
-    const priceList = normalizeArray(price);
-    if (priceList.length > 0) {
-      const priceConditions = [];
-      priceList.forEach((range) => {
-        const [min, max] = range.split("-").map(Number);
-        if (!isNaN(min) && !isNaN(max)) {
-          priceConditions.push({ salePrice: { $gte: min, $lte: max } });
-        } else if (!isNaN(min)) {
-          priceConditions.push({ salePrice: { $gte: min } });
+    if (minPrice || maxPrice) {
+      const priceFilter = {};
+      if (minPrice) priceFilter.$gte = Number(minPrice);
+      if (maxPrice) priceFilter.$lte = Number(maxPrice);
+      andConditions.push({ salePrice: priceFilter });
+    } else {
+      const priceList = normalizeArray(price);
+      if (priceList.length > 0) {
+        const priceConditions = [];
+        priceList.forEach((range) => {
+          const [min, max] = range.split("-").map(Number);
+          if (!isNaN(min) && !isNaN(max)) {
+            priceConditions.push({ salePrice: { $gte: min, $lte: max } });
+          } else if (!isNaN(min)) {
+            priceConditions.push({ salePrice: { $gte: min } });
+          } else if (!isNaN(max)) {
+            priceConditions.push({ salePrice: { $lte: max } });
+          }
+        });
+        if (priceConditions.length > 0) {
+          andConditions.push({ $or: priceConditions });
         }
-      });
-      if (priceConditions.length > 0) {
-        andConditions.push({ $or: priceConditions });
       }
     }
 
-    // ✅ Availability Filter
+    // ✅ Availability Filter - FIXED VERSION
     const availList = normalizeArray(availability);
-    const availConditions = [];
-    availList.forEach((avail) => {
-      if (avail === "in_stock") {
-        andConditions.push({ inStock: true });
-      } else if (avail === "out_of_stock") {
-        availConditions.push({ stockQuantity: { $lte: 0 } });
+    if (availList.length > 0) {
+      const hasInStock = availList.includes("in_stock");
+      const hasOutOfStock = availList.includes("out_of_stock");
+      
+      console.log('Availability filter - In Stock:', hasInStock, 'Out of Stock:', hasOutOfStock);
+      
+      // If only In Stock is selected
+      if (hasInStock && !hasOutOfStock) {
+        andConditions.push({
+          $or: [
+            { stockQuantity: { $gt: 0 } },
+            { inStock: true }
+          ]
+        });
+        console.log('Applying IN STOCK filter');
       }
-    });
-    if (availConditions.length > 0) {
-      andConditions.push({ $or: availConditions });
+      // If only Out of Stock is selected
+      else if (hasOutOfStock && !hasInStock) {
+        andConditions.push({
+          $or: [
+            { stockQuantity: { $lte: 0 } },
+            { inStock: false }
+          ]
+        });
+        console.log('Applying OUT OF STOCK filter');
+      }
+      // If both are selected - show all products (no stock filter)
+      else if (hasInStock && hasOutOfStock) {
+        console.log('Both availability filters selected - showing all products');
+        // No stock filter applied
+      }
     }
 
     // ✅ Gender Filter
     const genderList = normalizeArray(gender);
     if (genderList.length > 0) {
-      andConditions.push({ gender: { $in: genderList } });
+      andConditions.push({ 
+        gender: { $in: genderList.map(g => new RegExp(g, "i")) }
+      });
+    }
+
+    // ✅ Condition Filter
+    const conditionList = normalizeArray(condition);
+    if (conditionList.length > 0) {
+      andConditions.push({ 
+        condition: { $in: conditionList.map(c => new RegExp(c, "i")) }
+      });
+    }
+
+    // ✅ Item Condition Filter
+    const itemConditionList = normalizeArray(itemCondition);
+    if (itemConditionList.length > 0) {
+      andConditions.push({ 
+        itemCondition: { $in: itemConditionList.map(ic => new RegExp(ic, "i")) }
+      });
+    }
+
+    // ✅ Scope of Delivery Filter
+    const scopeList = normalizeArray(scopeOfDelivery);
+    if (scopeList.length > 0) {
+      andConditions.push({
+        scopeOfDelivery: { $in: scopeList.map(scope => new RegExp(scope, "i")) }
+      });
+    }
+
+    // ✅ Badges Filter
+    const badgesList = normalizeArray(badges);
+    if (badgesList.length > 0) {
+      andConditions.push({
+        badges: { $in: badgesList.map(badge => new RegExp(badge, "i")) }
+      });
+    }
+
+    // ✅ Featured Filter
+    if (featured !== undefined) {
+      andConditions.push({ 
+        featured: featured === 'true' || featured === true 
+      });
     }
 
     // ✅ Search Filter
     if (search && search.trim()) {
-      andConditions.push({ name: new RegExp(search.trim(), "i") });
+      const searchRegex = new RegExp(search.trim(), "i");
+      andConditions.push({
+        $or: [
+          { name: searchRegex },
+          { brand: searchRegex },
+          { model: searchRegex },
+          { description: searchRegex },
+          { referenceNumber: searchRegex }
+        ]
+      });
     }
 
     // ✅ Merge all AND filters
@@ -109,8 +205,23 @@ const getProducts = async (req, res) => {
       filterQuery.$and = andConditions;
     }
 
-    // ✅ Sort by recent
-    const sortObj = { createdAt: -1 };
+    // ✅ Sort configuration
+    const sortOptions = {
+      newest: { createdAt: -1 },
+      oldest: { createdAt: 1 },
+      price_low_high: { salePrice: 1 },
+      price_high_low: { salePrice: -1 },
+      name_asc: { name: 1 },
+      name_desc: { name: -1 },
+      featured: { featured: -1, createdAt: -1 },
+      rating: { rating: -1 },
+      discount: { discountPercentage: -1 }
+    };
+
+    const sortObj = sortOptions[sortBy] || { createdAt: -1 };
+    if (sortOrder === 'asc' && sortObj[Object.keys(sortObj)[0]]) {
+      sortObj[Object.keys(sortObj)[0]] = 1;
+    }
 
     // ✅ Count total
     const totalProducts = await Product.countDocuments(filterQuery);
@@ -125,14 +236,14 @@ const getProducts = async (req, res) => {
       });
     }
 
-    // ✅ Query only essential fields
+    // ✅ Query products
     const products = await Product.find(filterQuery)
       .select(
         "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
         "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition category description visibility published featured inStock " +
-        "Badges images createdAt updatedAt"
+        "badges images createdAt updatedAt"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -144,14 +255,14 @@ const getProducts = async (req, res) => {
     // ✅ Format response
     const formattedProducts = products.map((p) => ({
       ...p,
-      brand: p.brand || "", // ✅ Use the direct brand field
-      category: p.category || "", // ✅ corrected from `categorisOne`
-      image: p.images?.[0]?.url || "",
-      available: p.stockQuantity > 0,
-      discount:
-        p.regularPrice && p.salePrice
-          ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
-          : 0,
+      brand: p.brand || "",
+      category: p.category || "",
+      image: p.images?.find(img => img.type === 'main')?.url || p.images?.[0]?.url || "",
+      available: (p.stockQuantity > 0) || p.inStock,
+      discount: p.regularPrice && p.salePrice && p.regularPrice > p.salePrice
+        ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
+        : 0,
+      isOnSale: p.regularPrice && p.salePrice && p.regularPrice > p.salePrice
     }));
 
     res.json({
@@ -175,6 +286,9 @@ const getProducts = async (req, res) => {
     });
   }
 };
+
+
+
 
 const productHome = async (req, res) => {
   try {
