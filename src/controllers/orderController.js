@@ -7,6 +7,8 @@ const stripePkg = require("stripe");
 const axios = require("axios");
 const sendEmail = require("../utils/sendEmail");
 
+
+
 const stripe = process.env.STRIPE_SECRET_KEY
   ? stripePkg(process.env.STRIPE_SECRET_KEY)
   : null;
@@ -101,6 +103,7 @@ const createStripeOrder = async (req, res) => {
 
     const order = await Order.create(orderData);
 
+
     // ✅ Send Email Notification to Admin
     const productListHTML = populatedItems
       .map(
@@ -151,6 +154,7 @@ const createStripeOrder = async (req, res) => {
     );
 
     // ✅ Clear the user's cart
+
     await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
 
     // ✅ Create Stripe Checkout Session
@@ -192,36 +196,86 @@ const createStripeOrder = async (req, res) => {
   }
 };
 
+const TABBY_PUBLIC_KEY = "pk_test_0194a887-5d2c-c408-94f4-65ee1ca745e8";
+const TABBY_SECRET_KEY = "sk_test_0194a887-5d2c-c408-94f4-65eeeb1ab113";
+const TABBY_MERCHANT_CODE = "MTAE";
+
 const createTabbyOrder = async (req, res) => {
   try {
-    const { amount, currency, orderId, customer } = req.body;
+    console.log("✔ Tabby checkout start");
 
-    // Call Tabby sandbox API
-    const response = await axios.post(
-      "https://api.tabby.dev/api/v2/checkout", // sandbox endpoint
-      {
-        amount,
-        currency,
-        order_reference: orderId,
-        customer,
-        merchant_code: process.env.TABBY_MERCHANT_CODE,
-        return_url: `${process.env.LOCAL_URL}/checkout-success`,
+    const subtotal = 0.99;
+    const shippingFee = 30;
+    const itemPrice = subtotal < 1 ? 1 : subtotal;
+    const total = itemPrice + shippingFee;
+    console.log(TABBY_MERCHANT_CODE);
+
+    const tabbyPayload = {
+      payment: {
+        amount: 100,
+        currency: "AED",
+        description: "Test order",
+        buyer: {
+          email: "farhan.dev24@gmail.com",
+          name: "Muhammad shamin Farhan",
+          phone: "971556384774",
+        },
+        order: {
+          reference_id: "ORDER123",
+          items: [
+            {
+              title: "Luxury Watch",
+              quantity: 1,
+              unit_price: 100,
+            },
+          ],
+        },
       },
+      merchant_code: "MTAE",
+      lang: "en",
+      merchant_urls: {
+        success: "https://your-store/success",
+        cancel: "https://your-store/cancel",
+        failure: "https://your-store/failure",
+      },
+    };
+    console.log("hello reunning");
+    const response = await axios.post(
+      "https://api.tabby.ai/api/v2/checkout",
+      tabbyPayload,
       {
         headers: {
-          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+          Authorization: `Bearer ${TABBY_PUBLIC_KEY}`,
           "Content-Type": "application/json",
         },
       }
     );
+    console.log("hello reunning");
 
-    // Return payment URL to frontend
-    res.json({ payment_url: response.data.payment_url });
+    console.log("✔ Tabby response:", response.data);
+
+   
+    const installments =
+      response.data?.configuration?.available_products?.installments;
+
+    if (!installments?.length) {
+      return res.json({ status: false, message: "No installment options" });
+    }
+
+    const paymentUrl = installments[0]?.web_url;
+    console.log("➡ Payment URL:", paymentUrl);
+
+    return res.json({ paymentUrl, installments });
   } catch (error) {
-    console.error(error.response?.data || error.message);
-    res.status(500).json({ error: "Failed to create Tabby checkout" });
+    console.error("❌ Tabby Error:", error.response?.data || error.message);
+
+    return res.status(500).json({
+      status: false,
+      message: error.response?.data || error.message,
+    });
   }
-};
+}
+
 
 const getShippingAddresses = async (req, res) => {
   try {
