@@ -119,6 +119,7 @@ const productSchema = new mongoose.Schema(
       enum: COLORS,
     },
     strapSize: { type: Number },
+    sold: { type: Number, default: 0 }, // for trending/best-sellers
     caseSize: { type: Number },
     caseColor: {
       type: String,

@@ -6,7 +6,7 @@ const session = require('express-session');
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const passport = require("passport");
-
+const recommendRoutes = require('./routes/recommendRoutes')
 const productRoutes = require("./routes/productRoutes");
 const userRoute = require("./routes/userRoute");
 const watchesRoute = require("./routes/watchesRoute");
@@ -93,6 +93,7 @@ app.use("/api/home", homeProductsRoute);
 app.use("/api/admin/product", adminProductRoute);
 app.use("/api/customers", customerRoutes);
 app.use("/api/filter",filterRouter);
+app.use('/api/recommend', recommendRoutes);
 
 // ✅ Error Handler
 app.use((err, req, res, next) => {

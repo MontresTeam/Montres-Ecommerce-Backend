@@ -1,5 +1,4 @@
 const Product = require("../models/product");
-const SProduct = require("../models/ProductModal");
 const RestockSubscription = require('../models/RestockSubscription')
 const WatchService = require("../models/repairserviceModal");
 
@@ -24,7 +23,23 @@ const getProducts = async (req, res) => {
       maxPrice,
       sortBy = "createdAt",
       sortOrder = "desc",
-      featured
+      featured,
+      referenceNumber,
+      // Advanced filters
+      type,
+      dialColor,
+      caseColor,
+      strapColor,
+      strapMaterial,
+      caseMaterial,
+      caseSize,
+      strapSize,
+      yearOfProduction,
+      waterResistance,
+      movement,
+      complications,
+      crystal,
+      includedAccessories,
     } = req.query;
 
     // ✅ Single Product by ID
@@ -78,6 +93,22 @@ const getProducts = async (req, res) => {
       });
     }
 
+    // ✅ Reference Number Filter
+    const referenceNumberList = normalizeArray(referenceNumber);
+    if (referenceNumberList.length > 0) {
+      andConditions.push({
+        referenceNumber: { $in: referenceNumberList.map(ref => new RegExp(ref, "i")) }
+      });
+    }
+
+    // ✅ Type Filter (Watch Type)
+    const typeList = normalizeArray(type);
+    if (typeList.length > 0) {
+      andConditions.push({
+        watchType: { $in: typeList.map(t => new RegExp(t, "i")) }
+      });
+    }
+
     // ✅ Price Filter
     if (minPrice || maxPrice) {
       const priceFilter = {};
@@ -104,15 +135,12 @@ const getProducts = async (req, res) => {
       }
     }
 
-    // ✅ Availability Filter - FIXED VERSION
+    // ✅ Availability Filter
     const availList = normalizeArray(availability);
     if (availList.length > 0) {
       const hasInStock = availList.includes("in_stock");
       const hasOutOfStock = availList.includes("out_of_stock");
       
-      console.log('Availability filter - In Stock:', hasInStock, 'Out of Stock:', hasOutOfStock);
-      
-      // If only In Stock is selected
       if (hasInStock && !hasOutOfStock) {
         andConditions.push({
           $or: [
@@ -120,9 +148,7 @@ const getProducts = async (req, res) => {
             { inStock: true }
           ]
         });
-        console.log('Applying IN STOCK filter');
       }
-      // If only Out of Stock is selected
       else if (hasOutOfStock && !hasInStock) {
         andConditions.push({
           $or: [
@@ -130,12 +156,6 @@ const getProducts = async (req, res) => {
             { inStock: false }
           ]
         });
-        console.log('Applying OUT OF STOCK filter');
-      }
-      // If both are selected - show all products (no stock filter)
-      else if (hasInStock && hasOutOfStock) {
-        console.log('Both availability filters selected - showing all products');
-        // No stock filter applied
       }
     }
 
@@ -175,7 +195,9 @@ const getProducts = async (req, res) => {
     const badgesList = normalizeArray(badges);
     if (badgesList.length > 0) {
       andConditions.push({
-        badges: { $in: badgesList.map(badge => new RegExp(badge, "i")) }
+        badges: { 
+          $all: badgesList.map(badge => new RegExp(badge, "i"))
+        }
       });
     }
 
@@ -183,6 +205,142 @@ const getProducts = async (req, res) => {
     if (featured !== undefined) {
       andConditions.push({ 
         featured: featured === 'true' || featured === true 
+      });
+    }
+
+    // ✅ Advanced Filters
+
+    // Dial Color Filter
+    const dialColorList = normalizeArray(dialColor);
+    if (dialColorList.length > 0) {
+      andConditions.push({
+        dialColor: { $in: dialColorList.map(color => new RegExp(color, "i")) }
+      });
+    }
+
+    // Case Color Filter
+    const caseColorList = normalizeArray(caseColor);
+    if (caseColorList.length > 0) {
+      andConditions.push({
+        caseColor: { $in: caseColorList.map(color => new RegExp(color, "i")) }
+      });
+    }
+
+    // Strap Color Filter
+    const strapColorList = normalizeArray(strapColor);
+    if (strapColorList.length > 0) {
+      andConditions.push({
+        strapColor: { $in: strapColorList.map(color => new RegExp(color, "i")) }
+      });
+    }
+
+    // Strap Material Filter
+    const strapMaterialList = normalizeArray(strapMaterial);
+    if (strapMaterialList.length > 0) {
+      andConditions.push({
+        strapMaterial: { $in: strapMaterialList.map(material => new RegExp(material, "i")) }
+      });
+    }
+
+    // Case Material Filter
+    const caseMaterialList = normalizeArray(caseMaterial);
+    if (caseMaterialList.length > 0) {
+      andConditions.push({
+        caseMaterial: { $in: caseMaterialList.map(material => new RegExp(material, "i")) }
+      });
+    }
+
+    // Case Size Filter
+    const caseSizeList = normalizeArray(caseSize);
+    if (caseSizeList.length > 0) {
+      const caseSizeConditions = [];
+      caseSizeList.forEach((range) => {
+        const [min, max] = range.split("-").map(Number);
+        if (!isNaN(min) && !isNaN(max)) {
+          caseSizeConditions.push({ caseSize: { $gte: min, $lte: max } });
+        } else if (range.includes('+')) {
+          const minSize = parseInt(range.replace('+', ''));
+          if (!isNaN(minSize)) {
+            caseSizeConditions.push({ caseSize: { $gte: minSize } });
+          }
+        }
+      });
+      if (caseSizeConditions.length > 0) {
+        andConditions.push({ $or: caseSizeConditions });
+      }
+    }
+
+    // Strap Size Filter
+    const strapSizeList = normalizeArray(strapSize);
+    if (strapSizeList.length > 0) {
+      const strapSizeConditions = [];
+      strapSizeList.forEach((range) => {
+        const [min, max] = range.split("-").map(Number);
+        if (!isNaN(min) && !isNaN(max)) {
+          strapSizeConditions.push({ strapSize: { $gte: min, $lte: max } });
+        }
+      });
+      if (strapSizeConditions.length > 0) {
+        andConditions.push({ $or: strapSizeConditions });
+      }
+    }
+
+    // Year of Production Filter
+    const yearList = normalizeArray(yearOfProduction);
+    if (yearList.length > 0) {
+      const yearConditions = [];
+      yearList.forEach((range) => {
+        if (range === 'pre_1950') {
+          yearConditions.push({ productionYear: { $lt: 1950 } });
+        } else {
+          const [min, max] = range.split("-").map(Number);
+          if (!isNaN(min) && !isNaN(max)) {
+            yearConditions.push({ productionYear: { $gte: min, $lte: max } });
+          }
+        }
+      });
+      if (yearConditions.length > 0) {
+        andConditions.push({ $or: yearConditions });
+      }
+    }
+
+    // Water Resistance Filter
+    const waterResistanceList = normalizeArray(waterResistance);
+    if (waterResistanceList.length > 0) {
+      andConditions.push({
+        waterResistance: { $in: waterResistanceList.map(wr => new RegExp(wr, "i")) }
+      });
+    }
+
+    // Movement Filter
+    const movementList = normalizeArray(movement);
+    if (movementList.length > 0) {
+      andConditions.push({
+        movement: { $in: movementList.map(mov => new RegExp(mov, "i")) }
+      });
+    }
+
+    // Complications Filter
+    const complicationsList = normalizeArray(complications);
+    if (complicationsList.length > 0) {
+      andConditions.push({
+        complications: { $in: complicationsList.map(comp => new RegExp(comp, "i")) }
+      });
+    }
+
+    // Crystal Filter
+    const crystalList = normalizeArray(crystal);
+    if (crystalList.length > 0) {
+      andConditions.push({
+        crystal: { $in: crystalList.map(cryst => new RegExp(cryst, "i")) }
+      });
+    }
+
+    // Included Accessories Filter
+    const accessoriesList = normalizeArray(includedAccessories);
+    if (accessoriesList.length > 0) {
+      andConditions.push({
+        includedAccessories: { $in: accessoriesList.map(acc => new RegExp(acc, "i")) }
       });
     }
 
@@ -243,7 +401,7 @@ const getProducts = async (req, res) => {
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
         "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition category description visibility published featured inStock " +
-        "badges images createdAt updatedAt"
+        "badges images createdAt updatedAt waterResistance complications crystal"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)

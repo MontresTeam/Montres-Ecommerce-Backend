@@ -171,8 +171,8 @@ const createStripeOrder = async (req, res) => {
         payment_method_types: ["card"],
         line_items: lineItems,
         mode: "payment",
-        success_url: `http://localhost:3000/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
-        cancel_url: `http://localhost:3000/paymentcancel?orderId=${order._id}`,
+        success_url: `https://www.montres.ae/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
+        cancel_url: `https://www.montres.ae/paymentcancel?orderId=${order._id}`,
       });
 
       order.stripeSessionId = session.id;
