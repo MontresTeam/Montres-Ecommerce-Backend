@@ -26,9 +26,9 @@ const PORT = process.env.PORT || 9000;
 
 connectDB();
 
-// ✅ Load Passport Strategies
-require("./strategies/googleStrategy");   // Must include serializeUser / deserializeUser
-require("./strategies/facebookStrategy"); // Must include serializeUser / deserializeUser
+// // ✅ Load Passport Strategies
+// require("./strategies/googleStrategy");   // Must include serializeUser / deserializeUser
+// require("./strategies/facebookStrategy"); // Must include serializeUser / deserializeUser
 
 const app = express();
 

@@ -7,8 +7,6 @@ const stripePkg = require("stripe");
 const axios = require("axios");
 const sendEmail = require("../utils/sendEmail");
 
-
-
 const stripe = process.env.STRIPE_SECRET_KEY
   ? stripePkg(process.env.STRIPE_SECRET_KEY)
   : null;
@@ -103,7 +101,6 @@ const createStripeOrder = async (req, res) => {
 
     const order = await Order.create(orderData);
 
-
     // ✅ Send Email Notification to Admin
     const productListHTML = populatedItems
       .map(
@@ -140,18 +137,18 @@ const createStripeOrder = async (req, res) => {
     `;
 
     // send to admin
-    await sendEmail(
-      process.env.ADMIN_EMAIL,
-      "🛍️ New Order Notification",
-      emailHTML
-    );
+    // await sendEmail(
+    //   process.env.ADMIN_EMAIL,
+    //   "🛍️ New Order Notification",
+    //   emailHTML
+    // );
 
-    // send to sales email
-    await sendEmail(
-      process.env.SALES_EMAIL, // make sure you define this in .env
-      "🛍️ New Order Notification",
-      emailHTML
-    );
+    // // send to sales email
+    // await sendEmail(
+    //   process.env.SALES_EMAIL, // make sure you define this in .env
+    //   "🛍️ New Order Notification",
+    //   emailHTML
+    // );
 
     // ✅ Clear the user's cart
 
@@ -202,7 +199,12 @@ const TABBY_MERCHANT_CODE = "MTAE";
 
 const createTabbyOrder = async (req, res) => {
   try {
-    const { items, shippingAddress, billingAddress, dummy = false } = req.body || {};
+    const {
+      items,
+      shippingAddress,
+      billingAddress,
+      dummy = false,
+    } = req.body || {};
 
     let populatedItems = [];
     if (!dummy && Array.isArray(items) && items.length > 0) {
@@ -223,7 +225,13 @@ const createTabbyOrder = async (req, res) => {
       );
     } else {
       populatedItems = [
-        { productId: null, name: "Dummy Watch", image: "", price: 100, quantity: 1 },
+        {
+          productId: null,
+          name: "Dummy Watch",
+          image: "",
+          price: 100,
+          quantity: 1,
+        },
       ];
     }
 
@@ -278,7 +286,9 @@ const createTabbyOrder = async (req, res) => {
         description: `Order ${order._id}`,
         buyer: {
           email: shippingAddress?.email || "test@example.com",
-          name: `${shippingAddress?.firstName || "Test"} ${shippingAddress?.lastName || "User"}`.trim(),
+          name: `${shippingAddress?.firstName || "Test"} ${
+            shippingAddress?.lastName || "User"
+          }`.trim(),
           phone: shippingAddress?.phone || "971500000000",
         },
         order: {
@@ -305,10 +315,18 @@ const createTabbyOrder = async (req, res) => {
         },
       }
     );
+    const config = response.data?.configuration;
 
-    const installments = response.data?.configuration?.available_products?.installments;
-    if (!installments?.length) {
-      return res.status(400).json({ status: false, message: "No installment options" });
+    // Extract installments array properly
+    const installments =
+      config?.products?.installments?.installments ||
+      config?.available_products?.installments ||
+      [];
+
+    if (!Array.isArray(installments) || installments.length === 0) {
+      return res
+        .status(400)
+        .json({ status: false, message: "No installment options" });
     }
 
     const paymentUrl = installments[0]?.web_url;
@@ -316,12 +334,17 @@ const createTabbyOrder = async (req, res) => {
     order.tabbySessionId = response.data?.id || null;
     await order.save();
 
-    return res.status(201).json({ success: true, order: order.toObject(), checkoutUrl: paymentUrl });
+    return res.status(201).json({
+      success: true,
+      order: order.toObject(),
+      checkoutUrl: paymentUrl,
+    });
   } catch (error) {
-    return res.status(500).json({ status: false, message: error.response?.data || error.message });
+    return res
+      .status(500)
+      .json({ status: false, message: error.response?.data || error.message });
   }
-}
-
+};
 
 const getShippingAddresses = async (req, res) => {
   try {
