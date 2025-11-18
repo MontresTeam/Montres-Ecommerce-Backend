@@ -13,7 +13,7 @@ const { protect } = require("../middlewares/authMiddleware");
 
 router.post("/", protect, createStripeOrder);
 
-router.post("/tabby/", createTabbyOrder);
+router.post("/tabby", createTabbyOrder);
 
 router.get("/shipping-addresses", protect, getShippingAddresses);
 

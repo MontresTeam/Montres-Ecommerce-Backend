@@ -1,18 +1,14 @@
 // controllers/orderController.js
 const Order = require("../models/OrderModel");
 const Product = require("../models/product");
-const userModel = require("../models/UserModel")
+const userModel = require("../models/UserModel");
 const { calculateShippingFee } = require("../utils/shippingCalculator");
 const stripePkg = require("stripe");
-const axios = require("axios")
+const axios = require("axios");
 
-
-
-const stripe = process.env.STRIPE_SECRET_KEY ? stripePkg(process.env.STRIPE_SECRET_KEY) : null;
-
-
-
-
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? stripePkg(process.env.STRIPE_SECRET_KEY)
+  : null;
 
 const createStripeOrder = async (req, res) => {
   try {
@@ -105,7 +101,7 @@ const createStripeOrder = async (req, res) => {
 
     const order = await Order.create(orderData);
 
-     // ✅ Clear the user's cart in the User model
+    // ✅ Clear the user's cart in the User model
     await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
 
     // ✅ Stripe Checkout Session with image support
@@ -154,97 +150,81 @@ const TABBY_MERCHANT_CODE = "MTAE";
 
 const createTabbyOrder = async (req, res) => {
   try {
-    // Sample test data
- const subtotal = 0.99;
-const shippingFee = 30;
+    console.log("✔ Tabby checkout start");
 
-// ensure each item >= 1
-const itemPrice = subtotal < 1 ? 1 : subtotal;
+    const subtotal = 0.99;
+    const shippingFee = 30;
+    const itemPrice = subtotal < 1 ? 1 : subtotal;
+    const total = itemPrice + shippingFee;
+    console.log(TABBY_MERCHANT_CODE);
 
-const total = itemPrice + shippingFee;
-
-const tabbyItems = [
-  {
-    name: "Test Product",
-    quantity: 1,
-    price: itemPrice,
-    total: itemPrice
-  },
-  {
-    name: "Shipping Fee",
-    quantity: 1,
-    price: shippingFee,
-    total: shippingFee
-  }
-];
-
-
-    // Tabby payload
     const tabbyPayload = {
-      merchant_code:TABBY_MERCHANT_CODE,
-      amount: parseFloat(total.toFixed(2)),
-      currency: "AED",
-      order_reference: "TESTORDER123",
-      items: tabbyItems,
-      customer: {
-        first_name: "Muhammad Shamin",
-        last_name: "Farhan",
-        email: "farhan.dev24@gmail.com",
-        phone: "+971556384774"
+      payment: {
+        amount: 100,
+        currency: "AED",
+        description: "Test order",
+        buyer: {
+          email: "farhan.dev24@gmail.com",
+          name: "Muhammad shamin Farhan",
+          phone: "971556384774",
+        },
+        order: {
+          reference_id: "ORDER123",
+          items: [
+            {
+              title: "Luxury Watch",
+              quantity: 1,
+              unit_price: 100,
+            },
+          ],
+        },
       },
-      shipping_address: {
-        firstName: "Muhammad Shamin",
-        lastName: "Farhan",
-        phone: "+971556384774",
-        email: "farhan.dev24@gmail.com",
-        country: "AE",
-        state: "Dubai",
-        city: "Business Bay",
-        street1: "Office 123",
-        postcode: "00000"
-      },
-      billing_address: {
-        firstName: "Muhammad Shamin",
-        lastName: "Farhan",
-        phone: "+971556384774",
-        email: "farhan.dev24@gmail.com",
-        country: "AE",
-        state: "Dubai",
-        city: "Business Bay",
-        street1: "Office 123",
-        postcode: "00000"
-      },
+      merchant_code: "MTAE",
+      lang: "en",
       merchant_urls: {
-        success: "http://localhost:3000/paymentsuccess?orderId=TESTORDER123",
-        cancel: "http://localhost:3000/paymentcancel?orderId=TESTORDER123",
-        failure: "http://localhost:3000/paymentfailure?orderId=TESTORDER123"
-      }
+        success: "https://your-store/success",
+        cancel: "https://your-store/cancel",
+        failure: "https://your-store/failure",
+      },
     };
-
-    // Call Tabby API
+    console.log("hello reunning");
     const response = await axios.post(
       "https://api.tabby.ai/api/v2/checkout",
       tabbyPayload,
       {
         headers: {
-          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
-          "Content-Type": "application/json"
-        }
+          Authorization: `Bearer ${TABBY_PUBLIC_KEY}`,
+          "Content-Type": "application/json",
+        },
       }
     );
+    console.log("hello reunning");
 
-    return res.status(200).json({
-      success: true,
-      checkoutUrl: response.data.checkout_url,
-      tabbyData: response.data
-    });
+    console.log("✔ Tabby response:", response.data);
+
+   
+    const installments =
+      response.data?.configuration?.available_products?.installments;
+
+    if (!installments?.length) {
+      return res.json({ status: false, message: "No installment options" });
+    }
+
+    const paymentUrl = installments[0]?.web_url;
+    console.log("➡ Payment URL:", paymentUrl);
+
+    return res.json({ paymentUrl, installments });
   } catch (error) {
-    console.error("Tabby Test Error:", error.response?.data || error.message);
+    console.error("❌ Tabby Error:", error.response?.data || error.message);
+
     return res.status(500).json({
-      message: error.response?.data || error.message
+      status: false,
+      message: error.response?.data || error.message,
     });
   }
 };
+
+
 
 
 const getShippingAddresses = async (req, res) => {
@@ -276,7 +256,6 @@ const getShippingAddresses = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
-
 
 /**
  * Get order by ID
@@ -310,7 +289,7 @@ const getAllOrders = async (req, res) => {
 const getMyOrders = async (req, res) => {
   try {
     const userId = req.user.userId; // ✅ Correct field
-    console.log(userId,"userId")
+    console.log(userId, "userId");
     if (!userId) return res.status(400).json({ message: "User not provided" });
     const orders = await Order.find({ userId }).sort({ createdAt: -1 });
     return res.json({ orders });
@@ -320,7 +299,10 @@ const getMyOrders = async (req, res) => {
   }
 };
 
-
-
-
-module.exports = { createStripeOrder, getOrderById, getAllOrders ,getShippingAddresses,createTabbyOrder};
+module.exports = {
+  createStripeOrder,
+  getOrderById,
+  getAllOrders,
+  getShippingAddresses,
+  createTabbyOrder,
+};
