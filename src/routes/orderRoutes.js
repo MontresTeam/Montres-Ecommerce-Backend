@@ -1,24 +1,27 @@
-// routes/orderRoutes.js
 const express = require("express");
 const router = express.Router();
+const { protect } = require("../middlewares/authMiddleware");
 const {
+  createStripeOrder,
   getOrderById,
+  getAllOrders,
   getMyOrders,
   getShippingAddresses,
-  createStripeOrder,
   createTabbyOrder,
-  getAllOrders,
 } = require("../controllers/orderController");
-const { protect } = require("../middlewares/authMiddleware");
 
-router.post("/", protect, createStripeOrder);
+// ✅ Place this route BEFORE /:id
+router.get("/myorders", protect, getMyOrders);
 
 router.post("/tabby", createTabbyOrder);
 
 router.get("/shipping-addresses", protect, getShippingAddresses);
 
-router.get("/:id",  getOrderById);
-
 router.get("/", getAllOrders);
+// Specific routes FIRST
+router.post("/create", protect, createStripeOrder);
+
+// Dynamic route LAST
+router.get("/:id", getOrderById);
 
 module.exports = router;

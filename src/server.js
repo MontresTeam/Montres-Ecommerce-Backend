@@ -1,45 +1,49 @@
-require('dotenv').config(); // <--- MUST be at the top, before using process.env
+require('dotenv').config(); // Must be first
 const express = require('express');
 const connectDB = require("./config/db");
 const cors = require('cors');
-const path = require("path");
-const PORT = process.env.PORT || 9000;
-const app = express();
+const session = require('express-session');
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
+const passport = require("passport");
+const recommendRoutes = require('./routes/recommendRoutes')
 const productRoutes = require("./routes/productRoutes");
-const userRoute = require('./routes/userRoute')
-const watchesRoute = require('./routes/watchesRoute')
-const leatherRoute = require('./routes/leatheRouter')
-const accessoriesRoute = require('./routes/accessoriesRouter')
-const homeProductsRoute =require('./routes/homeProductRoutes')
-const adminProductRoute=require('./routes/adminPrdouctRouter')
+const userRoute = require("./routes/userRoute");
+const watchesRoute = require("./routes/watchesRoute");
+const leatherRoute = require("./routes/leatheRouter");
+const accessoriesRoute = require("./routes/accessoriesRouter");
+const homeProductsRoute = require("./routes/homeProductRoutes");
+const adminProductRoute = require("./routes/adminPrdouctRouter");
 const contactRoutes = require("./routes/contactFormRoutes");
-const orderRoute = require('./routes/orderRoutes');
-const customerRoutes = require('./routes/customerRoutes') 
+const orderRoute = require("./routes/orderRoutes");
+const customerRoutes = require("./routes/customerRoutes");
 const filterRouter = require('./routes/filterRouter') 
-const passport = require('passport');
+
+
+const PORT = process.env.PORT || 9000;
+
+
+
 connectDB();
 
-// Passport strategies
-// require("./strategies/googleStrategy");
-// require("./strategies/facebookStrategy");
+// // ✅ Load Passport Strategies
+// require("./strategies/googleStrategy");   // Must include serializeUser / deserializeUser
+// require("./strategies/facebookStrategy"); // Must include serializeUser / deserializeUser
 
+const app = express();
 
-
+// ✅ CORS setup
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.ADMIN_URL,
   process.env.LOCAL_URL,
-  'http://localhost:3001'
-
 ];
 console.log("Allowed Origins:", allowedOrigins);
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow requests like Postman
+      if (!origin) return callback(null, true); // allow Postman / server requests
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -51,42 +55,51 @@ app.use(
   })
 );
 
+// ✅ Express session (must be BEFORE passport.initialize())
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'supersecretkey',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false }, // true if using HTTPS only
+  })
+);
 
+// ✅ Passport initialization
 app.use(passport.initialize());
+app.use(passport.session()); // Important for persistent login sessions
+
+// ✅ Body parsing & cookies
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// ✅ Routes
+app.get('/', (req, res) => res.send("Welcome To Montres Store"));
 
-// Routes
-app.get('/', (req, res) => {
-    res.send("Welcome To Montres Store"); 
-});
-
-// Error handler 
-app.use((err, req, res, next) => { 
-    console.error(err.stack);
-    res.status(500).send('Something broke!');
-});
-
-app.use("/api/contact",contactRoutes)
-app.use("/api/admin/order",orderRoute)
-app.use("/api/order",orderRoute)
+app.use("/api/contact", contactRoutes);
+app.use("/api/admin/order", orderRoute);
+app.use("/api/order", orderRoute);
+app.use("/api/MyOrders", orderRoute);
 app.use("/api/products", productRoutes);
-app.use("/api",productRoutes)
-app.use("/api/createProduct",productRoutes)
-app.use('/api/Auth', userRoute)
-app.use('/api/watches', watchesRoute);
-app.use('/api/leather', leatherRoute);
-app.use('/api/accessories', accessoriesRoute);
-app.use('/api/home',homeProductsRoute );
-app.use('/api/admin/product',adminProductRoute)
+app.use("/api", productRoutes);
+app.use("/api/createProduct", productRoutes);
+app.use("/api/Auth", userRoute); // ✅ Auth Routes (Google + Facebook)
+app.use("/api/watches", watchesRoute);
+app.use("/api/leather", leatherRoute);
+app.use("/api/accessories", accessoriesRoute);
+app.use("/api/home", homeProductsRoute);
+app.use("/api/admin/product", adminProductRoute);
 app.use("/api/customers", customerRoutes);
 app.use("/api/filter",filterRouter);
+app.use('/api/recommend', recommendRoutes);
 
-
-// Start server
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+// ✅ Error Handler
+app.use((err, req, res, next) => {
+  console.error("Error:", err.message);
+  res.status(500).json({ message: "Internal Server Error" });
 });
+
+// ✅ Start Server
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
