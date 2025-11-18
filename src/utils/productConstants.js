@@ -27,17 +27,58 @@ const ALL_FUNCTIONS = [
   ...FUNCTION_CATEGORIES["Functions Set 4"]
 ];
 
-const SCOPE_OF_DELIVERY_OPTIONS = [
-  "Watch Only",
-  "Watch with original box",
-  "Watch with original papers",
-  "Watch with original box and original papers",
-  "Montres safe box"
+const WATCH_TYPES = [
+  "Wrist Watch",
+  "Pocket Watch", 
+  "Clocks",
+  "Stopwatch",
+  "Smart Watch",
+  
 ];
 
-const WATCH_TYPES = [
-  "Luxury watch", "Classic watch", "Sports watch", "Vintage watch",
-  "Dress watch", "Diver's watch", "Pilot watch", "Racing watch", "Smartwatch"
+const WATCHSTYLE_CATEGORY = [
+  "luxury watch",
+  "Classic watch",
+  "Sports watch",
+  "Vintage watch",
+  "Dress watch",
+  "Drivers watch",
+  "pilot watch",
+  "Racing watch"
+];
+
+const SCOPE_OF_DELIVERY_OPTIONS = [
+  "Full Set (Watch + Original Box + Original Papers)",
+  "Watch with Original Papers",
+  "Watch with Original Box",
+  "Watch with Montres Safe Box",
+  "Watch Only"
+];
+
+const INCLUDE_ACCESSORIES = [
+  "Extra Strap",
+  "Original Strap", 
+  "Warranty Card",
+  "Certificate",
+  "Travel Case",
+  "Bezel Protector",
+  "Cleaning Cloth",
+  "Other Accessories"
+];
+
+const CONDITIONS = [
+  "Brand New",
+  "Unworn / Like New",
+  "Pre-Owned",
+  "Excellent",
+  "Not Working / For Parts"
+];
+
+const ITEM_CONDITIONS = [
+  "Excellent",
+  "Good", 
+  "Fair",
+  "Poor / Not Working / For Parts"
 ];
 
 const GENDERS = ["Men/Unisex", "Women"];
@@ -52,64 +93,66 @@ const COLORS = [
 ];
 
 const MATERIALS = [
- "Stainless Steel", "Gold/Steel", "Gold","Steel","Rose Gold", "Platinum", "Titanium", "Ceramic",
+  "Stainless Steel", "Gold/Steel", "Gold", "Steel", "Rose Gold", "Platinum", "Titanium", "Ceramic",
   "Carbon Fiber", "Brass", "Bronze", "Aluminum"
 ];
 
 const DIALNUMERALS = [
-   "Arabic Numerals",
-    "Roman Numerals",
-    "No Numerals",
-    "Lines",
-    "Gemstone",
-    "Dot/round marker"
-]
+  "Arabic Numerals",
+  "Roman Numerals", 
+  "No Numerals",
+  "Lines",
+  "Gemstone",
+  "Dot/round marker"
+];
 
 const STRAP_MATERIALS = [
-  "Leather", "Metal Bracelet", "Gold","Steel", "Gold/Steel","Rubber", "Nylon", "Fabric", "Silicone",
-  "Alligator", "Crocodile", "Suede", "Canvas"
+  "Alligator",
+  "Canvas",
+  "Crocodile",
+  "Fabric",
+  "Gold",
+  "Gold/Steel",
+  "Leather",
+  "Metal Bracelet",
+  "Nylon",
+  "Rubber",
+  "Silicone",
+  "Suede",
+  "Steel",
+  "18k White Gold"
 ];
 
 const CRYSTALS = [
   "Sapphire", "Mineral", "Acrylic", "Hardlex", "Plexiglass"
 ];
-
 const BEZEL_MATERIALS = [
-   "Stainless Steel",
-    "Ceramic",
-    "Aluminum",
-    "Gold",
-    "18k yellowGold",
-    "Titanium",
-    "Gold Plated",
-    "Rubber"
+  "Aluminum",
+  "Ceramic",
+  "Gold",
+  "18k Yellow Gold",
+  "Gold Plated",
+  "Rubber",
+  "Stainless Steel",
+  "Titanium",
+  "Tungsten"
 ];
 
-
-const CONDITIONS = [
-    "New",
-    "Like New",
-    "Excellent",
-    "Very Good",
-    "Good",
-    "Fair",
-    "Poor",
-];
 
 const REPLACEMENT_PARTS = [
-    "Dial",
-    "Crown",
-    "Clasp",
-    "Leather strap",
-    "Bezel",
-    "Hands",
-    "Pusher",
-    "Crystal",
-    "Coating",
-    "Diamond finishing",
-    "Metal bracelet",
-    "Case back",
-    "Movement replacement parts",
+  "Dial",
+  "Crown",
+  "Clasp",
+  "Leather strap",
+  "Bezel",
+  "Hands", 
+  "Pusher",
+  "Crystal",
+  "Coating",
+  "Diamond finishing",
+  "Metal bracelet",
+  "Case back",
+  "Movement replacement parts",
 ];
 
 module.exports = {
@@ -117,6 +160,7 @@ module.exports = {
   ALL_FUNCTIONS,
   SCOPE_OF_DELIVERY_OPTIONS,
   WATCH_TYPES,
+  WATCHSTYLE_CATEGORY,
   GENDERS,
   MOVEMENTS,
   COLORS,
@@ -125,6 +169,8 @@ module.exports = {
   CRYSTALS,
   BEZEL_MATERIALS,
   CONDITIONS,
+  ITEM_CONDITIONS,
+  INCLUDE_ACCESSORIES,
   REPLACEMENT_PARTS,
   DIALNUMERALS
 };

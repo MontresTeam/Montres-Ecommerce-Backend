@@ -1,4 +1,6 @@
 const Product = require("../models/product");
+const notifyRestock = require("../utils/notifyRestock"); // Restock notification utility
+
 
 const deleteProduct = async (req, res) => {
   try {
@@ -29,17 +31,22 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+
 const addProduct = async (req, res) => {
   try {
     const productData = req.body;
 
+    // Parse images added by middleware
+    const images = productData.images || [];
+
     // Required field validation
-    if (!productData.brand || !productData.model) {
-      return res.status(400).json({ 
-        message: "Brand and model are required fields." 
+    if (!productData.brand || !productData.model || !productData.category) {
+      return res.status(400).json({
+        message: "Brand, model and category are required fields.",
       });
     }
 
+    // ------------ Parsing Helpers ------------
     const parseJSON = (field) => {
       if (!field) return [];
       try {
@@ -49,27 +56,43 @@ const addProduct = async (req, res) => {
       }
     };
 
-    const parseNumber = (value) => {
-      if (value === undefined || value === null) return 0;
-      return parseFloat(value) || 0;
+    const parseNumber = (val) => (val ? parseFloat(val) || 0 : 0);
+    const parseIntNum = (val) => (val ? parseInt(val) || 0 : 0);
+    const parseBoolean = (val) => val === "true" || val === true;
+
+    const parseCondition = (value) => {
+      if (!value) return "";
+      if (Array.isArray(value)) return value[0] || "";
+      if (typeof value === "string" && value.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed[0] : parsed;
+        } catch {
+          return value;
+        }
+      }
+      return value;
     };
 
-    const parseInteger = (value) => {
-      if (value === undefined || value === null) return 0;
-      return parseInt(value) || 0;
-    };
+    // ----------- Production Year Logic -----------
+    let productionYearValue = productData.productionYear || "";
 
-    // Generate name from brand and model if not provided
-    const productName = productData.name || `${productData.brand} ${productData.model}`;
+    if (parseBoolean(productData.unknownYear)) {
+      productionYearValue = "Unknown";
+    } else if (parseBoolean(productData.approximateYear) && productionYearValue) {
+      productionYearValue = `Approx. ${productionYearValue}`;
+    }
 
-// ✅ Use uploaded images from middleware
-    const images = productData.images || [];
+    // Generate product name if missing
+    const productName =
+      productData.name || `${productData.brand} ${productData.model}`;
 
-    // console.log(images,"images");
-    
+    // 🔥 FIX: Auto-calculate inStock based on stockQuantity
+    const stockQuantity = parseIntNum(productData.stockQuantity);
+    const inStock = stockQuantity > 0; // Auto-calculate inStock
 
     const newProduct = new Product({
-      // ────────────── BASIC INFORMATION ──────────────
+      // BASIC INFORMATION
       brand: productData.brand,
       model: productData.model,
       name: productName,
@@ -78,78 +101,85 @@ const addProduct = async (req, res) => {
       serialNumber: productData.serialNumber || "",
       additionalTitle: productData.additionalTitle || "",
       watchType: productData.watchType || "",
-      scopeOfDelivery: productData.scopeOfDelivery || "",
-      includedAccessories: productData.includedAccessories || "",
-      category: productData.category || "",
+      watchStyle: productData.watchStyle || "",
 
-      // ────────────── ITEM FEATURES ──────────────
-      productionYear: productData.productionYear || "",
-      approximateYear: productData.approximateYear || false,
-      unknownYear: productData.unknownYear || false,
+      // 🔥 FIXED: ARRAY ENUM FIELD MUST BE PARSED
+      scopeOfDelivery: parseJSON(productData.scopeOfDelivery),
+
+      includedAccessories: parseJSON(productData.includedAccessories),
+      category: productData.category,
+
+      // CONDITION
+      condition: parseCondition(productData.condition),
+      itemCondition: parseCondition(productData.itemCondition),
+
+      // YEAR LOGIC APPLIED
+      productionYear: productionYearValue,
+      approximateYear: parseBoolean(productData.approximateYear),
+      unknownYear: parseBoolean(productData.unknownYear),
+
+      // FEATURES
       gender: productData.gender || "Men/Unisex",
       movement: productData.movement || "",
       dialColor: productData.dialColor || "",
       caseMaterial: productData.caseMaterial || "",
       strapMaterial: productData.strapMaterial || "",
-
-      // ────────────── ADDITIONAL INFORMATION ──────────────
       strapColor: productData.strapColor || "",
+      badges: [...new Set(parseJSON(productData.badges))],
       strapSize: parseNumber(productData.strapSize),
       caseSize: parseNumber(productData.caseSize),
       caseColor: productData.caseColor || "",
       crystal: productData.crystal || "",
       bezelMaterial: productData.bezelMaterial || "",
-      dialNumerals: productData.dialNumerical || "",
+      dialNumerals: productData.dialNumerals || "No Numerals",
       caliber: productData.caliber || "",
       powerReserve: parseNumber(productData.powerReserve),
-      jewels: parseInteger(productData.jewels),
+      jewels: parseIntNum(productData.jewels),
       functions: parseJSON(productData.functions),
-      condition: productData.condition || "",
       replacementParts: parseJSON(productData.replacementParts),
 
-      // ────────────── PRICING & INVENTORY ──────────────
+      // PRICING
       regularPrice: parseNumber(productData.regularPrice),
       salePrice: parseNumber(productData.salePrice),
       taxStatus: productData.taxStatus || "taxable",
-      stockQuantity: parseInteger(productData.stockQuantity),
+      stockQuantity: stockQuantity,
+      
+      // 🔥 FIX: Auto-calculated inStock
+      inStock: inStock,
 
-      // ────────────── DESCRIPTION & META ──────────────
+      // DESCRIPTION & VISIBILITY
       description: productData.description || "",
       visibility: productData.visibility || "visible",
 
-      // ────────────── SEO FIELDS ──────────────
+      // SEO
       seoTitle: productData.seoTitle || "",
       seoDescription: productData.seoDescription || "",
       seoKeywords: parseJSON(productData.seoKeywords),
 
-      // ────────────── CORE PRODUCT INFO ──────────────
+      // PRODUCT META
       published: productData.published ?? true,
       featured: productData.featured ?? false,
-      inStock: productData.inStock ?? true,
+      // inStock: productData.inStock ?? true, // REMOVED - using auto-calculated value
 
-       // ────────────── MEDIA ──────────────
-       images, // ✅ store uploaded images
+      // IMAGES
+      images,
 
-      // ────────────── META & ATTRIBUTES ──────────────
+      // EXTRA
       meta: productData.meta || {},
       attributes: productData.attributes || [],
 
-      // ────────────── TRACKING ──────────────
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
     const savedProduct = await newProduct.save();
 
-
-
-    // SELECTED RESPONSE FIELDS
     const response = await Product.findById(savedProduct._id).select(
-      "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
-      "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
-      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories" +
-      "condition category description visibility published featured inStock " +
-      "images createdAt updatedAt"
+        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
+        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+        "condition itemCondition category description visibility published featured inStock " +
+        "badges images createdAt updatedAt"
     );
 
     res.status(201).json({
@@ -157,23 +187,22 @@ const addProduct = async (req, res) => {
       message: "Product added successfully!",
       product: response,
     });
-
-
   } catch (error) {
     console.log("Add product error:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message || "Server error" 
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+      details: error.errors,
     });
   }
 };
 
-// ====================== UPDATE PRODUCT ======================
-// ====================== UPDATE PRODUCT ======================
+
+
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     console.log("Request files:", req.files);
     console.log("Request body:", req.body);
     console.log("Uploaded images:", req.body.images);
@@ -186,7 +215,7 @@ const updateProduct = async (req, res) => {
       });
     }
 
-    // Helper functions
+    // Helper functions (same as before)
     const parseJSON = (field) => {
       if (!field) return [];
       try {
@@ -211,30 +240,41 @@ const updateProduct = async (req, res) => {
       return value === "true" || value === true;
     };
 
-    // **FIX: Handle images based on your schema structure**
-    let updatedImages = [...(product.images || [])]; // Start with existing images
+    // Handle images (same as before)
+    let updatedImages = [...(product.images || [])];
 
-    // If new images were uploaded via multer middleware
     if (req.body.images && req.body.images.length > 0) {
-      // Replace images array with new uploaded images
       updatedImages = req.body.images;
-    }
-    // If images are sent via request body (for manual updates)
-    else if (req.body.uploadedImages) {
+    } else if (req.body.uploadedImages) {
       const parsedImages = parseJSON(req.body.uploadedImages);
-      if (parsedImages.length > 0) {
-        updatedImages = parsedImages;
-      }
+      if (parsedImages.length > 0) updatedImages = parsedImages;
     }
 
     console.log("Final images array:", updatedImages);
 
-    // Generate name from brand and model if not provided
+    // Generate product name
     let productName = product.name;
     if (req.body.brand || req.body.model) {
       const brand = req.body.brand || product.brand;
       const model = req.body.model || product.model;
       productName = `${brand} ${model}`;
+    }
+
+    // 🔥 FIX: Auto-calculate inStock based on stockQuantity
+    let stockQuantity = product.stockQuantity;
+    if (req.body.stockQuantity !== undefined) {
+      stockQuantity = parseInteger(req.body.stockQuantity);
+    }
+    
+    // Auto-calculate inStock - if stockQuantity is provided, use it to determine inStock
+    // Otherwise, if inStock is explicitly provided, use that
+    let inStock;
+    if (req.body.stockQuantity !== undefined) {
+      inStock = stockQuantity > 0; // Auto-calculate from stockQuantity
+    } else if (req.body.inStock !== undefined) {
+      inStock = parseBoolean(req.body.inStock); // Use explicit value
+    } else {
+      inStock = product.inStock; // Keep existing value
     }
 
     const updatedFields = {
@@ -247,10 +287,16 @@ const updateProduct = async (req, res) => {
       ...(req.body.serialNumber !== undefined && { serialNumber: req.body.serialNumber }),
       ...(req.body.additionalTitle !== undefined && { additionalTitle: req.body.additionalTitle }),
       ...(req.body.watchType !== undefined && { watchType: req.body.watchType }),
+      ...(req.body.watchStyle !== undefined && { watchStyle: req.body.watchStyle }),
       ...(req.body.scopeOfDelivery !== undefined && { scopeOfDelivery: req.body.scopeOfDelivery }),
-      ...(req.body.includedAccessories !== undefined && { includedAccessories: req.body.includedAccessories }),
+      ...(req.body.includedAccessories !== undefined && { 
+        includedAccessories: parseJSON(req.body.includedAccessories) 
+      }),
       ...(req.body.category !== undefined && { category: req.body.category }),
 
+      // ────────────── CONDITION INFORMATION ──────────────
+      ...(req.body.condition !== undefined && { condition: req.body.condition }),
+      ...(req.body.itemCondition !== undefined && { itemCondition: req.body.itemCondition }),
 
       // ────────────── ITEM FEATURES ──────────────
       ...(req.body.productionYear !== undefined && { productionYear: req.body.productionYear }),
@@ -264,24 +310,27 @@ const updateProduct = async (req, res) => {
 
       // ────────────── ADDITIONAL INFORMATION ──────────────
       ...(req.body.strapColor !== undefined && { strapColor: req.body.strapColor }),
+      ...(req.body.badges !== undefined && { badges: parseJSON(req.body.badges) }),
       ...(req.body.strapSize !== undefined && { strapSize: parseNumber(req.body.strapSize) }),
       ...(req.body.caseSize !== undefined && { caseSize: parseNumber(req.body.caseSize) }),
       ...(req.body.caseColor !== undefined && { caseColor: req.body.caseColor }),
       ...(req.body.crystal !== undefined && { crystal: req.body.crystal }),
       ...(req.body.bezelMaterial !== undefined && { bezelMaterial: req.body.bezelMaterial }),
-      ...(req.body.dialNumerical !== undefined && { dialNumerical: req.body.dialNumerical }),
+      ...(req.body.dialNumerals !== undefined && { dialNumerals: req.body.dialNumerals }),
       ...(req.body.caliber !== undefined && { caliber: req.body.caliber }),
       ...(req.body.powerReserve !== undefined && { powerReserve: parseNumber(req.body.powerReserve) }),
       ...(req.body.jewels !== undefined && { jewels: parseInteger(req.body.jewels) }),
       ...(req.body.functions !== undefined && { functions: parseJSON(req.body.functions) }),
-      ...(req.body.condition !== undefined && { condition: req.body.condition }),
       ...(req.body.replacementParts !== undefined && { replacementParts: parseJSON(req.body.replacementParts) }),
 
       // ────────────── PRICING & INVENTORY ──────────────
       ...(req.body.regularPrice !== undefined && { regularPrice: parseNumber(req.body.regularPrice) }),
       ...(req.body.salePrice !== undefined && { salePrice: parseNumber(req.body.salePrice) }),
       ...(req.body.taxStatus !== undefined && { taxStatus: req.body.taxStatus }),
-      ...(req.body.stockQuantity !== undefined && { stockQuantity: parseInteger(req.body.stockQuantity) }),
+      ...(req.body.stockQuantity !== undefined && { stockQuantity: stockQuantity }),
+      
+      // 🔥 FIX: Auto-calculated inStock
+      inStock: inStock,
 
       // ────────────── DESCRIPTION & META ──────────────
       ...(req.body.description !== undefined && { description: req.body.description }),
@@ -295,10 +344,10 @@ const updateProduct = async (req, res) => {
       // ────────────── CORE PRODUCT INFO ──────────────
       ...(req.body.published !== undefined && { published: parseBoolean(req.body.published) }),
       ...(req.body.featured !== undefined && { featured: parseBoolean(req.body.featured) }),
-      ...(req.body.inStock !== undefined && { inStock: parseBoolean(req.body.inStock) }),
+      // inStock: inStock, // Already set above
 
       // ────────────── MEDIA ──────────────
-      images: updatedImages, // This uses your image schema structure
+      images: updatedImages,
 
       // ────────────── META & ATTRIBUTES ──────────────
       ...(req.body.meta !== undefined && { meta: req.body.meta }),
@@ -310,26 +359,35 @@ const updateProduct = async (req, res) => {
 
     // Remove undefined fields
     Object.keys(updatedFields).forEach(key => {
-      if (updatedFields[key] === undefined) {
-        delete updatedFields[key];
-      }
+      if (updatedFields[key] === undefined) delete updatedFields[key];
     });
 
-    // SELECTED RESPONSE FIELDS
+    // Update product in DB
     const updatedProduct = await Product.findByIdAndUpdate(
-      id, 
-      updatedFields, 
-      {
-        new: true,
-        runValidators: true,
-      }
+      id,
+      updatedFields,
+      { new: true, runValidators: true }
     ).select(
-      "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
+      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
       "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
-      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories" +
-      "condition description visibility published featured inStock category" +
-      "images createdAt updatedAt"
+      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+      "condition itemCondition description visibility published featured inStock category " +
+      "badges images createdAt updatedAt"
     );
+
+    // ────────────── TRIGGER RESTOCK NOTIFICATIONS ──────────────
+    if (
+      updatedFields.stockQuantity !== undefined &&
+      updatedFields.stockQuantity > 0 &&
+      product.stockQuantity === 0
+    ) {
+      try {
+        const response = await notifyRestock(product._id);
+        console.log(response, "response");
+      } catch (err) {
+        console.error("Error sending restock notifications:", err);
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -345,6 +403,9 @@ const updateProduct = async (req, res) => {
     });
   }
 };
+// Update product stock (admin)
+
+
 
 
 module.exports = {

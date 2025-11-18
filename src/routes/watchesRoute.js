@@ -1,8 +1,12 @@
+// routes/productRoutes.js
 const express = require("express");
-const { getWatches } = require("../controllers/watchesController");
+const router = express.Router();
+const { getWatchesByStyle, getAllWatches } = require("../controllers/watchesController");
 
-const router = express.Router();    
-// ✅ Correct route
-router.get("/category/:category", getWatches); 
+// Fetch all watches
+router.get("/all", getAllWatches);
+
+// Fetch watches by style
+router.get("/style/:style", getWatchesByStyle);
 
 module.exports = router;
