@@ -5,6 +5,9 @@ const userModel = require("../models/UserModel");
 const { calculateShippingFee } = require("../utils/shippingCalculator");
 const stripePkg = require("stripe");
 const axios = require("axios");
+const sendEmail = require("../utils/sendEmail");
+
+
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? stripePkg(process.env.STRIPE_SECRET_KEY)
@@ -18,7 +21,7 @@ const createStripeOrder = async (req, res) => {
       shippingAddress,
       billingAddress,
       paymentMethod = "stripe",
-      calculateOnly = false, // Add this flag
+      calculateOnly = false,
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -31,7 +34,7 @@ const createStripeOrder = async (req, res) => {
         .json({ message: "Shipping address with country is required" });
     }
 
-    // ✅ Populate product details for each cart item
+    // ✅ Populate product details
     const populatedItems = await Promise.all(
       items.map(async (it) => {
         const product = await Product.findById(it.productId)
@@ -50,13 +53,12 @@ const createStripeOrder = async (req, res) => {
       })
     );
 
-    // ✅ Calculate subtotal
+    // ✅ Calculate totals
     const subtotal = populatedItems.reduce(
       (acc, item) => acc + (item.price || 0) * (item.quantity || 0),
       0
     );
 
-    // ✅ Calculate shipping fee
     const { shippingFee, region } = calculateShippingFee({
       country: shippingAddress.country,
       subtotal,
@@ -64,7 +66,7 @@ const createStripeOrder = async (req, res) => {
 
     const total = subtotal + shippingFee;
 
-    // ✅ If it's only a calculation request, return the totals without creating order
+    // ✅ Only return totals if calculateOnly is true
     if (calculateOnly) {
       return res.status(200).json({
         success: true,
@@ -73,11 +75,11 @@ const createStripeOrder = async (req, res) => {
         total,
         vatAmount: 0,
         region,
-        items: populatedItems, // Optional: return populated items for verification
+        items: populatedItems,
       });
     }
 
-    // ✅ Save order (plain JSON-safe data) - Only if not calculateOnly
+    // ✅ Save order to DB
     const orderData = {
       userId,
       items: populatedItems.map((item) => ({
@@ -101,10 +103,61 @@ const createStripeOrder = async (req, res) => {
 
     const order = await Order.create(orderData);
 
-    // ✅ Clear the user's cart in the User model
+
+    // ✅ Send Email Notification to Admin
+    const productListHTML = populatedItems
+      .map(
+        (item) =>
+          `<tr>
+            <td style="padding:8px;border:1px solid #ddd;">${item.name}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${item.quantity}</td>
+            <td style="padding:8px;border:1px solid #ddd;">AED ${item.price}</td>
+          </tr>`
+      )
+      .join("");
+
+    const emailHTML = `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <h2 style="color:#d4af37;">🛍️ New Order Received</h2>
+        <p><strong>Customer ID:</strong> ${userId}</p>
+        <p><strong>Region:</strong> ${region}</p>
+        <p><strong>Payment Method:</strong> ${paymentMethod}</p>
+        <p><strong>Total:</strong> AED ${total}</p>
+        <h3>Products:</h3>
+        <table style="border-collapse:collapse;width:100%;border:1px solid #ddd;">
+          <thead>
+            <tr>
+              <th style="padding:8px;border:1px solid #ddd;">Product</th>
+              <th style="padding:8px;border:1px solid #ddd;">Qty</th>
+              <th style="padding:8px;border:1px solid #ddd;">Price</th>
+            </tr>
+          </thead>
+          <tbody>${productListHTML}</tbody>
+        </table>
+        <p><strong>Shipping Country:</strong> ${shippingAddress.country}</p>
+        <p style="margin-top:20px;">🕒 <em>Order placed on ${new Date().toLocaleString()}</em></p>
+      </div>
+    `;
+
+    // send to admin
+    await sendEmail(
+      process.env.ADMIN_EMAIL,
+      "🛍️ New Order Notification",
+      emailHTML
+    );
+
+    // send to sales email
+    await sendEmail(
+      process.env.SALES_EMAIL, // make sure you define this in .env
+      "🛍️ New Order Notification",
+      emailHTML
+    );
+
+    // ✅ Clear the user's cart
+
     await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
 
-    // ✅ Stripe Checkout Session with image support
+    // ✅ Create Stripe Checkout Session
     if (paymentMethod === "stripe" && stripe) {
       const lineItems = populatedItems.map((item) => ({
         price_data: {
@@ -122,8 +175,8 @@ const createStripeOrder = async (req, res) => {
         payment_method_types: ["card"],
         line_items: lineItems,
         mode: "payment",
-        success_url: `http://localhost:3000/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
-        cancel_url: `http://localhost:3000/paymentcancel?orderId=${order._id}`,
+        success_url: `https://www.montres.ae/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
+        cancel_url: `https://www.montres.ae/paymentcancel?orderId=${order._id}`,
       });
 
       order.stripeSessionId = session.id;
@@ -143,7 +196,6 @@ const createStripeOrder = async (req, res) => {
   }
 };
 
-// Tabby sandbox keys
 const TABBY_PUBLIC_KEY = "pk_test_0194a887-5d2c-c408-94f4-65ee1ca745e8";
 const TABBY_SECRET_KEY = "sk_test_0194a887-5d2c-c408-94f4-65eeeb1ab113";
 const TABBY_MERCHANT_CODE = "MTAE";
@@ -268,9 +320,7 @@ const createTabbyOrder = async (req, res) => {
   } catch (error) {
     return res.status(500).json({ status: false, message: error.response?.data || error.message });
   }
-};
-
-
+}
 
 
 const getShippingAddresses = async (req, res) => {
@@ -349,6 +399,7 @@ module.exports = {
   createStripeOrder,
   getOrderById,
   getAllOrders,
+  getMyOrders,
   getShippingAddresses,
   createTabbyOrder,
 };

@@ -3,76 +3,80 @@ const path = require("path");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 
-// Cloudinary config
+// ✅ Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Multer storage
+// ✅ Ensure upload folder exists
+const uploadDir = path.join(__dirname, "../uploads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+
+// ✅ Configure multer
 const storage = multer.diskStorage({
-  destination: path.join(__dirname, "uploads"),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
 });
 
 const upload = multer({ storage });
 
-// Middleware for uploading product images
-const addProductImageUpload = async (req, res, next) => {
+const addProductImageUpload = (req, res, next) => {
   const uploader = upload.fields([
     { name: "main", maxCount: 1 },
-    { name: "covers", maxCount: 5 }
+    { name: "covers", maxCount: 10 },
   ]);
 
   uploader(req, res, async (err) => {
-    if (err) return res.status(400).json({ error: err.message });
+    if (err) return res.status(400).json({ message: err.message });
+
+    console.log("🔥 req.files =>", req.files);
+    console.log("🔥 req.body =>", req.body);
 
     try {
       const uploadedImages = [];
 
-      // Main image
-      if (req.files?.main) {
-        const mainResult = await cloudinary.uploader.upload(req.files.main[0].path, {
+      // ✅ Upload main image if exists
+      if (req.files && req.files.main && req.files.main.length > 0) {
+        const mainFile = req.files.main[0];
+        const result = await cloudinary.uploader.upload(mainFile.path, {
           folder: "MontresTradingLLC",
-          quality: "auto",
-          fetch_format: "auto"
         });
         uploadedImages.push({
-          url: mainResult.secure_url,
+          url: result.secure_url,
           type: "main",
-          alt: req.files.main[0].originalname
+          alt: mainFile.originalname,
         });
-        fs.unlink(req.files.main[0].path, () => {});
+        fs.unlinkSync(mainFile.path);
       }
 
-      // Cover images
-      if (req.files?.covers) {
+      // ✅ Upload cover images if exists
+      if (req.files && req.files.covers && req.files.covers.length > 0) {
         for (const file of req.files.covers) {
           const result = await cloudinary.uploader.upload(file.path, {
             folder: "MontresTradingLLC",
-            quality: "auto",
-            fetch_format: "auto"
           });
           uploadedImages.push({
             url: result.secure_url,
             type: "cover",
-            alt: file.originalname
+            alt: file.originalname,
           });
-          fs.unlink(file.path, () => {});
+          fs.unlinkSync(file.path);
         }
       }
 
-      // If we have uploaded images, replace the images array
-      if (uploadedImages.length > 0) {
-        req.body.images = uploadedImages;
-      }
+      console.log("✅ Uploaded Images:", uploadedImages);
 
-      console.log("Processed images:", req.body.images);
+      // ✅ Attach uploaded images to request
+      req.body.images = uploadedImages;
+
       next();
     } catch (error) {
-      console.error("Cloudinary upload error:", error);
-      return res.status(500).json({ message: "Error uploading files to Cloudinary" });
+      console.error("❌ Cloudinary upload error:", error);
+      res.status(500).json({ message: "Error uploading images" });
     }
   });
 };

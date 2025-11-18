@@ -1,9 +1,9 @@
-// import mongoose from "mongoose";
 const mongoose = require("mongoose");
 const {
   ALL_FUNCTIONS,
   SCOPE_OF_DELIVERY_OPTIONS,
   WATCH_TYPES,
+  WATCHSTYLE_CATEGORY,
   GENDERS,
   MOVEMENTS,
   COLORS,
@@ -12,13 +12,16 @@ const {
   CRYSTALS,
   BEZEL_MATERIALS,
   CONDITIONS,
+  ITEM_CONDITIONS,
+  INCLUDE_ACCESSORIES,
   REPLACEMENT_PARTS,
-  DIALNUMERALS
+  DIALNUMERALS,
 } = require("../utils/productConstants");
+
 const attributeSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    values: [{ type: String }], // multiple values possible
+    values: [{ type: String }],
     visible: { type: Boolean, default: false },
     global: { type: Boolean, default: false },
   },
@@ -29,12 +32,11 @@ const imageSchema = new mongoose.Schema(
   {
     url: { type: String, required: true },
     alt: { type: String },
-    type: { type: String, enum: ["main", "cover"], default: "cover" }, // ✅ main or cover
+    type: { type: String, enum: ["main", "cover"], default: "cover" },
   },
   { _id: false }
 );
 
-// ✅ Updated Product Schema with SKU that can be manually set
 const productSchema = new mongoose.Schema(
   {
     // ────────────── BASIC INFORMATION ──────────────
@@ -44,39 +46,108 @@ const productSchema = new mongoose.Schema(
     referenceNumber: { type: String },
     serialNumber: { type: String },
     additionalTitle: { type: String },
-    watchType: { type: String, enum: WATCH_TYPES },
-    scopeOfDelivery: { type: String, enum: SCOPE_OF_DELIVERY_OPTIONS },
-    includedAccessories: { type: String },
+    watchType: {
+      type: String,
+      enum: WATCH_TYPES,
+      required: true,
+    },
+    watchStyle: {
+      type: String,
+      enum: WATCHSTYLE_CATEGORY,
+    },
+    scopeOfDelivery: [{
+      type: String,
+      enum: SCOPE_OF_DELIVERY_OPTIONS,
+    }],
+    includedAccessories: [{
+      type: String,
+      enum: INCLUDE_ACCESSORIES,
+    }],
     category: {
-    type: String,
-    enum: ["Watch", "Jewellery", "Gold", "Accessories", "Home Accessories","Personal Accessories","Pens"],
-    required: true
-  },
+      type: String,
+      enum: [
+        "Watch",
+        "Jewellery",
+        "Gold",
+        "Accessories",
+        "Leather Goods",
+        "Leather Bags",
+      ],
+      required: true,
+    },
+
+    // ────────────── CONDITION INFORMATION ──────────────
+    condition: {
+      type: String,
+      enum: CONDITIONS,
+    },
+    itemCondition: {
+      type: String,
+      enum: ITEM_CONDITIONS,
+    },
 
     // ────────────── ITEM FEATURES ──────────────
     productionYear: { type: String },
     approximateYear: { type: Boolean, default: false },
     unknownYear: { type: Boolean, default: false },
-    gender: { type: String, enum: GENDERS, default: "Men/Unisex" },
-    movement: { type: String, enum: MOVEMENTS },
-    dialColor: { type: String, enum: COLORS },
-    caseMaterial: { type: String, enum: MATERIALS },
-    strapMaterial: { type: String, enum: STRAP_MATERIALS },
+
+    gender: {
+      type: String,
+      enum: GENDERS,
+      default: "Men/Unisex",
+    },
+    movement: {
+      type: String,
+      enum: MOVEMENTS,
+    },
+    dialColor: {
+      type: String,
+      enum: COLORS,
+    },
+    caseMaterial: {
+      type: String,
+      enum: MATERIALS,
+    },
+    strapMaterial: {
+      type: String,
+      enum: STRAP_MATERIALS,
+    },
 
     // ────────────── ADDITIONAL INFORMATION ──────────────
-    strapColor: { type: String, enum: COLORS },
-    strapSize: { type: Number }, // mm
-    caseSize: { type: Number }, // mm
-    caseColor: { type: String, enum: COLORS },
-    crystal: { type: String, enum: CRYSTALS },
-    bezelMaterial: { type: String, enum: BEZEL_MATERIALS },
-    dialNumerals: { type: String,enum:DIALNUMERALS },
+    strapColor: {
+      type: String,
+      enum: COLORS,
+    },
+    strapSize: { type: Number },
+    sold: { type: Number, default: 0 }, // for trending/best-sellers
+    caseSize: { type: Number },
+    caseColor: {
+      type: String,
+      enum: COLORS,
+    },
+    crystal: {
+      type: String,
+      enum: CRYSTALS,
+    },
+    bezelMaterial: {
+      type: String,
+      enum: BEZEL_MATERIALS,
+    },
+    dialNumerals: {
+      type: String,
+      enum: DIALNUMERALS,
+    },
     caliber: { type: String },
-    powerReserve: { type: Number }, // hours
+    powerReserve: { type: Number },
     jewels: { type: Number },
-    functions: [{ type: String, enum: ALL_FUNCTIONS }],
-    condition: { type: String, enum: CONDITIONS },
-    replacementParts: [{ type: String, enum: REPLACEMENT_PARTS }],
+    functions: [{
+      type: String,
+      enum: ALL_FUNCTIONS,
+    }],
+    replacementParts: [{
+      type: String,
+      enum: REPLACEMENT_PARTS,
+    }],
 
     // ────────────── PRICING & INVENTORY ──────────────
     regularPrice: { type: Number, default: 0 },
@@ -87,6 +158,14 @@ const productSchema = new mongoose.Schema(
       default: "taxable",
     },
     stockQuantity: { type: Number, default: 0 },
+    inStock: { type: Boolean, default: true },
+
+    // ───────── TAGS / BADGES ─────────
+    badges: {
+      type: [String],
+      enum: ["Popular", "New Arrivals"],
+      default: [],
+    },
 
     // ────────────── DESCRIPTION & META ──────────────
     description: { type: String },
@@ -101,11 +180,10 @@ const productSchema = new mongoose.Schema(
     seoDescription: { type: String },
     seoKeywords: [{ type: String }],
 
-    // ────────────── CORE PRODUCT INFO (Legacy fields - keep for compatibility) ──────────────
-    name: { type: String }, // Now optional, can be generated from brand + model
+    // ────────────── CORE PRODUCT INFO ──────────────
+    name: { type: String },
     published: { type: Boolean, default: true },
     featured: { type: Boolean, default: false },
-    inStock: { type: Boolean, default: true },
 
     // ────────────── MEDIA ──────────────
     images: [imageSchema],
@@ -117,10 +195,6 @@ const productSchema = new mongoose.Schema(
       default: {},
     },
     attributes: [attributeSchema],
-
-    // ────────────── TRACKING ──────────────
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now },
   },
   {
     timestamps: true,
@@ -130,31 +204,32 @@ const productSchema = new mongoose.Schema(
   }
 );
 
+
 // 🔥 CRITICAL INDEXES FOR PERFORMANCE 🔥
 
 // Single Field Indexes
-productSchema.index({ published: 1 }); // For filtering published products
-productSchema.index({ featured: 1 }); // For featured products
-productSchema.index({ inStock: 1 }); // For stock availability
-productSchema.index({ type: 1 }); // For product type filtering
-productSchema.index({ gender: 1 }); // For gender-based filtering
-productSchema.index({ categorisOne: 1 }); // For main category filtering
-productSchema.index({ createdAt: -1 }); // For newest products
-productSchema.index({ updatedAt: -1 }); // For recently updated products
+productSchema.index({ published: 1 });
+productSchema.index({ featured: 1 });
+productSchema.index({ inStock: 1 });
+productSchema.index({ watchType: 1 });
+productSchema.index({ watchStyle: 1 }); // New index for watchStyle
+productSchema.index({ gender: 1 });
+productSchema.index({ category: 1 });
+productSchema.index({ condition: 1 });
+productSchema.index({ itemCondition: 1 });
+productSchema.index({ createdAt: -1 });
+productSchema.index({ updatedAt: -1 });
 
-// Array Field Indexes (for categories, brands, subcategory arrays)
-productSchema.index({ categories: 1 }); // For category filtering
-productSchema.index({ subcategory: 1 }); // For subcategory filtering
-productSchema.index({ brands: 1 }); // For brand filtering
-productSchema.index({ tags: 1 }); // For tag filtering
+// Array Field Indexes
+productSchema.index({ includedAccessories: 1 });
+productSchema.index({ functions: 1 });
+productSchema.index({ replacementParts: 1 });
+productSchema.index({ seoKeywords: 1 });
 
 // Price-related Indexes
-productSchema.index({ salePrice: 1 }); // For price low to high sorting
-productSchema.index({ regularPrice: 1 }); // For regular price filtering
-productSchema.index({ salePrice: -1 }); // For price high to low sorting
-
-// Date-based Indexes for sales
-productSchema.index({ dateSaleStart: 1, dateSaleEnd: 1 }); // For active sales queries
+productSchema.index({ salePrice: 1 });
+productSchema.index({ regularPrice: 1 });
+productSchema.index({ salePrice: -1 });
 
 // 🔥 COMPOUND INDEXES FOR COMMON QUERY PATTERNS 🔥
 
@@ -162,27 +237,34 @@ productSchema.index({ dateSaleStart: 1, dateSaleEnd: 1 }); // For active sales q
 productSchema.index({
   published: 1,
   inStock: 1,
-  categories: 1,
+  category: 1,
   createdAt: -1,
 });
 
 // Category + Brand filtering
 productSchema.index({
-  categories: 1,
-  brands: 1,
+  category: 1,
+  brand: 1,
+  published: 1,
+});
+
+// Watch Style filtering
+productSchema.index({
+  watchStyle: 1,
+  category: 1,
   published: 1,
 });
 
 // Search and filter combinations
 productSchema.index({
   name: "text",
-  categories: 1,
+  category: 1,
   published: 1,
 });
 
 // Price range filtering within categories
 productSchema.index({
-  categories: 1,
+  category: 1,
   salePrice: 1,
   published: 1,
 });
@@ -190,21 +272,35 @@ productSchema.index({
 // Gender + Category combinations
 productSchema.index({
   gender: 1,
-  categories: 1,
+  category: 1,
+  published: 1,
+});
+
+// Watch Type + Style combinations
+productSchema.index({
+  watchType: 1,
+  watchStyle: 1,
   published: 1,
 });
 
 // Featured products with categories
 productSchema.index({
   featured: 1,
-  categories: 1,
+  category: 1,
   published: 1,
 });
 
 // Stock + Category combinations
 productSchema.index({
   inStock: 1,
-  categories: 1,
+  category: 1,
+  published: 1,
+});
+
+// Condition-based filtering
+productSchema.index({
+  condition: 1,
+  itemCondition: 1,
   published: 1,
 });
 
@@ -212,21 +308,52 @@ productSchema.index({
 productSchema.index(
   {
     name: "text",
-    shortDescription: "text",
+    brand: "text",
+    model: "text",
     description: "text",
     sku: "text",
-    tags: "text",
+    referenceNumber: "text",
+    seoKeywords: "text",
   },
   {
     name: "product_search_index",
     weights: {
       name: 10,
+      brand: 8,
+      model: 8,
       sku: 8,
-      tags: 5,
-      shortDescription: 3,
+      referenceNumber: 6,
+      seoKeywords: 5,
       description: 1,
     },
   }
 );
+
+// Virtual for checking if product is on sale
+productSchema.virtual("isOnSale").get(function () {
+  return this.salePrice > 0 && this.salePrice < this.regularPrice;
+});
+
+// Virtual for discount percentage
+productSchema.virtual("discountPercentage").get(function () {
+  if (
+    this.salePrice > 0 &&
+    this.salePrice < this.regularPrice &&
+    this.regularPrice > 0
+  ) {
+    return Math.round(
+      ((this.regularPrice - this.salePrice) / this.regularPrice) * 100
+    );
+  }
+  return 0;
+});
+
+// Pre-save middleware to generate name if not provided
+productSchema.pre("save", function (next) {
+  if (!this.name && this.brand && this.model) {
+    this.name = `${this.brand} ${this.model}`;
+  }
+  next();
+});
 
 module.exports = mongoose.model("Product", productSchema, "products");

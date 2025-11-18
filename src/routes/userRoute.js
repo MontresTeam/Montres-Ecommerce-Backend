@@ -10,7 +10,11 @@ const {
   refreshToken,
   googleLogin,
   facebookLogin,
+  Newsletter,
 } = require("../controllers/userController");
+const imageUploadUpdate = require("../config/ProfileUploadin");
+const { updateUserProfile } = require("../controllers/userProfileController");
+const {protect} = require('../middlewares/authMiddleware')
 
 const router = express.Router();
 
@@ -31,14 +35,27 @@ router.get("/convert-price", convertprice);
 
 router.post("/logout", logout);
 
+router.put("/profile",protect,imageUploadUpdate,updateUserProfile)
 
-// Google
-router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
-router.get("/google/callback", passport.authenticate("google", { session: false }), googleLogin);
+
+// ✅ Step 1: Redirect to Google for authentication
+router.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
+
+// ✅ Step 2: Handle callback from Google
+router.get(
+  "/google/callback",
+  passport.authenticate("google", { failureRedirect: "/auth/login" }),
+  googleLogin
+);
 
 // Facebook
 router.get("/facebook", passport.authenticate("facebook", { scope: ["email"] }));
 router.get("/facebook/callback", passport.authenticate("facebook", { session: false }), facebookLogin);
 
+
+router.post("/newsletter/subscribe", Newsletter)
 
 module.exports = router;

@@ -10,6 +10,8 @@ const {
   generateAccessToken,
   generateRefreshToken,
 } = require("../utils/generateToken");
+const analytics = require('../utils/customerio');
+const NewsletterModel = require("../models/NewsletterModel")
 
 
 const transporter = nodemailer.createTransport({
@@ -22,6 +24,45 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false, // <-- allows self-signed certificates
   },
 });
+
+
+
+const Newsletter = async (req, res) => {
+  try {
+    const { email, name } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Save to MongoDB
+    const existing = await NewsletterModel.findOne({ email });
+    if (existing) {
+      return res.status(400).json({ message: "Email already subscribed" });
+    }
+
+    const newSubscriber = new NewsletterModel({ email, name });
+    await newSubscriber.save();
+
+    // Send subscriber data to Customer.io
+    await analytics.identify({
+      userId: email, // use email as ID if no userId yet
+      traits: {
+        email,
+        name: name || "",
+        source: "Newsletter Signup",
+      },
+    });
+
+    res.status(200).json({ message: "Subscribed successfully!" });
+  } catch (error) {
+    console.error("Customer.io Error:", error);
+    res.status(500).json({ message: "Subscription failed" });
+  }
+};
+
+
+
 
 
 
@@ -172,9 +213,10 @@ const googleLogin = async (req, res) => {
     };
 
     // Redirect with token + user
-    const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(
+ const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(
       JSON.stringify(frontendUser)
     )}`;
+    console.log("✅ Redirecting to:", redirectUrl);
     return res.redirect(redirectUrl);
   } catch (err) {
     console.error("Google login error:", err);
@@ -1064,6 +1106,7 @@ module.exports = {
   getWishlistCount,
   logout,
   googleLogin,
-  facebookLogin
+  facebookLogin,
+  Newsletter
   };
 

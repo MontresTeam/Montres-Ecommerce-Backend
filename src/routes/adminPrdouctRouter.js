@@ -6,7 +6,8 @@ const updateProductImageUpload = require("../config/updateProductImageUpload");
 const router = express.Router();
 
 router.delete("/:id", deleteProduct);
-router.post("/", addProductImageUpload, addProduct); // only add product uses main+cover
+
+router.post("/add", addProductImageUpload, addProduct);
 router.put("/:id", updateProductImageUpload,  updateProduct); // other routes can use generic upload
 
 module.exports = router;

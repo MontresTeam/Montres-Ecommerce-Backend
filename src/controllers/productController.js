@@ -1,6 +1,7 @@
 const Product = require("../models/product");
-const SProduct = require("../models/ProductModal");
+const RestockSubscription = require('../models/RestockSubscription')
 const WatchService = require("../models/repairserviceModal");
+
 const getProducts = async (req, res) => {
   try {
     const {
@@ -9,10 +10,36 @@ const getProducts = async (req, res) => {
       limit = 15,
       category,
       brand,
+      model,
       price,
       availability,
       gender,
+      condition,
+      itemCondition,
+      scopeOfDelivery,
+      badges,
       search,
+      minPrice,
+      maxPrice,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      featured,
+      referenceNumber,
+      // Advanced filters
+      type,
+      dialColor,
+      caseColor,
+      strapColor,
+      strapMaterial,
+      caseMaterial,
+      caseSize,
+      strapSize,
+      yearOfProduction,
+      waterResistance,
+      movement,
+      complications,
+      crystal,
+      includedAccessories,
     } = req.query;
 
     // ✅ Single Product by ID
@@ -28,7 +55,7 @@ const getProducts = async (req, res) => {
     const pageNum = Math.max(1, parseInt(page, 10));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
 
-    // ✅ Base Filter
+    // ✅ Base Filter - only published products
     const filterQuery = { published: true };
     const andConditions = [];
 
@@ -42,65 +69,293 @@ const getProducts = async (req, res) => {
         .filter(Boolean);
     };
 
-    // ✅ Category Filter (categoryOne)
+    // ✅ Category Filter
     const categoryList = normalizeArray(category);
-    console.log(categoryList, "vs");
     if (categoryList.length > 0) {
       andConditions.push({
-        $or: categoryList.map((cat) => ({
-          categorisOne: { $regex: `^${cat}$`, $options: "i" },
-        })),
+        category: { $in: categoryList.map(cat => new RegExp(cat, "i")) }
       });
     }
 
-    // ✅ Brand Filter (meta.Brands)
+    // ✅ Brand Filter
     const brandList = normalizeArray(brand);
     if (brandList.length > 0) {
       andConditions.push({
-        "meta.Brands": { $in: brandList.map((br) => new RegExp(br, "i")) },
+        brand: { $in: brandList.map(br => new RegExp(br, "i")) }
+      });
+    }
+
+    // ✅ Model Filter
+    const modelList = normalizeArray(model);
+    if (modelList.length > 0) {
+      andConditions.push({
+        model: { $in: modelList.map(m => new RegExp(m, "i")) }
+      });
+    }
+
+    // ✅ Reference Number Filter
+    const referenceNumberList = normalizeArray(referenceNumber);
+    if (referenceNumberList.length > 0) {
+      andConditions.push({
+        referenceNumber: { $in: referenceNumberList.map(ref => new RegExp(ref, "i")) }
+      });
+    }
+
+    // ✅ Type Filter (Watch Type)
+    const typeList = normalizeArray(type);
+    if (typeList.length > 0) {
+      andConditions.push({
+        watchType: { $in: typeList.map(t => new RegExp(t, "i")) }
       });
     }
 
     // ✅ Price Filter
-    const priceList = normalizeArray(price);
-    if (priceList.length > 0) {
-      const priceConditions = [];
-      priceList.forEach((range) => {
-        const [min, max] = range.split("-").map(Number);
-        if (!isNaN(min) && !isNaN(max)) {
-          priceConditions.push({ salePrice: { $gte: min, $lte: max } });
-        } else if (!isNaN(min)) {
-          priceConditions.push({ salePrice: { $gte: min } });
+    if (minPrice || maxPrice) {
+      const priceFilter = {};
+      if (minPrice) priceFilter.$gte = Number(minPrice);
+      if (maxPrice) priceFilter.$lte = Number(maxPrice);
+      andConditions.push({ salePrice: priceFilter });
+    } else {
+      const priceList = normalizeArray(price);
+      if (priceList.length > 0) {
+        const priceConditions = [];
+        priceList.forEach((range) => {
+          const [min, max] = range.split("-").map(Number);
+          if (!isNaN(min) && !isNaN(max)) {
+            priceConditions.push({ salePrice: { $gte: min, $lte: max } });
+          } else if (!isNaN(min)) {
+            priceConditions.push({ salePrice: { $gte: min } });
+          } else if (!isNaN(max)) {
+            priceConditions.push({ salePrice: { $lte: max } });
+          }
+        });
+        if (priceConditions.length > 0) {
+          andConditions.push({ $or: priceConditions });
         }
-      });
-      if (priceConditions.length > 0) {
-        andConditions.push({ $or: priceConditions });
       }
     }
 
     // ✅ Availability Filter
     const availList = normalizeArray(availability);
-    const availConditions = [];
-    availList.forEach((avail) => {
-      if (avail === "in_stock") {
-        andConditions.push({ inStock: true });
-      } else if (avail === "out_of_stock") {
-        availConditions.push({ stockQuantity: { $lte: 0 } });
+    if (availList.length > 0) {
+      const hasInStock = availList.includes("in_stock");
+      const hasOutOfStock = availList.includes("out_of_stock");
+      
+      if (hasInStock && !hasOutOfStock) {
+        andConditions.push({
+          $or: [
+            { stockQuantity: { $gt: 0 } },
+            { inStock: true }
+          ]
+        });
       }
-    });
-    if (availConditions.length > 0) {
-      andConditions.push({ $or: availConditions });
+      else if (hasOutOfStock && !hasInStock) {
+        andConditions.push({
+          $or: [
+            { stockQuantity: { $lte: 0 } },
+            { inStock: false }
+          ]
+        });
+      }
     }
 
     // ✅ Gender Filter
     const genderList = normalizeArray(gender);
     if (genderList.length > 0) {
-      andConditions.push({ gender: { $in: genderList } });
+      andConditions.push({ 
+        gender: { $in: genderList.map(g => new RegExp(g, "i")) }
+      });
+    }
+
+    // ✅ Condition Filter
+    const conditionList = normalizeArray(condition);
+    if (conditionList.length > 0) {
+      andConditions.push({ 
+        condition: { $in: conditionList.map(c => new RegExp(c, "i")) }
+      });
+    }
+
+    // ✅ Item Condition Filter
+    const itemConditionList = normalizeArray(itemCondition);
+    if (itemConditionList.length > 0) {
+      andConditions.push({ 
+        itemCondition: { $in: itemConditionList.map(ic => new RegExp(ic, "i")) }
+      });
+    }
+
+    // ✅ Scope of Delivery Filter
+    const scopeList = normalizeArray(scopeOfDelivery);
+    if (scopeList.length > 0) {
+      andConditions.push({
+        scopeOfDelivery: { $in: scopeList.map(scope => new RegExp(scope, "i")) }
+      });
+    }
+
+    // ✅ Badges Filter
+    const badgesList = normalizeArray(badges);
+    if (badgesList.length > 0) {
+      andConditions.push({
+        badges: { 
+          $all: badgesList.map(badge => new RegExp(badge, "i"))
+        }
+      });
+    }
+
+    // ✅ Featured Filter
+    if (featured !== undefined) {
+      andConditions.push({ 
+        featured: featured === 'true' || featured === true 
+      });
+    }
+
+    // ✅ Advanced Filters
+
+    // Dial Color Filter
+    const dialColorList = normalizeArray(dialColor);
+    if (dialColorList.length > 0) {
+      andConditions.push({
+        dialColor: { $in: dialColorList.map(color => new RegExp(color, "i")) }
+      });
+    }
+
+    // Case Color Filter
+    const caseColorList = normalizeArray(caseColor);
+    if (caseColorList.length > 0) {
+      andConditions.push({
+        caseColor: { $in: caseColorList.map(color => new RegExp(color, "i")) }
+      });
+    }
+
+    // Strap Color Filter
+    const strapColorList = normalizeArray(strapColor);
+    if (strapColorList.length > 0) {
+      andConditions.push({
+        strapColor: { $in: strapColorList.map(color => new RegExp(color, "i")) }
+      });
+    }
+
+    // Strap Material Filter
+    const strapMaterialList = normalizeArray(strapMaterial);
+    if (strapMaterialList.length > 0) {
+      andConditions.push({
+        strapMaterial: { $in: strapMaterialList.map(material => new RegExp(material, "i")) }
+      });
+    }
+
+    // Case Material Filter
+    const caseMaterialList = normalizeArray(caseMaterial);
+    if (caseMaterialList.length > 0) {
+      andConditions.push({
+        caseMaterial: { $in: caseMaterialList.map(material => new RegExp(material, "i")) }
+      });
+    }
+
+    // Case Size Filter
+    const caseSizeList = normalizeArray(caseSize);
+    if (caseSizeList.length > 0) {
+      const caseSizeConditions = [];
+      caseSizeList.forEach((range) => {
+        const [min, max] = range.split("-").map(Number);
+        if (!isNaN(min) && !isNaN(max)) {
+          caseSizeConditions.push({ caseSize: { $gte: min, $lte: max } });
+        } else if (range.includes('+')) {
+          const minSize = parseInt(range.replace('+', ''));
+          if (!isNaN(minSize)) {
+            caseSizeConditions.push({ caseSize: { $gte: minSize } });
+          }
+        }
+      });
+      if (caseSizeConditions.length > 0) {
+        andConditions.push({ $or: caseSizeConditions });
+      }
+    }
+
+    // Strap Size Filter
+    const strapSizeList = normalizeArray(strapSize);
+    if (strapSizeList.length > 0) {
+      const strapSizeConditions = [];
+      strapSizeList.forEach((range) => {
+        const [min, max] = range.split("-").map(Number);
+        if (!isNaN(min) && !isNaN(max)) {
+          strapSizeConditions.push({ strapSize: { $gte: min, $lte: max } });
+        }
+      });
+      if (strapSizeConditions.length > 0) {
+        andConditions.push({ $or: strapSizeConditions });
+      }
+    }
+
+    // Year of Production Filter
+    const yearList = normalizeArray(yearOfProduction);
+    if (yearList.length > 0) {
+      const yearConditions = [];
+      yearList.forEach((range) => {
+        if (range === 'pre_1950') {
+          yearConditions.push({ productionYear: { $lt: 1950 } });
+        } else {
+          const [min, max] = range.split("-").map(Number);
+          if (!isNaN(min) && !isNaN(max)) {
+            yearConditions.push({ productionYear: { $gte: min, $lte: max } });
+          }
+        }
+      });
+      if (yearConditions.length > 0) {
+        andConditions.push({ $or: yearConditions });
+      }
+    }
+
+    // Water Resistance Filter
+    const waterResistanceList = normalizeArray(waterResistance);
+    if (waterResistanceList.length > 0) {
+      andConditions.push({
+        waterResistance: { $in: waterResistanceList.map(wr => new RegExp(wr, "i")) }
+      });
+    }
+
+    // Movement Filter
+    const movementList = normalizeArray(movement);
+    if (movementList.length > 0) {
+      andConditions.push({
+        movement: { $in: movementList.map(mov => new RegExp(mov, "i")) }
+      });
+    }
+
+    // Complications Filter
+    const complicationsList = normalizeArray(complications);
+    if (complicationsList.length > 0) {
+      andConditions.push({
+        complications: { $in: complicationsList.map(comp => new RegExp(comp, "i")) }
+      });
+    }
+
+    // Crystal Filter
+    const crystalList = normalizeArray(crystal);
+    if (crystalList.length > 0) {
+      andConditions.push({
+        crystal: { $in: crystalList.map(cryst => new RegExp(cryst, "i")) }
+      });
+    }
+
+    // Included Accessories Filter
+    const accessoriesList = normalizeArray(includedAccessories);
+    if (accessoriesList.length > 0) {
+      andConditions.push({
+        includedAccessories: { $in: accessoriesList.map(acc => new RegExp(acc, "i")) }
+      });
     }
 
     // ✅ Search Filter
     if (search && search.trim()) {
-      andConditions.push({ name: new RegExp(search.trim(), "i") });
+      const searchRegex = new RegExp(search.trim(), "i");
+      andConditions.push({
+        $or: [
+          { name: searchRegex },
+          { brand: searchRegex },
+          { model: searchRegex },
+          { description: searchRegex },
+          { referenceNumber: searchRegex }
+        ]
+      });
     }
 
     // ✅ Merge all AND filters
@@ -108,8 +363,23 @@ const getProducts = async (req, res) => {
       filterQuery.$and = andConditions;
     }
 
-    // ✅ Sort by recent
-    const sortObj = { createdAt: -1 };
+    // ✅ Sort configuration
+    const sortOptions = {
+      newest: { createdAt: -1 },
+      oldest: { createdAt: 1 },
+      price_low_high: { salePrice: 1 },
+      price_high_low: { salePrice: -1 },
+      name_asc: { name: 1 },
+      name_desc: { name: -1 },
+      featured: { featured: -1, createdAt: -1 },
+      rating: { rating: -1 },
+      discount: { discountPercentage: -1 }
+    };
+
+    const sortObj = sortOptions[sortBy] || { createdAt: -1 };
+    if (sortOrder === 'asc' && sortObj[Object.keys(sortObj)[0]]) {
+      sortObj[Object.keys(sortObj)[0]] = 1;
+    }
 
     // ✅ Count total
     const totalProducts = await Product.countDocuments(filterQuery);
@@ -124,14 +394,14 @@ const getProducts = async (req, res) => {
       });
     }
 
-    // ✅ Query only essential fields
+    // ✅ Query products
     const products = await Product.find(filterQuery)
       .select(
-        "brand model name sku referenceNumber serialNumber watchType scopeOfDelivery " +
-        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
-        "regularPrice salePrice stockQuantity taxStatus strapSize category caseSize includedAccessories" +
-        "condition description visibility published featured inStock " +
-        "images createdAt updatedAt"
+        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
+        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+        "condition itemCondition category description visibility published featured inStock " +
+        "badges images createdAt updatedAt waterResistance complications crystal"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -143,14 +413,14 @@ const getProducts = async (req, res) => {
     // ✅ Format response
     const formattedProducts = products.map((p) => ({
       ...p,
-      brand: p.brand || "", // ✅ Use the direct brand field
-      category: p.category || "", // ✅ corrected from `categorisOne`
-      image: p.images?.[0]?.url || "",
-      available: p.stockQuantity > 0,
-      discount:
-        p.regularPrice && p.salePrice
-          ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
-          : 0,
+      brand: p.brand || "",
+      category: p.category || "",
+      image: p.images?.find(img => img.type === 'main')?.url || p.images?.[0]?.url || "",
+      available: (p.stockQuantity > 0) || p.inStock,
+      discount: p.regularPrice && p.salePrice && p.regularPrice > p.salePrice
+        ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
+        : 0,
+      isOnSale: p.regularPrice && p.salePrice && p.regularPrice > p.salePrice
     }));
 
     res.json({
@@ -174,6 +444,9 @@ const getProducts = async (req, res) => {
     });
   }
 };
+
+
+
 
 const productHome = async (req, res) => {
   try {
@@ -293,6 +566,35 @@ const addServiceForm = async (req, res) => {
   }
 };
 
+// Subscribe to restock notifications
+
+const restockSubscribe = async (req,res)=>{
+  const { productId, email } = req.body;
+
+  if (!productId || !email) {
+    return res.status(400).json({ success: false, message: "Product and email are required" });
+  }
+
+  try {
+    // Check if already subscribed
+    const existing = await RestockSubscription.findOne({ productId, email });
+    if (existing) {
+      return res.status(400).json({ success: false, message: "Already subscribed" });
+    }
+
+    const subscription = new RestockSubscription({ productId, email });
+    await subscription.save();
+
+    res.json({ success: true, message: "Subscribed for restock notification!" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+}
+
+
+
+
 const getRecommendations = async (cartItems, limit = 4) => {
   try {
     const cartProductIds = cartItems.map((item) => item.productId);
@@ -384,43 +686,60 @@ const getAllProductwithSearch = async (req, res) => {
 const SimilarProduct = async (req, res) => {
   try {
     const { id } = req.params;
-
-    // 1️⃣ Find the main product
     const product = await Product.findById(id);
-    if (!product) {
-      return res.status(404).json({ message: "Product not found" });
-    }
 
-    // 2️⃣ Build the query using only fields that exist in your schema
-    const query = {
-      _id: { $ne: product._id }, // exclude current product
-      $or: [
-        { brand: product.brand || null },
-        { watchType: product.watchType || null },
-        { gender: product.gender || null },
-        { movement: product.movement || null },
-        { condition: product.condition || null },
-      ],
-    };
+    if (!product) return res.status(404).json({ message: "Product not found" });
 
-    // 3️⃣ Fetch similar products (limit to 10)
-    const similarProducts = await Product.find(query).limit(10);
+    const similarProducts = await Product.find({
+      _id: { $ne: product._id },
+      brand: product.brand,
+      category: product.category,
+      watchType: product.watchType,
+      gender: product.gender,
+      movement: product.movement,
+      condition: product.condition,
+    }).limit(10);
 
-    // 4️⃣ Send response
     res.status(200).json({
       success: true,
-      product,
       products: similarProducts,
     });
+
   } catch (error) {
-    console.error("Error fetching product:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
+
+
+const YouMayAlsoLike = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await Product.findById(id);
+
+    if (!product) return res.status(404).json({ message: "Product not found" });
+
+    const suggestions = await Product.find({
+      _id: { $ne: product._id },
+      category: product.category,     // broad match
+      $or: [
+        { featured: true },           // trending
+        { discount: { $gte: 5 } },    // offers
+        { brand: { $ne: product.brand } }, // DIFFERENT brand
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .limit(12);
+
+    res.status(200).json({
+      success: true,
+      products: suggestions,
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 
 module.exports = {
   getProducts,
@@ -429,5 +748,7 @@ module.exports = {
   productHome,
   getRecommendations,
   getAllProductwithSearch,
+  restockSubscribe,
   SimilarProduct,
+  YouMayAlsoLike
 };
