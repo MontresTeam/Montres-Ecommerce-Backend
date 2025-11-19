@@ -137,18 +137,18 @@ const createStripeOrder = async (req, res) => {
     `;
 
     // send to admin
-    // await sendEmail(
-    //   process.env.ADMIN_EMAIL,
-    //   "🛍️ New Order Notification",
-    //   emailHTML
-    // );
+    await sendEmail(
+      process.env.ADMIN_EMAIL,
+      "🛍️ New Order Notification",
+      emailHTML
+    );
 
-    // // send to sales email
-    // await sendEmail(
-    //   process.env.SALES_EMAIL, // make sure you define this in .env
-    //   "🛍️ New Order Notification",
-    //   emailHTML
-    // );
+    // send to sales email
+    await sendEmail(
+      process.env.SALES_EMAIL, // make sure you define this in .env
+      "🛍️ New Order Notification",
+      emailHTML
+    );
 
     // ✅ Clear the user's cart
 
@@ -193,9 +193,13 @@ const createStripeOrder = async (req, res) => {
   }
 };
 
+
+
+
 const TABBY_PUBLIC_KEY = "pk_test_0194a887-5d2c-c408-94f4-65ee1ca745e8";
 const TABBY_SECRET_KEY = "sk_test_0194a887-5d2c-c408-94f4-65eeeb1ab113";
 const TABBY_MERCHANT_CODE = "MTAE";
+
 
 const createTabbyOrder = async (req, res) => {
   try {
@@ -270,8 +274,9 @@ const createTabbyOrder = async (req, res) => {
     const order = await Order.create(orderData);
 
     const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
-    const successUrl = `${clientUrl}/paymentsuccess?orderId=${order._id}`;
-    const cancelUrl = `${clientUrl}/paymentcancel?orderId=${order._id}`;
+    const successUrl = `${clientUrl}/tabbyPayment/paymentSuccessful/?orderId=${order._id}`;
+    const cancelUrl = `${clientUrl}/tabbyPayment/paymentCancelantion/?orderId=${order._id}`;
+    const failureUrl = `${clientUrl}/tabbyPayment/paymentfailure/?orderId=${order._id}`;
 
     const tabbyItems = populatedItems.map((item) => ({
       title: item.name,
@@ -285,11 +290,11 @@ const createTabbyOrder = async (req, res) => {
         currency: "AED",
         description: `Order ${order._id}`,
         buyer: {
-          email: shippingAddress?.email || "test@example.com",
+          email: shippingAddress?.email || "otp.success@tabby.ai",
           name: `${shippingAddress?.firstName || "Test"} ${
             shippingAddress?.lastName || "User"
           }`.trim(),
-          phone: shippingAddress?.phone || "971500000000",
+          phone: shippingAddress?.phone || "+971500000001",
         },
         order: {
           reference_id: order._id.toString(),
@@ -301,7 +306,7 @@ const createTabbyOrder = async (req, res) => {
       merchant_urls: {
         success: successUrl,
         cancel: cancelUrl,
-        failure: cancelUrl,
+        failure: failureUrl,
       },
     };
 
@@ -334,6 +339,15 @@ const createTabbyOrder = async (req, res) => {
     order.tabbySessionId = response.data?.id || null;
     await order.save();
 
+        // ---------------------------------------------
+    // 6️⃣ CLEAR CART (Same as Stripe)
+    // ---------------------------------------------
+    if (req.user?.userId) {
+      await userModel.findByIdAndUpdate(req.user.userId, {
+        $set: { cart: [] },
+      });
+    }
+
     return res.status(201).json({
       success: true,
       order: order.toObject(),
@@ -345,6 +359,9 @@ const createTabbyOrder = async (req, res) => {
       .json({ status: false, message: error.response?.data || error.message });
   }
 };
+
+
+
 
 const getShippingAddresses = async (req, res) => {
   try {
@@ -375,6 +392,7 @@ const getShippingAddresses = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
 
 /**
  * Get order by ID
