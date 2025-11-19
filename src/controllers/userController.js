@@ -108,6 +108,7 @@ const Registration = async (req, res) => {
 const Login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log(email)
     if (!email || !password)
       return res.status(400).json({ message: "Email and password required" });
 
@@ -144,6 +145,7 @@ const Login = async (req, res) => {
         user: { id: user._id, name: user.name, email: user.email },
       });
   } catch (err) {
+    console.log(err,'err')
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };

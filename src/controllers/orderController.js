@@ -7,8 +7,6 @@ const stripePkg = require("stripe");
 const axios = require("axios");
 const sendEmail = require("../utils/sendEmail");
 
-
-
 const stripe = process.env.STRIPE_SECRET_KEY
   ? stripePkg(process.env.STRIPE_SECRET_KEY)
   : null;
@@ -103,7 +101,6 @@ const createStripeOrder = async (req, res) => {
 
     const order = await Order.create(orderData);
 
-
     // ✅ Send Email Notification to Admin
     const productListHTML = populatedItems
       .map(
@@ -140,18 +137,18 @@ const createStripeOrder = async (req, res) => {
     `;
 
     // send to admin
-    await sendEmail(
-      process.env.ADMIN_EMAIL,
-      "🛍️ New Order Notification",
-      emailHTML
-    );
+    // await sendEmail(
+    //   process.env.ADMIN_EMAIL,
+    //   "🛍️ New Order Notification",
+    //   emailHTML
+    // );
 
-    // send to sales email
-    await sendEmail(
-      process.env.SALES_EMAIL, // make sure you define this in .env
-      "🛍️ New Order Notification",
-      emailHTML
-    );
+    // // send to sales email
+    // await sendEmail(
+    //   process.env.SALES_EMAIL, // make sure you define this in .env
+    //   "🛍️ New Order Notification",
+    //   emailHTML
+    // );
 
     // ✅ Clear the user's cart
 
@@ -202,44 +199,112 @@ const TABBY_MERCHANT_CODE = "MTAE";
 
 const createTabbyOrder = async (req, res) => {
   try {
-    console.log("✔ Tabby checkout start");
+    const {
+      items,
+      shippingAddress,
+      billingAddress,
+      dummy = false,
+    } = req.body || {};
 
-    const subtotal = 0.99;
-    const shippingFee = 30;
-    const itemPrice = subtotal < 1 ? 1 : subtotal;
-    const total = itemPrice + shippingFee;
-    console.log(TABBY_MERCHANT_CODE);
+    let populatedItems = [];
+    if (!dummy && Array.isArray(items) && items.length > 0) {
+      populatedItems = await Promise.all(
+        items.map(async (it) => {
+          const product = await Product.findById(it.productId)
+            .select("name images salePrice")
+            .lean();
+          if (!product) throw new Error(`Product not found: ${it.productId}`);
+          return {
+            productId: product._id,
+            name: product.name,
+            image: product.images?.[0]?.url || product.images?.[0] || "",
+            price: product.salePrice || 0,
+            quantity: it.quantity || 1,
+          };
+        })
+      );
+    } else {
+      populatedItems = [
+        {
+          productId: null,
+          name: "Dummy Watch",
+          image: "",
+          price: 100,
+          quantity: 1,
+        },
+      ];
+    }
+
+    const subtotal = populatedItems.reduce(
+      (acc, item) => acc + (item.price || 0) * (item.quantity || 0),
+      0
+    );
+
+    const { shippingFee, region } = calculateShippingFee({
+      country: shippingAddress?.country || "AE",
+      subtotal,
+    });
+
+    const total = subtotal + shippingFee;
+
+    const orderData = {
+      userId: req.user?.userId,
+      items: populatedItems.map((item) => ({
+        productId: item.productId,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+      })),
+      subtotal,
+      vat: 0,
+      shippingFee,
+      total,
+      region,
+      shippingAddress,
+      billingAddress: billingAddress || shippingAddress,
+      paymentMethod: "tabby",
+      paymentStatus: "pending",
+      currency: "AED",
+    };
+
+    const order = await Order.create(orderData);
+
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+    const successUrl = `${clientUrl}/paymentsuccess?orderId=${order._id}`;
+    const cancelUrl = `${clientUrl}/paymentcancel?orderId=${order._id}`;
+
+    const tabbyItems = populatedItems.map((item) => ({
+      title: item.name,
+      quantity: item.quantity,
+      unit_price: item.price,
+    }));
 
     const tabbyPayload = {
       payment: {
-        amount: 100,
+        amount: Math.max(1, Math.round(total * 100) / 100),
         currency: "AED",
-        description: "Test order",
+        description: `Order ${order._id}`,
         buyer: {
-          email: "farhan.dev24@gmail.com",
-          name: "Muhammad shamin Farhan",
-          phone: "971556384774",
+          email: shippingAddress?.email || "test@example.com",
+          name: `${shippingAddress?.firstName || "Test"} ${
+            shippingAddress?.lastName || "User"
+          }`.trim(),
+          phone: shippingAddress?.phone || "971500000000",
         },
         order: {
-          reference_id: "ORDER123",
-          items: [
-            {
-              title: "Luxury Watch",
-              quantity: 1,
-              unit_price: 100,
-            },
-          ],
+          reference_id: order._id.toString(),
+          items: tabbyItems,
         },
       },
-      merchant_code: "MTAE",
+      merchant_code: TABBY_MERCHANT_CODE,
       lang: "en",
       merchant_urls: {
-        success: "https://your-store/success",
-        cancel: "https://your-store/cancel",
-        failure: "https://your-store/failure",
+        success: successUrl,
+        cancel: cancelUrl,
+        failure: cancelUrl,
       },
     };
-    console.log("hello reunning");
+
     const response = await axios.post(
       "https://api.tabby.ai/api/v2/checkout",
       tabbyPayload,
@@ -250,32 +315,36 @@ const createTabbyOrder = async (req, res) => {
         },
       }
     );
-    console.log("hello reunning");
+    const config = response.data?.configuration;
 
-    console.log("✔ Tabby response:", response.data);
-
-   
+    // Extract installments array properly
     const installments =
-      response.data?.configuration?.available_products?.installments;
+      config?.products?.installments?.installments ||
+      config?.available_products?.installments ||
+      [];
 
-    if (!installments?.length) {
-      return res.json({ status: false, message: "No installment options" });
+    if (!Array.isArray(installments) || installments.length === 0) {
+      return res
+        .status(400)
+        .json({ status: false, message: "No installment options" });
     }
 
     const paymentUrl = installments[0]?.web_url;
-    console.log("➡ Payment URL:", paymentUrl);
 
-    return res.json({ paymentUrl, installments });
-  } catch (error) {
-    console.error("❌ Tabby Error:", error.response?.data || error.message);
+    order.tabbySessionId = response.data?.id || null;
+    await order.save();
 
-    return res.status(500).json({
-      status: false,
-      message: error.response?.data || error.message,
+    return res.status(201).json({
+      success: true,
+      order: order.toObject(),
+      checkoutUrl: paymentUrl,
     });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ status: false, message: error.response?.data || error.message });
   }
-}
-
+};
 
 const getShippingAddresses = async (req, res) => {
   try {
