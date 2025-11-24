@@ -1,7 +1,6 @@
 const Product = require("../models/product");
 const notifyRestock = require("../utils/notifyRestock"); // Restock notification utility
 
-
 const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -30,7 +29,6 @@ const deleteProduct = async (req, res) => {
     });
   }
 };
-
 
 const addProduct = async (req, res) => {
   try {
@@ -79,7 +77,10 @@ const addProduct = async (req, res) => {
 
     if (parseBoolean(productData.unknownYear)) {
       productionYearValue = "Unknown";
-    } else if (parseBoolean(productData.approximateYear) && productionYearValue) {
+    } else if (
+      parseBoolean(productData.approximateYear) &&
+      productionYearValue
+    ) {
       productionYearValue = `Approx. ${productionYearValue}`;
     }
 
@@ -143,7 +144,7 @@ const addProduct = async (req, res) => {
       salePrice: parseNumber(productData.salePrice),
       taxStatus: productData.taxStatus || "taxable",
       stockQuantity: stockQuantity,
-      
+
       // 🔥 FIX: Auto-calculated inStock
       inStock: inStock,
 
@@ -175,7 +176,7 @@ const addProduct = async (req, res) => {
     const savedProduct = await newProduct.save();
 
     const response = await Product.findById(savedProduct._id).select(
-        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
+      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
         "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition category description visibility published featured inStock " +
@@ -209,9 +210,9 @@ const updateProduct = async (req, res) => {
 
     const product = await Product.findById(id);
     if (!product) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Product not found" 
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
       });
     }
 
@@ -265,7 +266,7 @@ const updateProduct = async (req, res) => {
     if (req.body.stockQuantity !== undefined) {
       stockQuantity = parseInteger(req.body.stockQuantity);
     }
-    
+
     // Auto-calculate inStock - if stockQuantity is provided, use it to determine inStock
     // Otherwise, if inStock is explicitly provided, use that
     let inStock;
@@ -283,67 +284,137 @@ const updateProduct = async (req, res) => {
       ...(req.body.model && { model: req.body.model }),
       name: productName,
       ...(req.body.sku !== undefined && { sku: req.body.sku }),
-      ...(req.body.referenceNumber !== undefined && { referenceNumber: req.body.referenceNumber }),
-      ...(req.body.serialNumber !== undefined && { serialNumber: req.body.serialNumber }),
-      ...(req.body.additionalTitle !== undefined && { additionalTitle: req.body.additionalTitle }),
-      ...(req.body.watchType !== undefined && { watchType: req.body.watchType }),
-      ...(req.body.watchStyle !== undefined && { watchStyle: req.body.watchStyle }),
-      ...(req.body.scopeOfDelivery !== undefined && { scopeOfDelivery: req.body.scopeOfDelivery }),
-      ...(req.body.includedAccessories !== undefined && { 
-        includedAccessories: parseJSON(req.body.includedAccessories) 
+      ...(req.body.referenceNumber !== undefined && {
+        referenceNumber: req.body.referenceNumber,
+      }),
+      ...(req.body.serialNumber !== undefined && {
+        serialNumber: req.body.serialNumber,
+      }),
+      ...(req.body.additionalTitle !== undefined && {
+        additionalTitle: req.body.additionalTitle,
+      }),
+      ...(req.body.watchType !== undefined && {
+        watchType: req.body.watchType,
+      }),
+      ...(req.body.watchStyle !== undefined && {
+        watchStyle: req.body.watchStyle,
+      }),
+      ...(req.body.scopeOfDelivery !== undefined && {
+        scopeOfDelivery: req.body.scopeOfDelivery,
+      }),
+      ...(req.body.includedAccessories !== undefined && {
+        includedAccessories: parseJSON(req.body.includedAccessories),
       }),
       ...(req.body.category !== undefined && { category: req.body.category }),
 
       // ────────────── CONDITION INFORMATION ──────────────
-      ...(req.body.condition !== undefined && { condition: req.body.condition }),
-      ...(req.body.itemCondition !== undefined && { itemCondition: req.body.itemCondition }),
+      ...(req.body.condition !== undefined && {
+        condition: req.body.condition,
+      }),
+      ...(req.body.itemCondition !== undefined && {
+        itemCondition: req.body.itemCondition,
+      }),
 
       // ────────────── ITEM FEATURES ──────────────
-      ...(req.body.productionYear !== undefined && { productionYear: req.body.productionYear }),
-      ...(req.body.approximateYear !== undefined && { approximateYear: parseBoolean(req.body.approximateYear) }),
-      ...(req.body.unknownYear !== undefined && { unknownYear: parseBoolean(req.body.unknownYear) }),
+      ...(req.body.productionYear !== undefined && {
+        productionYear: req.body.productionYear,
+      }),
+      ...(req.body.approximateYear !== undefined && {
+        approximateYear: parseBoolean(req.body.approximateYear),
+      }),
+      ...(req.body.unknownYear !== undefined && {
+        unknownYear: parseBoolean(req.body.unknownYear),
+      }),
       ...(req.body.gender !== undefined && { gender: req.body.gender }),
       ...(req.body.movement !== undefined && { movement: req.body.movement }),
-      ...(req.body.dialColor !== undefined && { dialColor: req.body.dialColor }),
-      ...(req.body.caseMaterial !== undefined && { caseMaterial: req.body.caseMaterial }),
-      ...(req.body.strapMaterial !== undefined && { strapMaterial: req.body.strapMaterial }),
+      ...(req.body.dialColor !== undefined && {
+        dialColor: req.body.dialColor,
+      }),
+      ...(req.body.caseMaterial !== undefined && {
+        caseMaterial: req.body.caseMaterial,
+      }),
+      ...(req.body.strapMaterial !== undefined && {
+        strapMaterial: req.body.strapMaterial,
+      }),
 
       // ────────────── ADDITIONAL INFORMATION ──────────────
-      ...(req.body.strapColor !== undefined && { strapColor: req.body.strapColor }),
-      ...(req.body.badges !== undefined && { badges: parseJSON(req.body.badges) }),
-      ...(req.body.strapSize !== undefined && { strapSize: parseNumber(req.body.strapSize) }),
-      ...(req.body.caseSize !== undefined && { caseSize: parseNumber(req.body.caseSize) }),
-      ...(req.body.caseColor !== undefined && { caseColor: req.body.caseColor }),
+      ...(req.body.strapColor !== undefined && {
+        strapColor: req.body.strapColor,
+      }),
+      ...(req.body.badges !== undefined && {
+        badges: parseJSON(req.body.badges),
+      }),
+      ...(req.body.strapSize !== undefined && {
+        strapSize: parseNumber(req.body.strapSize),
+      }),
+      ...(req.body.caseSize !== undefined && {
+        caseSize: parseNumber(req.body.caseSize),
+      }),
+      ...(req.body.caseColor !== undefined && {
+        caseColor: req.body.caseColor,
+      }),
       ...(req.body.crystal !== undefined && { crystal: req.body.crystal }),
-      ...(req.body.bezelMaterial !== undefined && { bezelMaterial: req.body.bezelMaterial }),
-      ...(req.body.dialNumerals !== undefined && { dialNumerals: req.body.dialNumerals }),
+      ...(req.body.bezelMaterial !== undefined && {
+        bezelMaterial: req.body.bezelMaterial,
+      }),
+      ...(req.body.dialNumerals !== undefined && {
+        dialNumerals: req.body.dialNumerals,
+      }),
       ...(req.body.caliber !== undefined && { caliber: req.body.caliber }),
-      ...(req.body.powerReserve !== undefined && { powerReserve: parseNumber(req.body.powerReserve) }),
-      ...(req.body.jewels !== undefined && { jewels: parseInteger(req.body.jewels) }),
-      ...(req.body.functions !== undefined && { functions: parseJSON(req.body.functions) }),
-      ...(req.body.replacementParts !== undefined && { replacementParts: parseJSON(req.body.replacementParts) }),
+      ...(req.body.powerReserve !== undefined && {
+        powerReserve: parseNumber(req.body.powerReserve),
+      }),
+      ...(req.body.jewels !== undefined && {
+        jewels: parseInteger(req.body.jewels),
+      }),
+      ...(req.body.functions !== undefined && {
+        functions: parseJSON(req.body.functions),
+      }),
+      ...(req.body.replacementParts !== undefined && {
+        replacementParts: parseJSON(req.body.replacementParts),
+      }),
 
       // ────────────── PRICING & INVENTORY ──────────────
-      ...(req.body.regularPrice !== undefined && { regularPrice: parseNumber(req.body.regularPrice) }),
-      ...(req.body.salePrice !== undefined && { salePrice: parseNumber(req.body.salePrice) }),
-      ...(req.body.taxStatus !== undefined && { taxStatus: req.body.taxStatus }),
-      ...(req.body.stockQuantity !== undefined && { stockQuantity: stockQuantity }),
-      
+      ...(req.body.regularPrice !== undefined && {
+        regularPrice: parseNumber(req.body.regularPrice),
+      }),
+      ...(req.body.salePrice !== undefined && {
+        salePrice: parseNumber(req.body.salePrice),
+      }),
+      ...(req.body.taxStatus !== undefined && {
+        taxStatus: req.body.taxStatus,
+      }),
+      ...(req.body.stockQuantity !== undefined && {
+        stockQuantity: stockQuantity,
+      }),
+
       // 🔥 FIX: Auto-calculated inStock
       inStock: inStock,
 
       // ────────────── DESCRIPTION & META ──────────────
-      ...(req.body.description !== undefined && { description: req.body.description }),
-      ...(req.body.visibility !== undefined && { visibility: req.body.visibility }),
+      ...(req.body.description !== undefined && {
+        description: req.body.description,
+      }),
+      ...(req.body.visibility !== undefined && {
+        visibility: req.body.visibility,
+      }),
 
       // ────────────── SEO FIELDS ──────────────
       ...(req.body.seoTitle !== undefined && { seoTitle: req.body.seoTitle }),
-      ...(req.body.seoDescription !== undefined && { seoDescription: req.body.seoDescription }),
-      ...(req.body.seoKeywords !== undefined && { seoKeywords: parseJSON(req.body.seoKeywords) }),
+      ...(req.body.seoDescription !== undefined && {
+        seoDescription: req.body.seoDescription,
+      }),
+      ...(req.body.seoKeywords !== undefined && {
+        seoKeywords: parseJSON(req.body.seoKeywords),
+      }),
 
       // ────────────── CORE PRODUCT INFO ──────────────
-      ...(req.body.published !== undefined && { published: parseBoolean(req.body.published) }),
-      ...(req.body.featured !== undefined && { featured: parseBoolean(req.body.featured) }),
+      ...(req.body.published !== undefined && {
+        published: parseBoolean(req.body.published),
+      }),
+      ...(req.body.featured !== undefined && {
+        featured: parseBoolean(req.body.featured),
+      }),
       // inStock: inStock, // Already set above
 
       // ────────────── MEDIA ──────────────
@@ -351,28 +422,29 @@ const updateProduct = async (req, res) => {
 
       // ────────────── META & ATTRIBUTES ──────────────
       ...(req.body.meta !== undefined && { meta: req.body.meta }),
-      ...(req.body.attributes !== undefined && { attributes: req.body.attributes }),
+      ...(req.body.attributes !== undefined && {
+        attributes: req.body.attributes,
+      }),
 
       // ────────────── TRACKING ──────────────
       updatedAt: new Date(),
     };
 
     // Remove undefined fields
-    Object.keys(updatedFields).forEach(key => {
+    Object.keys(updatedFields).forEach((key) => {
       if (updatedFields[key] === undefined) delete updatedFields[key];
     });
 
     // Update product in DB
-    const updatedProduct = await Product.findByIdAndUpdate(
-      id,
-      updatedFields,
-      { new: true, runValidators: true }
-    ).select(
+    const updatedProduct = await Product.findByIdAndUpdate(id, updatedFields, {
+      new: true,
+      runValidators: true,
+    }).select(
       "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
-      "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
-      "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
-      "condition itemCondition description visibility published featured inStock category " +
-      "badges images createdAt updatedAt"
+        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
+        "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+        "condition itemCondition description visibility published featured inStock category " +
+        "badges images createdAt updatedAt"
     );
 
     // ────────────── TRIGGER RESTOCK NOTIFICATIONS ──────────────
@@ -403,10 +475,6 @@ const updateProduct = async (req, res) => {
     });
   }
 };
-// Update product stock (admin)
-
-
-
 
 module.exports = {
   addProduct,
