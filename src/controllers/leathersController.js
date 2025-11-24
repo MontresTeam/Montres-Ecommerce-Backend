@@ -2,69 +2,221 @@ const Product = require("../models/product");
 
 
 
-const getLetherProducts = async (req, res) => {
-
+// Get All Leather Goods
+const getAllLeatherGoods = async (req, res) => {
   try {
-    const { id, page = 1, limit = 15, subcatory } = req.query;
-    const { category } = req.params;
-    const categorisOne = "leather";
+    const { 
+      page = 1, 
+      limit = 16,
+      sortBy = "newest",
+      // Filter parameters
+      category,
+      subCategory,
+      brand,
+      color,
+      material,
+      condition,
+      gender,
+      hardware,
+      interiorMaterial,
+      availability,
+      style,
+      size,
+      compartment,
+      minPrice,
+      maxPrice,
+      // Search
+      search
+    } = req.query;
 
-    // ✅ Base filter
-    let filter = { categorisOne };
-    console.log(categorisOne,category,subcatory)
+    // ✅ Base filter - only leather goods
+    let filter = { categorisOne: "leather" };
 
-    // ✅ If main category provided (like "classic", "sports", etc.)
-    if (category) {
-      filter.subcategory = { $in: [category] };
+    // ✅ Category filter (from URL params or query)
+    if (req.params.category && req.params.category !== 'All') {
+      filter.category = req.params.category;
+    } else if (category) {
+      // Also support category from query params
+      if (Array.isArray(category)) {
+        filter.category = { $in: category };
+      } else {
+        filter.category = category;
+      }
     }
 
-    // ✅ If subcatory query param also provided
-    // if (subcatory) {
-    //   filter.subcategory = { $in: [subcatory] };
-    // }
-
-    // ✅ If searching by product ID
-    if (id) {
-      const product = await Product.findById(id);
-
-      if (!product) {
-        return res.status(404).json({ message: "❌ Product not found" });
+    // ✅ Subcategory filter
+    if (subCategory) {
+      if (Array.isArray(subCategory)) {
+        filter.leatherSubCategory = { $in: subCategory };
+      } else {
+        filter.leatherSubCategory = subCategory;
       }
-
-      if (product.categorisOne !== categorisOne) {
-        return res.status(400).json({ message: "❌ Product is not a watch" });
-      }
-
-      return res.json(product);
     }
+
+    // ✅ Brand filter
+    if (brand) {
+      if (Array.isArray(brand)) {
+        filter.brand = { $in: brand };
+      } else {
+        filter.brand = brand;
+      }
+    }
+
+    // ✅ Color filter (using dialColor field)
+    if (color) {
+      if (Array.isArray(color)) {
+        filter.dialColor = { $in: color };
+      } else {
+        filter.dialColor = color;
+      }
+    }
+
+    // ✅ Material filter
+    if (material) {
+      if (Array.isArray(material)) {
+        filter.leatherMaterial = { $in: material };
+      } else {
+        filter.leatherMaterial = material;
+      }
+    }
+
+    // ✅ Condition filter
+    if (condition) {
+      if (Array.isArray(condition)) {
+        filter.condition = { $in: condition };
+      } else {
+        filter.condition = condition;
+      }
+    }
+
+    // ✅ Gender filter
+    if (gender) {
+      if (Array.isArray(gender)) {
+        filter.gender = { $in: gender };
+      } else {
+        filter.gender = gender;
+      }
+    }
+
+    // ✅ Hardware filter
+    if (hardware) {
+      if (Array.isArray(hardware)) {
+        filter.hardwareColor = { $in: hardware };
+      } else {
+        filter.hardwareColor = hardware;
+      }
+    }
+
+    // ✅ Interior Material filter
+    if (interiorMaterial) {
+      if (Array.isArray(interiorMaterial)) {
+        filter.interiorMaterial = { $in: interiorMaterial };
+      } else {
+        filter.interiorMaterial = interiorMaterial;
+      }
+    }
+
+    // ✅ Availability filter
+    if (availability) {
+      const availabilityFilter = [];
+      
+      if (Array.isArray(availability)) {
+        availability.forEach(avail => {
+          if (avail === 'in_stock') availabilityFilter.push(true);
+          if (avail === 'out_of_stock') availabilityFilter.push(false);
+        });
+      } else {
+        if (availability === 'in_stock') availabilityFilter.push(true);
+        if (availability === 'out_of_stock') availabilityFilter.push(false);
+      }
+      
+      if (availabilityFilter.length > 0) {
+        filter.inStock = { $in: availabilityFilter };
+      }
+    }
+
+    // ✅ Price range filter
+    if (minPrice || maxPrice) {
+      filter.salePrice = {};
+      if (minPrice) filter.salePrice.$gte = parseInt(minPrice);
+      if (maxPrice) filter.salePrice.$lte = parseInt(maxPrice);
+    }
+
+    // ✅ Search filter
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { brand: { $regex: search, $options: 'i' } },
+        { model: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    console.log("Leather goods filter:", filter);
 
     // ✅ Convert pagination numbers
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
 
+    // ✅ Build sort object
+    let sortOptions = {};
+    switch (sortBy) {
+      case 'price_low_high':
+        sortOptions = { salePrice: 1 };
+        break;
+      case 'price_high_low':
+        sortOptions = { salePrice: -1 };
+        break;
+      case 'newest':
+        sortOptions = { createdAt: -1 };
+        break;
+      case 'premium':
+        // Sort by brand prestige or price high to low
+        sortOptions = { salePrice: -1 };
+        break;
+      case 'rating':
+        // If you have rating field
+        sortOptions = { rating: -1 };
+        break;
+      case 'discount':
+        // Calculate discount percentage and sort
+        sortOptions = { 
+          $expr: { 
+            $subtract: [
+              { $divide: [{ $subtract: ["$regularPrice", "$salePrice"] }, "$regularPrice"] },
+              1
+            ]
+          } 
+        };
+        break;
+      default:
+        sortOptions = { createdAt: -1 };
+    }
+
     // ✅ Count total products
     const totalProducts = await Product.countDocuments(filter);
 
-
     // ✅ Fetch paginated products
     const products = await Product.find(filter)
+      .sort(sortOptions)
       .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
+      .limit(limitNum)
+      .select('-__v'); // Exclude version key
 
     return res.json({
       totalProducts,
       totalPages: Math.ceil(totalProducts / limitNum),
       currentPage: pageNum,
-      products,
+      products: products.map(product => product.toObject()),
     });
   } catch (err) {
+    console.error("Error fetching leather goods:", err);
     res.status(500).json({
-      message: "❌ Error fetching watches",
+      message: "❌ Error fetching leather goods",
       error: err.message,
     });
   }
 };
-
 
 // ---------------- Add Leather Goods ----------------
 const addLeathergoods = async (req, res) => {
@@ -366,4 +518,4 @@ const updateLeathergoods = async (req, res) => {
   }
 };
 
-module.exports = { getLetherProducts, addLeathergoods, updateLeathergoods };
+module.exports = { getAllLeatherGoods, addLeathergoods, updateLeathergoods };
