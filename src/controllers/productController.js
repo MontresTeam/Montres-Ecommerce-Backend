@@ -446,6 +446,38 @@ const getProducts = async (req, res) => {
 };
 
 
+const getBrandWatches = async (req, res) => {
+  try {
+    const { brand } = req.params;
+
+    // Find all watches for the brand
+    const products = await Product.find({
+      brand: { $regex: new RegExp(`^${brand}$`, 'i') }, // case-insensitive
+      category: "Watch" // only watches
+    });
+
+    if (!products || products.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No watches found for brand: ${brand}`,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};
+
 
 
 const productHome = async (req, res) => {
@@ -750,5 +782,6 @@ module.exports = {
   getAllProductwithSearch,
   restockSubscribe,
   SimilarProduct,
-  YouMayAlsoLike
+  YouMayAlsoLike,
+  getBrandWatches
 };

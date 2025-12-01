@@ -20,12 +20,95 @@ const {
 
 // Leather Goods specific enums
 const LEATHER_MAIN_CATEGORIES = [
-  "Hand Bag", "Wallet", "Card Holder", "Belt", "Briefcase", "Pouch"
+  "Bag",
+  "Wallet",
+  "Card Holder",
+  "Briefcase",
+  "Clutch Bag",
+  "Pouch"
 ];
 
 const LEATHER_SUB_CATEGORIES = [
-  "Tote Bag", "Crossbody Bag", "shoulder/crossbody bag", "Shoulder Bag", 
-  "Clutch", "Backpack", "Passport Holder", "Reversible Belt", "Executive Case"
+  "Tote Bag",
+  "Crossbody Bag",
+  "Card Holder",
+  "Shoulder/Crossbody Bag",
+  "Shoulder Bag",
+  "Clutch",
+  "Backpack",
+  "Hand Bag",
+  "Coin Purse",
+  "Key Holder",
+  "Travel Bag",
+  "Pouch",
+  "Long Bi-Fold Wallet",
+  "Reversible Belt",
+  "Business Bag"
+];
+
+// Accessory specific enums
+const ACCESSORY_CATEGORIES = [
+  "Writing Instruments",
+  "Cufflinks",
+  "Bracelets",
+  "Keychains & Charms",
+  "Travel & Lifestyle",
+  "Home Accessories",
+  "Sunglasses / Eyewear Accessories",
+];
+
+const ACCESSORY_SUB_CATEGORIES = [
+  // Writing Instruments
+  "Fountain Pens",
+  "Ballpoint Pens",
+  "Rollerball Pens",
+  "Mechanical Pencils",
+  "Pen Sets",
+  // Cufflinks
+  "Metal Cufflinks",
+  "Enamel Cufflinks",
+  // Add more accessory subcategories as needed
+];
+
+const ACCESSORY_MATERIALS = [
+  "Stainless Steel",
+  "Leather",
+  "Resin",
+  "Silver",
+  "Gold",
+  "Platinum",
+  "Titanium",
+  "Brass",
+  "Copper",
+  "Ceramic",
+  "Wood",
+  "Fabric",
+  "Plastic",
+  "Crystal",
+  "Pearl",
+  "Enamel",
+];
+
+const ACCESSORY_COLORS = [
+  "Black",
+  "White",
+  "Silver",
+  "Gold",
+  "Rose Gold",
+  "Brown",
+  "Blue",
+  "Red",
+  "Green",
+  "Purple",
+  "Pink",
+  "Yellow",
+  "Orange",
+  "Gray",
+  "Multi-color",
+  "Transparent",
+  "Metallic",
+  "Chrome",
+  "Gunmetal",
 ];
 
 const LEATHER_MATERIALS = [
@@ -76,8 +159,8 @@ const sizeSchema = new mongoose.Schema(
 const productSchema = new mongoose.Schema(
   {
     // ────────────── BASIC INFORMATION ──────────────
-    brand: { type: String, required: true },
-    model: { type: String, required: true },
+    brand: { type: String },
+    model: { type: String },
     sku: { type: String },
     referenceNumber: { type: String },
     serialNumber: { type: String },
@@ -97,6 +180,50 @@ const productSchema = new mongoose.Schema(
       required: true,
     },
     
+    // ────────────── ACCESSORY SPECIFIC FIELDS ──────────────
+    accessoryCategory: {
+      type: String,
+      enum: ACCESSORY_CATEGORIES,
+    },
+    accessorySubCategory: {
+      type: String,
+      enum: ACCESSORY_SUB_CATEGORIES,
+    },
+    accessoryName: { type: String },
+    accessoryMaterial: {
+      type: [String],
+      enum: ACCESSORY_MATERIALS,
+    },
+    accessoryColor: {
+      type: [String],
+      enum: ACCESSORY_COLORS,
+    },
+    accessoryDelivery: {
+      type: [String],
+      enum: [
+        "Original box",
+        "Dust bag",
+        "Certificate of authenticity",
+        "Care instructions",
+        "Warranty card",
+        "Gift box",
+        "User manual",
+        "Extra links",
+        "Cleaning cloth",
+        "Adjustment tools",
+      ],
+    },
+    accessoryScopeOfDelivery: {
+      type: [String],
+      enum: [
+        "Original packaging",
+        "With papers",
+        "Without papers",
+        "Original box only",
+        "Generic packaging",
+      ],
+    },
+
     // ────────────── WATCH SPECIFIC FIELDS ──────────────
     watchType: {
       type: String,
@@ -137,7 +264,7 @@ const productSchema = new mongoose.Schema(
       type: String,
       enum: HARDWARE_COLORS,
     },
-    name:{type:String},
+    name: { type: String },
     conditionNotes: { type: String },
     leatherSize: sizeSchema,
     strapLength: { type: Number },
@@ -248,8 +375,8 @@ const productSchema = new mongoose.Schema(
     // ────────────── PRICING & INVENTORY ──────────────
     regularPrice: { type: Number, default: 0 },
     salePrice: { type: Number, default: 0 },
-    retailPrice: { type: Number }, // For leather goods
-    sellingPrice: { type: Number }, // For leather goods
+    retailPrice: { type: Number },
+    sellingPrice: { type: Number },
     taxStatus: {
       type: String,
       enum: ["taxable", "shipping", "none"],
@@ -313,6 +440,8 @@ productSchema.index({ watchType: 1 });
 productSchema.index({ watchStyle: 1 });
 productSchema.index({ leatherMainCategory: 1 });
 productSchema.index({ leatherSubCategory: 1 });
+productSchema.index({ accessoryCategory: 1 });
+productSchema.index({ accessorySubCategory: 1 });
 productSchema.index({ gender: 1 });
 productSchema.index({ condition: 1 });
 productSchema.index({ itemCondition: 1 });
@@ -322,6 +451,9 @@ productSchema.index({ updatedAt: -1 });
 // Array Field Indexes
 productSchema.index({ includedAccessories: 1 });
 productSchema.index({ leatherAccessories: 1 });
+productSchema.index({ accessoryDelivery: 1 });
+productSchema.index({ accessoryMaterial: 1 });
+productSchema.index({ accessoryColor: 1 });
 productSchema.index({ functions: 1 });
 productSchema.index({ replacementParts: 1 });
 productSchema.index({ seoKeywords: 1 });
@@ -362,6 +494,19 @@ productSchema.index({
   published: 1,
 });
 
+// Accessory specific indexes
+productSchema.index({
+  category: 1,
+  accessoryCategory: 1,
+  published: 1,
+});
+
+productSchema.index({
+  category: 1,
+  accessorySubCategory: 1,
+  published: 1,
+});
+
 // Watch specific indexes
 productSchema.index({
   category: 1,
@@ -378,6 +523,7 @@ productSchema.index({
 // Search and filter combinations
 productSchema.index({
   name: "text",
+  accessoryName: "text",
   category: 1,
   published: 1,
 });
@@ -421,6 +567,7 @@ productSchema.index({
 productSchema.index(
   {
     name: "text",
+    accessoryName: "text",
     brand: "text",
     model: "text",
     description: "text",
@@ -433,6 +580,7 @@ productSchema.index(
     name: "product_search_index",
     weights: {
       name: 10,
+      accessoryName: 10,
       brand: 8,
       model: 8,
       sku: 8,
@@ -488,8 +636,18 @@ productSchema.virtual("originalPrice").get(function () {
 
 // Pre-save middleware to generate name if not provided
 productSchema.pre("save", function (next) {
-  if (!this.name && this.brand && this.model) {
-    this.name = `${this.brand} ${this.model}`;
+  // Generate name if not provided
+  if (!this.name) {
+    if (this.brand && this.model) {
+      this.name = `${this.brand} ${this.model}`;
+    } else if (this.accessoryName) {
+      this.name = this.accessoryName;
+    }
+  }
+  
+  // For accessories, ensure accessoryName is set
+  if (this.category === "Accessories" && !this.accessoryName && this.name) {
+    this.accessoryName = this.name;
   }
   
   // Sync pricing for leather goods
@@ -512,7 +670,13 @@ productSchema.methods.getCategoryFields = function() {
     model: this.model,
     sku: this.sku,
     category: this.category,
-    // ... other common fields
+    name: this.name,
+    regularPrice: this.regularPrice,
+    salePrice: this.salePrice,
+    stockQuantity: this.stockQuantity,
+    inStock: this.inStock,
+    condition: this.condition,
+    images: this.images,
   };
   
   if (this.category === "Watch") {
@@ -521,7 +685,7 @@ productSchema.methods.getCategoryFields = function() {
       watchType: this.watchType,
       movement: this.movement,
       caseSize: this.caseSize,
-      // ... other watch fields
+      watchStyle: this.watchStyle,
     };
   }
   
@@ -531,11 +695,42 @@ productSchema.methods.getCategoryFields = function() {
       leatherMainCategory: this.leatherMainCategory,
       leatherMaterial: this.leatherMaterial,
       leatherSize: this.leatherSize,
-      // ... other leather goods fields
+      retailPrice: this.retailPrice,
+      sellingPrice: this.sellingPrice,
+    };
+  }
+  
+  if (this.category === "Accessories") {
+    return {
+      ...baseFields,
+      accessoryCategory: this.accessoryCategory,
+      accessorySubCategory: this.accessorySubCategory,
+      accessoryName: this.accessoryName,
+      accessoryMaterial: this.accessoryMaterial,
+      accessoryColor: this.accessoryColor,
+      productionYear: this.productionYear,
     };
   }
   
   return baseFields;
+};
+
+// Static method to find accessories
+productSchema.statics.findAccessories = function(query = {}) {
+  return this.find({ 
+    category: "Accessories",
+    ...query,
+    published: true 
+  });
+};
+
+// Static method to find accessories by category
+productSchema.statics.findAccessoriesByCategory = function(category) {
+  return this.find({ 
+    category: "Accessories",
+    accessoryCategory: category,
+    published: true 
+  });
 };
 
 module.exports = mongoose.model("Product", productSchema, "products");

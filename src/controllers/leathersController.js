@@ -518,4 +518,159 @@ const updateLeathergoods = async (req, res) => {
   }
 };
 
-module.exports = { getAllLeatherGoods, addLeathergoods, updateLeathergoods };
+
+const getLeatherBags = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 16,
+      sortBy = "newest",
+      minPrice,
+      maxPrice,
+      brand,
+      color,
+      material,
+      leatherType,
+      size,
+      subCategory,
+      condition,
+      gender,
+      availability,
+      // Add other filter parameters as needed
+    } = req.query;
+
+    // Build filter object
+    const filter = {
+      leatherMainCategory: "Bag"
+    };
+
+    // Price filter
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = parseFloat(minPrice);
+      if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
+    }
+
+    // Array filters (brand, color, material, etc.)
+    if (brand) {
+      filter.brand = Array.isArray(brand) ? { $in: brand } : brand;
+    }
+
+    if (color) {
+      filter.color = Array.isArray(color) ? { $in: color } : color;
+    }
+
+    if (material) {
+      filter.material = Array.isArray(material) ? { $in: material } : material;
+    }
+
+    if (leatherType) {
+      filter.leatherType = Array.isArray(leatherType) ? { $in: leatherType } : leatherType;
+    }
+
+    if (size) {
+      filter.size = Array.isArray(size) ? { $in: size } : size;
+    }
+
+    if (subCategory) {
+      filter.subCategory = Array.isArray(subCategory) ? { $in: subCategory } : subCategory;
+    }
+
+    if (condition) {
+      filter.condition = Array.isArray(condition) ? { $in: condition } : condition;
+    }
+
+    if (gender) {
+      filter.gender = Array.isArray(gender) ? { $in: gender } : gender;
+    }
+
+    // Availability filter
+    if (availability) {
+      const availabilityArray = Array.isArray(availability) ? availability : [availability];
+      if (availabilityArray.includes('In Stock') && availabilityArray.includes('Sold Out')) {
+        // Show all products
+      } else if (availabilityArray.includes('In Stock')) {
+        filter.inStock = true;
+      } else if (availabilityArray.includes('Sold Out')) {
+        filter.inStock = false;
+      }
+    }
+
+    console.log("Database filter:", JSON.stringify(filter, null, 2));
+
+    // Sort options
+    let sortOptions = {};
+    switch (sortBy) {
+      case "price_low_high":
+        sortOptions = { price: 1 };
+        break;
+      case "price_high_low":
+        sortOptions = { price: -1 };
+        break;
+      case "newest":
+        sortOptions = { createdAt: -1 };
+        break;
+      case "rating":
+        sortOptions = { rating: -1 };
+        break;
+      case "discount":
+        sortOptions = { discount: -1 };
+        break;
+      case "premium":
+        sortOptions = { isPremium: -1 };
+        break;
+      default:
+        sortOptions = { createdAt: -1 };
+    }
+
+    // Calculate pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Execute query with pagination
+    const products = await Product.find(filter)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limitNum);
+
+    // Get total count for pagination
+    const totalProducts = await Product.countDocuments(filter);
+    const totalPages = Math.ceil(totalProducts / limitNum);
+
+    if (!products || products.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No leather bags found matching your criteria",
+        data: {
+          products: [],
+          totalPages: 0,
+          currentPage: pageNum,
+          totalProducts: 0
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        products,
+        totalPages,
+        currentPage: pageNum,
+        totalProducts,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1
+      }
+    });
+
+  } catch (error) {
+    console.error("Error fetching leather bags:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Server Error",
+      error: error.message 
+    });
+  }
+};
+
+module.exports = { getAllLeatherGoods, addLeathergoods, updateLeathergoods,getLeatherBags };
