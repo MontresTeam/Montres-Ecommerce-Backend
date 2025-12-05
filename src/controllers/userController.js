@@ -597,6 +597,8 @@ const updateCart = async (req, res) => {
   }
 };
 
+
+
 // getrecommed products
 const recommendationsProduct = async (req, res) => {
   try {

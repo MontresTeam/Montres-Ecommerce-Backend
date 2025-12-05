@@ -105,7 +105,7 @@ const addProduct = async (req, res) => {
       watchStyle: productData.watchStyle || "",
 
       // 🔥 FIXED: ARRAY ENUM FIELD MUST BE PARSED
-      scopeOfDelivery: parseJSON(productData.scopeOfDelivery),
+      scopeOfDeliveryWatch: parseJSON(productData.scopeOfDeliveryWatch),
 
       includedAccessories: parseJSON(productData.includedAccessories),
       category: productData.category,
@@ -176,7 +176,7 @@ const addProduct = async (req, res) => {
     const savedProduct = await newProduct.save();
 
     const response = await Product.findById(savedProduct._id).select(
-      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
+      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDeliveryWatch " +
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
         "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition category description visibility published featured inStock " +
@@ -299,8 +299,8 @@ const updateProduct = async (req, res) => {
       ...(req.body.watchStyle !== undefined && {
         watchStyle: req.body.watchStyle,
       }),
-      ...(req.body.scopeOfDelivery !== undefined && {
-        scopeOfDelivery: req.body.scopeOfDelivery,
+      ...(req.body.scopeOfDeliveryWatch !== undefined && {
+        scopeOfDeliveryWatch: req.body.scopeOfDeliveryWatch,
       }),
       ...(req.body.includedAccessories !== undefined && {
         includedAccessories: parseJSON(req.body.includedAccessories),
@@ -440,7 +440,7 @@ const updateProduct = async (req, res) => {
       new: true,
       runValidators: true,
     }).select(
-      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
+      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDeliveryWatch " +
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
         "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition description visibility published featured inStock category " +

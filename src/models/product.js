@@ -25,7 +25,7 @@ const LEATHER_MAIN_CATEGORIES = [
   "Card Holder",
   "Briefcase",
   "Clutch Bag",
-  "Pouch"
+  "Pouch",
 ];
 
 const LEATHER_SUB_CATEGORIES = [
@@ -43,7 +43,7 @@ const LEATHER_SUB_CATEGORIES = [
   "Pouch",
   "Long Bi-Fold Wallet",
   "Reversible Belt",
-  "Business Bag"
+  "Business Bag",
 ];
 
 // Accessory specific enums
@@ -64,45 +64,42 @@ const ACCESSORY_SUB_CATEGORIES = {
     "Ballpoint Pens",
     "Rollerball Pens",
     "Mechanical Pencils",
-    "Pen Sets"
+    "Pen Sets",
   ],
-  "Cufflinks": [
-    "Metal Cufflinks",
-    "Enamel Cufflinks"
-  ],
-  "Bracelets": [
+  Cufflinks: ["Metal Cufflinks", "Enamel Cufflinks"],
+  Bracelets: [
     "Leather Bracelets",
     "Metal Bracelets",
     "Beaded Bracelets",
     "Chain Bracelets",
-    "Charm Bracelets"
+    "Charm Bracelets",
   ],
   "Keychains & Charms": [
     "Keychains",
     "Bag Charms",
     "Luggage Tags",
-    "Carabiners"
+    "Carabiners",
   ],
   "Travel & Lifestyle": [
     "Travel Wallets",
     "Passport Covers",
     "Luggage Straps",
     "Tech Organizers",
-    "Portable Ashtrays"
+    "Portable Ashtrays",
   ],
   "Home Accessories": [
     "Desk Organizers",
     "Bookends",
     "Candle Holders",
     "Decorative Trays",
-    "Coasters"
+    "Coasters",
   ],
   "Sunglasses / Eyewear Accessories": [
     "Sunglasses",
     "Eyeglass Chains",
     "Eyeglass Cases",
-    "Lens Cleaning Kits"
-  ]
+    "Lens Cleaning Kits",
+  ],
 };
 
 // Flatten all subcategories
@@ -150,22 +147,53 @@ const ACCESSORY_COLORS = [
 ];
 
 const LEATHER_MATERIALS = [
-  "Full-grain leather", "Top-grain leather", "Genuine leather", "Suede",
-  "Patent leather", "Saffiano leather", "Croc-embossed", "Pebble leather",
-  "Canvas + Leather mix", "Vegan Leather (PU)", "Leather", "Fabric"
+  "Full-grain leather",
+  "Top-grain leather",
+  "Genuine leather",
+  "Suede",
+  "Patent leather",
+  "Saffiano leather",
+  "Croc-embossed",
+  "Pebble leather",
+  "Canvas + Leather mix",
+  "Vegan Leather (PU)",
+  "Leather",
+  "Fabric",
 ];
 
 const INTERIOR_MATERIALS = [
-  "Fabric", "Canvas", "Leather", "Suede", "Microfiber", "Textile", "Nylon",
-  "Polyester", "Felt", "Satin", "Silk", "Cotton", "Wool Blend", "Alcantara"
+  "Fabric",
+  "Canvas",
+  "Leather",
+  "Suede",
+  "Microfiber",
+  "Textile",
+  "Nylon",
+  "Polyester",
+  "Felt",
+  "Satin",
+  "Silk",
+  "Cotton",
+  "Wool Blend",
+  "Alcantara",
 ];
 
 const HARDWARE_COLORS = [
-  "Gold", "Rose Gold", "Silver", "Platinum", "Chrome", "Gunmetal", 
-  "Black Metal", "Brass", "Matte Gold", "Matte Silver", "Ruthenium", 
-  "Palladium", "Antique Gold", "Antique Silver"
+  "Gold",
+  "Rose Gold",
+  "Silver",
+  "Platinum",
+  "Chrome",
+  "Gunmetal",
+  "Black Metal",
+  "Brass",
+  "Matte Gold",
+  "Matte Silver",
+  "Ruthenium",
+  "Palladium",
+  "Antique Gold",
+  "Antique Silver",
 ];
-
 
 const LEATHER_GOODS_SCOPE_OF_DELIVERY = [
   "Original packaging",
@@ -174,9 +202,8 @@ const LEATHER_GOODS_SCOPE_OF_DELIVERY = [
   "Only bag",
   "With papers",
   "Original box only",
-  "Dust bag"
+  "Dust bag",
 ];
-
 
 const attributeSchema = new mongoose.Schema(
   {
@@ -209,13 +236,13 @@ const sizeSchema = new mongoose.Schema(
 const productSchema = new mongoose.Schema(
   {
     // ==================== COMMON FIELDS FOR ALL PRODUCTS ====================
-    
+
     // ────────────── BASIC IDENTIFICATION ──────────────
     name: { type: String },
     brand: { type: String },
     model: { type: String },
     sku: { type: String },
-    
+
     // ────────────── CATEGORY INFORMATION ──────────────
     category: {
       type: String,
@@ -230,15 +257,15 @@ const productSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    
+
     // ────────────── PRICING & INVENTORY ──────────────
-    regularPrice: { 
-      type: Number, 
+    regularPrice: {
+      type: Number,
       default: 0,
       min: 0,
     },
-    salePrice: { 
-      type: Number, 
+    salePrice: {
+      type: Number,
       default: 0,
       min: 0,
     },
@@ -247,22 +274,22 @@ const productSchema = new mongoose.Schema(
       enum: ["taxable", "shipping", "none"],
       default: "taxable",
     },
-    stockQuantity: { 
-      type: Number, 
+    stockQuantity: {
+      type: Number,
       default: 0,
       min: 0,
     },
-    inStock: { 
-      type: Boolean, 
+    inStock: {
+      type: Boolean,
       default: true,
       index: true,
     },
-    sold: { 
-      type: Number, 
+    sold: {
+      type: Number,
       default: 0,
       min: 0,
     },
-    
+
     // ────────────── CONDITION INFORMATION ──────────────
     condition: {
       type: String,
@@ -273,12 +300,12 @@ const productSchema = new mongoose.Schema(
       enum: ITEM_CONDITIONS,
     },
     conditionNotes: { type: String },
-    
+
     // ────────────── YEAR INFORMATION ──────────────
     productionYear: { type: String },
     approximateYear: { type: Boolean, default: false },
     unknownYear: { type: Boolean, default: false },
-    
+
     // ────────────── DEMOGRAPHICS ──────────────
     gender: {
       type: String,
@@ -286,47 +313,49 @@ const productSchema = new mongoose.Schema(
       default: "Men/Unisex",
       index: true,
     },
-    
+
     // ────────────── COLOR INFORMATION ──────────────
     color: {
       type: String,
       enum: COLORS,
     },
-    
+
     // ────────────── TAGS & BADGES ──────────────
     badges: {
       type: [String],
       enum: ["Popular", "New Arrivals"],
       default: [],
     },
-    
+
     // ────────────── DESCRIPTION & SEO ──────────────
     description: { type: String },
     seoTitle: { type: String },
     seoDescription: { type: String },
-    seoKeywords: [{ 
-      type: String,
-      index: true,
-    }],
-    
+    seoKeywords: [
+      {
+        type: String,
+        index: true,
+      },
+    ],
+
     // ────────────── STATUS & VISIBILITY ──────────────
-    published: { 
-      type: Boolean, 
+    published: {
+      type: Boolean,
       default: true,
       index: true,
     },
-    featured: { 
-      type: Boolean, 
+    featured: {
+      type: Boolean,
       default: false,
       index: true,
     },
-    
+
     // ────────────── MEDIA ──────────────
     images: [imageSchema],
-    
+
     // ────────────── ATTRIBUTES ──────────────
     attributes: [attributeSchema],
-    
+
     // ==================== WATCH SPECIFIC FIELDS ====================
     watchType: {
       type: String,
@@ -338,16 +367,20 @@ const productSchema = new mongoose.Schema(
       enum: WATCHSTYLE_CATEGORY,
       index: true,
     },
-    scopeOfDelivery: [{
-      type: String,
-      enum: SCOPE_OF_DELIVERY_OPTIONS,
-      index: true,
-    }],
-    includedAccessories: [{
-      type: String,
-      enum: INCLUDE_ACCESSORIES,
-      index: true,
-    }],
+    scopeOfDeliveryWatch: [
+      {
+        type: String,
+        enum: SCOPE_OF_DELIVERY_OPTIONS,
+        index: true,
+      },
+    ],
+    includedAccessories: [
+      {
+        type: String,
+        enum: INCLUDE_ACCESSORIES,
+        index: true,
+      },
+    ],
     movement: {
       type: String,
       enum: MOVEMENTS,
@@ -364,7 +397,7 @@ const productSchema = new mongoose.Schema(
       type: String,
       enum: COLORS,
     },
-    caseSize: { 
+    caseSize: {
       type: Number,
       min: 0,
     },
@@ -376,7 +409,7 @@ const productSchema = new mongoose.Schema(
       type: String,
       enum: COLORS,
     },
-    strapSize: { 
+    strapSize: {
       type: Number,
       min: 0,
     },
@@ -393,25 +426,29 @@ const productSchema = new mongoose.Schema(
       enum: DIALNUMERALS,
     },
     caliber: { type: String },
-    powerReserve: { 
+    powerReserve: {
       type: Number,
       min: 0,
     },
-    jewels: { 
+    jewels: {
       type: Number,
       min: 0,
     },
-    functions: [{
-      type: String,
-      enum: ALL_FUNCTIONS,
-      index: true,
-    }],
-    replacementParts: [{
-      type: String,
-      enum: REPLACEMENT_PARTS,
-      index: true,
-    }],
-    
+    functions: [
+      {
+        type: String,
+        enum: ALL_FUNCTIONS,
+        index: true,
+      },
+    ],
+    replacementParts: [
+      {
+        type: String,
+        enum: REPLACEMENT_PARTS,
+        index: true,
+      },
+    ],
+
     // ==================== LEATHER GOODS SPECIFIC FIELDS ====================
     leatherMainCategory: {
       type: String,
@@ -426,7 +463,7 @@ const productSchema = new mongoose.Schema(
     modelCode: { type: String },
     serialNumber: { type: String },
     additionalTitle: { type: String },
-    referenceNumber:{type:String},
+    referenceNumber: { type: String },
     leatherMaterial: {
       type: String,
       enum: LEATHER_MATERIALS,
@@ -440,7 +477,7 @@ const productSchema = new mongoose.Schema(
       enum: HARDWARE_COLORS,
     },
     leatherSize: sizeSchema,
-    strapLength: { 
+    strapLength: {
       type: Number,
       min: 0,
     },
@@ -462,19 +499,14 @@ const productSchema = new mongoose.Schema(
       index: true,
     },
 
+    scopeOfDelivery: [
+      {
+        type: String,
+        enum: LEATHER_GOODS_SCOPE_OF_DELIVERY,
+        index: true,
+      },
+    ],
 
-  scopeOfDelivery: [
-  {
-    type: String,
-    enum: LEATHER_GOODS_SCOPE_OF_DELIVERY,
-    index: true
-  }
-],
-
-
-
-
-    
     // ==================== ACCESSORY SPECIFIC FIELDS ====================
     accessoryCategory: {
       type: String,
@@ -528,49 +560,76 @@ const productSchema = new mongoose.Schema(
   {
     timestamps: true,
     collection: "products",
-    toJSON: { 
+
+    toJSON: {
       virtuals: true,
       transform: function (doc, ret) {
-    if (typeof doc._cleanResponseByCategory === "function") {
-      doc._cleanResponseByCategory(ret);
-    }
+        // Run custom cleaner if it exists
+        if (typeof doc._cleanResponseByCategory === "function") {
+          doc._cleanResponseByCategory(ret);
+        }
 
-        // Always remove these
+        // Always remove __v
         delete ret.__v;
-        delete ret._id;
-        
+
+        // Convert _id → id for frontend (BEST PRACTICE)
+        if (ret._id) {
+          ret.id = ret._id.toString();
+        }
+
+        // ❗ Do NOT delete _id — populate & relations need it
         return ret;
-      }
+      },
     },
-    toObject: { virtuals: true },
+
+    toObject: {
+      virtuals: true,
+      transform: function (doc, ret) {
+        // Run custom cleaner if it exists
+        if (typeof doc._cleanResponseByCategory === "function") {
+          doc._cleanResponseByCategory(ret);
+        }
+
+        // Always remove __v
+        delete ret.__v;
+
+        // Convert _id → id for frontend
+        if (ret._id) {
+          ret.id = ret._id.toString();
+        }
+
+        // ❗ Do NOT delete _id
+        return ret;
+      },
+    },
   }
 );
 
 // Clean response by category
-productSchema.methods._cleanResponseByCategory = function(ret) {
+productSchema.methods._cleanResponseByCategory = function (ret) {
   const category = ret.category;
-  
+
   // For Leather Goods
   if (category === "Leather Goods" || category === "Leather Bags") {
     this._removeWatchFields(ret);
     this._removeAccessoryFields(ret);
     return;
   }
-  
+
   // For Watches
   if (category === "Watch") {
     this._removeLeatherGoodsFields(ret);
     this._removeAccessoryFields(ret);
     return;
   }
-  
+
   // For Accessories
   if (category === "Accessories") {
     this._removeWatchFields(ret);
     this._removeLeatherGoodsFields(ret);
     return;
   }
-  
+
   // For Jewellery and Gold (remove all other category fields)
   this._removeWatchFields(ret);
   this._removeLeatherGoodsFields(ret);
@@ -578,36 +637,61 @@ productSchema.methods._cleanResponseByCategory = function(ret) {
 };
 
 // Helper methods to remove category-specific fields
-productSchema.methods._removeWatchFields = function(ret) {
+productSchema.methods._removeWatchFields = function (ret) {
   const watchFields = [
-    'watchType', 'watchStyle', 'scopeOfDelivery', 'includedAccessories',
-    'movement', 'caseMaterial', 'strapMaterial', 'dialColor', 'caseSize',
-    'caseColor', 'strapColor', 'strapSize', 'crystal', 'bezelMaterial',
-    'dialNumerals', 'caliber', 'powerReserve', 'jewels', 'functions',
-    'replacementParts', 
+    "watchType",
+    "watchStyle",
+    "scopeOfDelivery",
+    "includedAccessories",
+    "movement",
+    "caseMaterial",
+    "strapMaterial",
+    "dialColor",
+    "caseSize",
+    "caseColor",
+    "strapColor",
+    "strapSize",
+    "crystal",
+    "bezelMaterial",
+    "dialNumerals",
+    "caliber",
+    "powerReserve",
+    "jewels",
+    "functions",
+    "replacementParts",
   ];
-  
-  watchFields.forEach(field => delete ret[field]);
+
+  watchFields.forEach((field) => delete ret[field]);
 };
 
-productSchema.methods._removeLeatherGoodsFields = function(ret) {
+productSchema.methods._removeLeatherGoodsFields = function (ret) {
   const leatherFields = [
-    'leatherMainCategory', 'leatherSubCategory', 'modelCode',
-    'leatherMaterial', 'interiorMaterial', 'hardwareColor',
-    'leatherSize', 'strapLength', 'leatherAccessories'
+    "leatherMainCategory",
+    "leatherSubCategory",
+    "modelCode",
+    "leatherMaterial",
+    "interiorMaterial",
+    "hardwareColor",
+    "leatherSize",
+    "strapLength",
+    "leatherAccessories",
   ];
-  
-  leatherFields.forEach(field => delete ret[field]);
+
+  leatherFields.forEach((field) => delete ret[field]);
 };
 
-productSchema.methods._removeAccessoryFields = function(ret) {
+productSchema.methods._removeAccessoryFields = function (ret) {
   const accessoryFields = [
-    'accessoryCategory', 'accessorySubCategory', 'accessoryName',
-    'accessoryMaterial', 'accessoryColor', 'accessoryDelivery',
-    'accessoryScopeOfDelivery'
+    "accessoryCategory",
+    "accessorySubCategory",
+    "accessoryName",
+    "accessoryMaterial",
+    "accessoryColor",
+    "accessoryDelivery",
+    "accessoryScopeOfDelivery",
   ];
-  
-  accessoryFields.forEach(field => delete ret[field]);
+
+  accessoryFields.forEach((field) => delete ret[field]);
 };
 
 // ==================== VIRTUAL FIELDS ====================
@@ -619,8 +703,14 @@ productSchema.virtual("isOnSale").get(function () {
 
 // Calculate discount percentage
 productSchema.virtual("discountPercentage").get(function () {
-  if (this.salePrice > 0 && this.salePrice < this.regularPrice && this.regularPrice > 0) {
-    return Math.round(((this.regularPrice - this.salePrice) / this.regularPrice) * 100);
+  if (
+    this.salePrice > 0 &&
+    this.salePrice < this.regularPrice &&
+    this.regularPrice > 0
+  ) {
+    return Math.round(
+      ((this.regularPrice - this.salePrice) / this.regularPrice) * 100
+    );
   }
   return 0;
 });
@@ -642,81 +732,81 @@ productSchema.pre("save", function (next) {
   // Generate name if not provided
   if (!this.name) {
     const nameParts = [];
-    
+
     if (this.brand) nameParts.push(this.brand);
     if (this.model) nameParts.push(this.model);
-    
+
     // For accessories, use accessory name
     if (this.category === "Accessories" && this.accessoryName) {
       this.name = this.accessoryName;
     } else if (nameParts.length > 0) {
-      this.name = nameParts.join(' ');
+      this.name = nameParts.join(" ");
     }
   }
-  
+
   // Ensure sale price is set if not provided
   if (this.salePrice === undefined || this.salePrice === 0) {
     this.salePrice = this.regularPrice;
   }
-  
+
   // For leather goods, ensure color field is populated
-  if ((this.category === "Leather Goods" || this.category === "Leather Bags") && !this.color) {
+  if (
+    (this.category === "Leather Goods" || this.category === "Leather Bags") &&
+    !this.color
+  ) {
     // If there's a dialColor (from old data), use it
     if (this.dialColor) {
       this.color = this.dialColor;
     }
   }
-  
+
   next();
 });
 
 // ==================== STATIC METHODS ====================
 
 // Find products by category
-productSchema.statics.findByCategory = function(category, query = {}) {
-  return this.find({ 
+productSchema.statics.findByCategory = function (category, query = {}) {
+  return this.find({
     category,
     published: true,
-    ...query 
+    ...query,
   });
 };
 
 // Find leather goods
-productSchema.statics.findLeatherGoods = function(query = {}) {
-  return this.find({ 
-    $or: [
-      { category: "Leather Goods" },
-      { category: "Leather Bags" }
-    ],
+productSchema.statics.findLeatherGoods = function (query = {}) {
+  return this.find({
+    $or: [{ category: "Leather Goods" }, { category: "Leather Bags" }],
     published: true,
-    ...query 
+    ...query,
   });
 };
 
 // Find accessories
-productSchema.statics.findAccessories = function(query = {}) {
-  return this.find({ 
+productSchema.statics.findAccessories = function (query = {}) {
+  return this.find({
     category: "Accessories",
     published: true,
-    ...query 
+    ...query,
   });
 };
 
 // Find watches
-productSchema.statics.findWatches = function(query = {}) {
-  return this.find({ 
+productSchema.statics.findWatches = function (query = {}) {
+  return this.find({
     category: "Watch",
     published: true,
-    ...query 
+    ...query,
   });
 };
 
 // ==================== INSTANCE METHODS ====================
 
 // Get category-specific data
-productSchema.methods.getCategoryData = function() {
+productSchema.methods.getCategoryData = function () {
   const baseData = {
-    id: this._id,
+    id: this._id ? this._id.toString() : this.id,
     name: this.name,
     brand: this.brand,
     model: this.model,
@@ -731,7 +821,7 @@ productSchema.methods.getCategoryData = function() {
     inStock: this.inStock,
     stockQuantity: this.stockQuantity,
   };
-  
+
   switch (this.category) {
     case "Leather Goods":
     case "Leather Bags":
@@ -745,7 +835,7 @@ productSchema.methods.getCategoryData = function() {
         leatherSize: this.leatherSize,
         productionYear: this.productionYear,
       };
-      
+
     case "Watch":
       return {
         ...baseData,
@@ -756,7 +846,7 @@ productSchema.methods.getCategoryData = function() {
         dialColor: this.dialColor,
         caseMaterial: this.caseMaterial,
       };
-      
+
     case "Accessories":
       return {
         ...baseData,
@@ -766,7 +856,7 @@ productSchema.methods.getCategoryData = function() {
         accessoryMaterial: this.accessoryMaterial,
         accessoryColor: this.accessoryColor,
       };
-      
+
     default:
       return baseData;
   }
@@ -785,29 +875,29 @@ productSchema.index({ regularPrice: 1, published: 1 });
 
 // Category-specific compound indexes
 // Leather Goods
-productSchema.index({ 
-  category: 1, 
-  leatherMainCategory: 1, 
-  published: 1 
+productSchema.index({
+  category: 1,
+  leatherMainCategory: 1,
+  published: 1,
 });
-productSchema.index({ 
-  category: 1, 
-  leatherSubCategory: 1, 
-  published: 1 
+productSchema.index({
+  category: 1,
+  leatherSubCategory: 1,
+  published: 1,
 });
 
 // Watches
-productSchema.index({ 
-  category: 1, 
-  watchType: 1, 
-  published: 1 
+productSchema.index({
+  category: 1,
+  watchType: 1,
+  published: 1,
 });
 
 // Accessories
-productSchema.index({ 
-  category: 1, 
-  accessoryCategory: 1, 
-  published: 1 
+productSchema.index({
+  category: 1,
+  accessoryCategory: 1,
+  published: 1,
 });
 
 // Text search index

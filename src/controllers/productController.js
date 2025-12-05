@@ -397,7 +397,7 @@ const getProducts = async (req, res) => {
     // ✅ Query products
     const products = await Product.find(filterQuery)
       .select(
-        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
+        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery scopeOfDeliveryWatch " +
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
         "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition category description visibility published featured inStock " +

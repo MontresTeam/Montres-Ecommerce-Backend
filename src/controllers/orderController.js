@@ -365,17 +365,20 @@ const createTabbyOrder = async (req, res) => {
 
 const getShippingAddresses = async (req, res) => {
   try {
-    // Fetch only the shippingAddress field from all orders
-    const orders = await Order.find()
-      .select("shippingAddress userId total createdAt") // pick fields you need
-      .lean(); // return plain JSON objects
+    // Assuming req.user.id contains the currently logged-in user's ID
+    const userId = req.user.id;
 
-    // Optionally, remove duplicates by country + city or full address
+    // Fetch only this user's orders
+    const orders = await Order.find({ userId })
+      .select("shippingAddress createdAt")
+      .lean();
+
+    // Remove duplicates if needed
     const uniqueAddresses = [];
     const map = new Map();
 
     orders.forEach((order) => {
-      const key = JSON.stringify(order.shippingAddress); // can adjust for country/city
+      const key = JSON.stringify(order.shippingAddress);
       if (!map.has(key)) {
         map.set(key, true);
         uniqueAddresses.push(order.shippingAddress);
