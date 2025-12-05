@@ -6,9 +6,9 @@ const mongoose = require("mongoose");
 // ============================================
 const getAccessoriesProducts = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 15, 
+    const {
+      page = 1,
+      limit = 15,
       category,
       subcategory,
       brand,
@@ -24,7 +24,7 @@ const getAccessoriesProducts = async (req, res) => {
       inStock,
       featured,
       badges,
-      published = true
+      published = true,
     } = req.query;
 
     // Base filter - only accessories
@@ -32,7 +32,7 @@ const getAccessoriesProducts = async (req, res) => {
 
     // Filter by published status (default: true)
     if (published !== undefined) {
-      filter.published = published === 'true';
+      filter.published = published === "true";
     }
 
     // Filter by accessory category
@@ -47,7 +47,7 @@ const getAccessoriesProducts = async (req, res) => {
 
     // Filter by brand
     if (brand) {
-      filter.brand = { $regex: brand, $options: 'i' };
+      filter.brand = { $regex: brand, $options: "i" };
     }
 
     // Price range filtering
@@ -56,9 +56,9 @@ const getAccessoriesProducts = async (req, res) => {
         { salePrice: {} },
         { regularPrice: {} },
         { retailPrice: {} },
-        { sellingPrice: {} }
+        { sellingPrice: {} },
       ];
-      
+
       if (minPrice) {
         const minPriceNum = parseFloat(minPrice);
         filter.$or[0].salePrice.$gte = minPriceNum;
@@ -66,14 +66,14 @@ const getAccessoriesProducts = async (req, res) => {
         filter.$or[2].retailPrice.$gte = minPriceNum;
         filter.$or[3].sellingPrice.$gte = minPriceNum;
       }
-      
+
       if (maxPrice) {
         const maxPriceNum = parseFloat(maxPrice);
         if (!filter.$or[0].salePrice.$gte) filter.$or[0].salePrice = {};
         if (!filter.$or[1].regularPrice.$gte) filter.$or[1].regularPrice = {};
         if (!filter.$or[2].retailPrice.$gte) filter.$or[2].retailPrice = {};
         if (!filter.$or[3].sellingPrice.$gte) filter.$or[3].sellingPrice = {};
-        
+
         filter.$or[0].salePrice.$lte = maxPriceNum;
         filter.$or[1].regularPrice.$lte = maxPriceNum;
         filter.$or[2].retailPrice.$lte = maxPriceNum;
@@ -93,7 +93,9 @@ const getAccessoriesProducts = async (req, res) => {
 
     // Filter by material (array field)
     if (material) {
-      filter.accessoryMaterial = { $in: Array.isArray(material) ? material : [material] };
+      filter.accessoryMaterial = {
+        $in: Array.isArray(material) ? material : [material],
+      };
     }
 
     // Filter by color (array field)
@@ -103,12 +105,12 @@ const getAccessoriesProducts = async (req, res) => {
 
     // Filter by inStock status
     if (inStock !== undefined) {
-      filter.inStock = inStock === 'true';
+      filter.inStock = inStock === "true";
     }
 
     // Filter by featured status
     if (featured !== undefined) {
-      filter.featured = featured === 'true';
+      filter.featured = featured === "true";
     }
 
     // Filter by badges
@@ -119,20 +121,28 @@ const getAccessoriesProducts = async (req, res) => {
     // Text search across multiple fields
     if (search) {
       filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { accessoryName: { $regex: search, $options: 'i' } },
-        { brand: { $regex: search, $options: 'i' } },
-        { model: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { sku: { $regex: search, $options: 'i' } }
+        { name: { $regex: search, $options: "i" } },
+        { accessoryName: { $regex: search, $options: "i" } },
+        { brand: { $regex: search, $options: "i" } },
+        { model: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { sku: { $regex: search, $options: "i" } },
       ];
     }
 
     // Sorting
     const sortOptions = {};
-    const validSortFields = ['createdAt', 'updatedAt', 'name', 'salePrice', 'regularPrice', 'sellingPrice', 'retailPrice'];
-    const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
-    sortOptions[sortField] = sortOrder === 'asc' ? 1 : -1;
+    const validSortFields = [
+      "createdAt",
+      "updatedAt",
+      "name",
+      "salePrice",
+      "regularPrice",
+      "sellingPrice",
+      "retailPrice",
+    ];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+    sortOptions[sortField] = sortOrder === "asc" ? 1 : -1;
 
     // Pagination
     const pageNum = parseInt(page, 10);
@@ -144,7 +154,9 @@ const getAccessoriesProducts = async (req, res) => {
 
     // Get products with pagination and sorting
     const products = await Product.find(filter)
-      .select('name accessoryName accessoryCategory accessorySubCategory brand model images salePrice regularPrice retailPrice sellingPrice stockQuantity inStock condition itemCondition badges featured published createdAt updatedAt')
+      .select(
+        "name accessoryName accessoryCategory accessorySubCategory brand model images salePrice regularPrice retailPrice sellingPrice stockQuantity inStock condition itemCondition badges featured published createdAt updatedAt"
+      )
       .skip(skip)
       .limit(limitNum)
       .sort(sortOptions);
@@ -153,13 +165,19 @@ const getAccessoriesProducts = async (req, res) => {
     const categoryAggregation = await Product.aggregate([
       { $match: { category: "Accessories", published: true } },
       { $group: { _id: "$accessoryCategory", count: { $sum: 1 } } },
-      { $sort: { _id: 1 } }
+      { $sort: { _id: 1 } },
     ]);
 
     const brandAggregation = await Product.aggregate([
-      { $match: { category: "Accessories", published: true, brand: { $ne: null } } },
+      {
+        $match: {
+          category: "Accessories",
+          published: true,
+          brand: { $ne: null },
+        },
+      },
       { $group: { _id: "$brand", count: { $sum: 1 } } },
-      { $sort: { _id: 1 } }
+      { $sort: { _id: 1 } },
     ]);
 
     const priceRangeAggregation = await Product.aggregate([
@@ -178,14 +196,14 @@ const getAccessoriesProducts = async (req, res) => {
                     $cond: [
                       { $and: [{ $gt: ["$regularPrice", 0] }] },
                       "$regularPrice",
-                      "$retailPrice"
-                    ]
-                  }
-                ]
-              }
-            ]
-          }
-        }
+                      "$retailPrice",
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
       },
       {
         $bucket: {
@@ -195,10 +213,10 @@ const getAccessoriesProducts = async (req, res) => {
           output: {
             count: { $sum: 1 },
             minPrice: { $min: "$price" },
-            maxPrice: { $max: "$price" }
-          }
-        }
-      }
+            maxPrice: { $max: "$price" },
+          },
+        },
+      },
     ]);
 
     res.json({
@@ -211,8 +229,8 @@ const getAccessoriesProducts = async (req, res) => {
       filters: {
         categories: categoryAggregation,
         brands: brandAggregation,
-        priceRanges: priceRangeAggregation
-      }
+        priceRanges: priceRangeAggregation,
+      },
     });
   } catch (err) {
     console.error("Error fetching accessories:", err);
@@ -234,19 +252,19 @@ const getAccessoryById = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid accessory ID format"
+        message: "Invalid accessory ID format",
       });
     }
 
     const product = await Product.findOne({
       _id: id,
-      category: "Accessories"
+      category: "Accessories",
     });
 
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: "Accessory not found"
+        message: "Accessory not found",
       });
     }
 
@@ -258,20 +276,21 @@ const getAccessoryById = async (req, res) => {
       $or: [
         { accessoryCategory: product.accessoryCategory },
         { brand: product.brand },
-        { accessorySubCategory: product.accessorySubCategory }
-      ]
+        { accessorySubCategory: product.accessorySubCategory },
+      ],
     })
-    .limit(4)
-    .select('name accessoryName accessoryCategory brand images salePrice sellingPrice regularPrice retailPrice');
+      .limit(4)
+      .select(
+        "name accessoryName accessoryCategory brand images salePrice sellingPrice regularPrice retailPrice"
+      );
 
     res.status(200).json({
       success: true,
       data: {
         accessory: product,
-        relatedAccessories
-      }
+        relatedAccessories,
+      },
     });
-
   } catch (error) {
     console.error("Error fetching accessory by ID:", error);
     res.status(500).json({
@@ -283,213 +302,237 @@ const getAccessoryById = async (req, res) => {
 };
 
 // ============================================
-// CREATE NEW ACCESSORY
-// ============================================
+// CREATE NEW ACCESSORY (UNIFIED LOGIC VERSION)
+// MATCHES addProduct BEHAVIOR
 const createAccessory = async (req, res) => {
   try {
-    const {
-      // Basic info 
-      brand,
-      model,
-      name,
-      sku,
-      referenceNumber,
-      serialNumber,
-      additionalTitle,
+    // Extract data from FormData - handle both formats
+    let data;
     
-      // Category info
-      accessoryCategory,
-      accessorySubCategory,
+    // If data comes from FormData as a JSON string in "data" field
+    if (req.body.data) {
+      console.log("Data received in 'data' field:", req.body.data);
       
-      // Year info
-      productionYear,
-      approximateYear,
-      unknownYear,
-      
-      // Condition info
-      condition,
-      itemCondition,
-      
-      // Specifications
-      accessoryMaterial,
-      accessoryColor,
-      gender,
-      
-      // Delivery & Accessories
-      accessoryDelivery,
-      accessoryScopeOfDelivery,
-      
-      // Pricing
-      retailPrice,
-      sellingPrice,
-      taxStatus = "taxable",
-      
-      // Inventory
-      stockQuantity = 0,
-      inStock,
-      
-      // Marketing
-      badges = [],
-      featured = false,
-      
-      // Media
-      images,
-      
-      // SEO
-      seoTitle,
-      seoDescription,
-      seoKeywords,
-      
-      // Content
-      description,
-      
-      // Visibility
-      visibility = "visible",
-      published = true,
-      
-      // Meta fields
-      meta
-    } = req.body;
-
-    // Validation
-    if (!accessoryCategory) {
-      return res.status(400).json({
-        success: false,
-        message: "Accessory category is required",
-      });
-    }
-
-    if (!brand && !name) {
-      return res.status(400).json({
-        success: false,
-        message: "Either brand or name is required",
-      });
-    }
-
-    // Check for duplicate SKU if provided
-    if (sku) {
-      const existingProduct = await Product.findOne({ sku, category: "Accessories" });
-      if (existingProduct) {
+      try {
+        // Parse the JSON string from FormData
+        data = typeof req.body.data === 'string' 
+          ? JSON.parse(req.body.data) 
+          : req.body.data;
+      } catch (parseError) {
+        console.error("Error parsing JSON data:", parseError);
         return res.status(400).json({
           success: false,
-          message: "SKU already exists for another accessory"
+          message: "Invalid JSON data format"
+        });
+      }
+    } else {
+      // If data comes directly (not using FormData)
+      data = req.body;
+    }
+    
+    console.log("Parsed data:", JSON.stringify(data, null, 2));
+    
+    // -----------------------------
+    // Helpers
+    // -----------------------------
+    const parseJSON = (field) => {
+      if (!field) return [];
+      try {
+        return typeof field === "string" ? JSON.parse(field) : field;
+      } catch {
+        return Array.isArray(field) ? field : [field];
+      }
+    };
+
+    const parseNumber = (v) => {
+      if (v === "" || v === null || v === undefined) return 0;
+      const num = parseFloat(v);
+      return isNaN(num) ? 0 : num;
+    };
+    
+    const parseIntNum = (v) => {
+      if (v === "" || v === null || v === undefined) return 0;
+      const num = parseInt(v);
+      return isNaN(num) ? 0 : num;
+    };
+    
+    const parseBoolean = (v) => {
+      if (v === "true" || v === true || v === 1) return true;
+      if (v === "false" || v === false || v === 0) return false;
+      return Boolean(v);
+    };
+
+    const safeArray = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+
+    const parseCondition = (value) => {
+      if (!value) return "";
+      if (Array.isArray(value)) return value[0] || "";
+      if (typeof value === "string" && value.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed[0] : parsed;
+        } catch {
+          return value;
+        }
+      }
+      return value;
+    };
+
+    // -----------------------------
+    // 1. REQUIRED FIELDS VALIDATION
+    // -----------------------------
+    console.log("Brand value:", data.brand);
+    console.log("Model value:", data.model);
+    
+    if (!data.brand || data.brand.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Brand is required.",
+      });
+    }
+
+    if (!data.model || data.model.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Model is required.",
+      });
+    }
+
+    // -----------------------------
+    // 2. SKU VALIDATION (unique inside category)
+    // -----------------------------
+    if (data.sku && data.sku.trim() !== "") {
+      const exists = await Product.findOne({
+        sku: data.sku.trim(),
+        category: "Accessories",
+      });
+
+      if (exists) {
+        return res.status(400).json({
+          success: false,
+          message: "SKU already exists for another accessory.",
         });
       }
     }
 
-    // Handle unknownYear logic
-    let finalProductionYear = productionYear;
-    if (unknownYear === true) {
-      finalProductionYear = "unknown";
+    // -----------------------------
+    // 3. PRODUCT NAME
+    // -----------------------------
+    const productName = data.name?.trim() 
+      ? data.name.trim()
+      : `${data.brand.trim()} ${data.model.trim()}`.trim();
+
+    // -----------------------------
+    // 4. PRODUCTION YEAR LOGIC
+    // -----------------------------
+    let productionYearValue = data.productionYear || "";
+
+    if (parseBoolean(data.unknownYear)) {
+      productionYearValue = "Unknown";
+    } else if (parseBoolean(data.approximateYear) && productionYearValue) {
+      productionYearValue = `Approx. ${productionYearValue}`;
     }
 
-    // Generate name if not provided
-    const productName = name || `${brand} ${model || ''}`.trim();
+    // -----------------------------
+    // 5. STOCK LOGIC
+    // -----------------------------
+    const stockQuantity = parseIntNum(data.stockQuantity) || 1;
+    const inStock = parseBoolean(data.inStock ?? (stockQuantity > 0));
 
-    // Determine inStock status
-    const stockStatus = inStock !== undefined ? inStock : (stockQuantity > 0);
+    // -----------------------------
+    // 6. SAFE ARRAYS
+    // -----------------------------
+    const finalMaterial = safeArray(parseJSON(data.accessoryMaterial));
+    const finalColor = safeArray(parseJSON(data.accessoryColor));
+    const finalDelivery = safeArray(parseJSON(data.accessoryDelivery));
+    const finalScope = safeArray(parseJSON(data.accessoryScopeOfDelivery));
+    const finalBadges = [...new Set(safeArray(parseJSON(data.badges)))];
+    const finalImages = safeArray(data.images || []);
 
-    // Create new product as accessory
-    const newProduct = new Product({
-      // Core product info
+    // -----------------------------
+    // 7. CREATE ACCESSORY
+    // -----------------------------
+    const newAccessory = new Product({
+      // BASIC
       name: productName,
+      brand: data.brand.trim(),
+      model: data.model.trim(),
+      sku: data.sku ? data.sku.trim() : "",
       category: "Accessories",
-      
-      // Basic info
-      brand: brand || null,
-      model: model || null,
-      sku: sku || `ACC-${Date.now()}`,
-      referenceNumber,
-      serialNumber,
-      additionalTitle,
-      
-      // Accessory specific
-      accessoryCategory,
-      accessorySubCategory: accessorySubCategory || null,
-      accessoryName: productName,
-      accessoryMaterial: accessoryMaterial || [],
-      accessoryColor: accessoryColor || [],
-      accessoryDelivery: accessoryDelivery || [],
-      accessoryScopeOfDelivery: accessoryScopeOfDelivery || [],
-      
-      // Year
-      productionYear: finalProductionYear,
-      approximateYear: approximateYear || false,
-      unknownYear: unknownYear || false,
-      
-      // Condition
-      condition: condition || null,
-      itemCondition: itemCondition || null,
-      
-      // Gender
-      gender: gender || "Men/Unisex",
-      
-      // Pricing - ensure both pricing models are set
-      retailPrice: retailPrice || 0,
-      sellingPrice: sellingPrice || retailPrice || 0,
-      taxStatus,
-      
-      // Inventory
+
+      referenceNumber: data.referenceNumber ? data.referenceNumber.trim() : "",
+      serialNumber: data.serialNumber ? data.serialNumber.trim() : "",
+      additionalTitle: data.additionalTitle ? data.additionalTitle.trim() : "",
+
+      // ACCESSORY FIELDS
+      accessoryCategory: data.accessoryCategory || "",
+      accessorySubCategory: data.accessorySubCategory || "",
+      accessoryMaterial: finalMaterial,
+      accessoryColor: finalColor,
+      accessoryDelivery: finalDelivery,
+      accessoryScopeOfDelivery: finalScope,
+
+      // YEAR
+      productionYear: productionYearValue,
+      approximateYear: parseBoolean(data.approximateYear),
+      unknownYear: parseBoolean(data.unknownYear),
+
+      // CONDITION
+      condition: parseCondition(data.condition),
+      itemCondition: parseCondition(data.itemCondition),
+
+      // OTHER FIELDS
+      gender: data.gender || "Men/Unisex",
+
+      // PRICING
+      regularPrice: parseNumber(data.regularPrice),
+      salePrice: parseNumber(data.salePrice),
+      taxStatus: data.taxStatus || "taxable",
+
+      // STOCK
       stockQuantity,
-      inStock: stockStatus,
-      
-      // Marketing
-      badges,
-      featured,
-      
-      // Media
-      images: images || [],
-      
+      inStock,
+
+      // BADGES + IMAGES
+      badges: finalBadges,
+      images: finalImages,
+
       // SEO
-      seoTitle: seoTitle || productName,
-      seoDescription: seoDescription || `Buy ${productName} - Premium ${accessoryCategory}`,
-      seoKeywords: seoKeywords || [accessoryCategory, brand, productName].filter(Boolean),
-      
-      // Content
-      description: description || `Premium ${accessoryCategory}${brand ? ` by ${brand}` : ''}`,
-      
-      // Visibility
-      visibility,
-      published,
-      
-      // Meta
-      meta: meta || {}
+      seoTitle: data.seoTitle?.trim() || productName,
+      seoDescription:
+        data.seoDescription?.trim() ||
+        `Buy ${productName} - ${data.accessoryCategory || "Accessory"}`,
+      seoKeywords: parseJSON(data.seoKeywords),
+
+      // DESCRIPTION
+      description:
+        data.description?.trim() ||
+        `Premium ${data.accessoryCategory || "Accessory"}`,
+
+      // VISIBILITY
+      visibility: data.visibility || "visible",
+      published: parseBoolean(data.published ?? true),
+      featured: parseBoolean(data.featured ?? false),
+
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
-    const savedProduct = await newProduct.save();
+    const savedAccessory = await newAccessory.save();
+    
+    console.log("Accessory created successfully:", savedAccessory._id);
 
     res.status(201).json({
       success: true,
       message: "Accessory created successfully",
-      data: savedProduct,
+      product: savedAccessory,
     });
-
   } catch (error) {
-    console.error("Error creating accessory:", error);
-    
-    // Handle duplicate key errors
-    if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern)[0];
-      return res.status(400).json({
-        success: false,
-        message: `Duplicate entry found. ${field} already exists.`,
-      });
-    }
-    
-    // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
-      return res.status(400).json({
-        success: false,
-        message: "Validation error",
-        errors,
-      });
-    }
-    
+    console.error("Accessory create error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error",
-      error: error.message,
+      message: error.message || "Server error",
+      details: error.errors,
     });
   }
 };
@@ -501,16 +544,17 @@ const updateAccessory = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Validate MongoDB ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid accessory ID format"
+        message: "Invalid accessory ID format",
       });
     }
 
-    // First, verify the product exists and is an accessory
+    // Fetch product
     const existingProduct = await Product.findById(id);
-    
+
     if (!existingProduct) {
       return res.status(404).json({
         success: false,
@@ -525,56 +569,97 @@ const updateAccessory = async (req, res) => {
       });
     }
 
-    // Define allowed updates
-    const updateData = { ...req.body };
+    // Clone update body
+    let updateData = { ...req.body };
 
-    // Handle unknownYear logic
+    // ============================================
+    // YEAR HANDLING (Same logic as CREATE)
+    // ============================================
     if (updateData.unknownYear === true) {
-      updateData.productionYear = "unknown";
-    } else if (updateData.unknownYear === false && updateData.productionYear === "unknown") {
-      // If unknownYear is set to false but productionYear is still "unknown", clear it
-      updateData.productionYear = null;
+      updateData.productionYear = "Unknown";
     }
 
-    // Update accessoryName if name is updated
-    if (updateData.name && !updateData.accessoryName) {
-      updateData.accessoryName = updateData.name;
+    if (updateData.unknownYear === false) {
+      if (updateData.productionYear === "Unknown") {
+        updateData.productionYear = null;
+      }
     }
 
-    // Update pricing consistency
-    if (updateData.regularPrice !== undefined && updateData.salePrice === undefined) {
-      updateData.salePrice = updateData.regularPrice;
-    }
-    
-    if (updateData.retailPrice !== undefined && updateData.sellingPrice === undefined) {
-      updateData.sellingPrice = updateData.retailPrice;
+    // ============================================
+    // AUTO NAME LOGIC (Brand/Model + Keep Name Sync)
+    // ============================================
+    const newBrand = updateData.brand ?? existingProduct.brand;
+    const newModel = updateData.model ?? existingProduct.model;
+    const newName = updateData.name;
+
+    // If user updates name manually → sync accessoryName
+    if (newName) {
+      updateData.accessoryName = newName;
     }
 
-    // Update stock status
+    // If user changes brand or model but NOT name → auto-generate name
+    if (!newName && (updateData.brand || updateData.model)) {
+      const autoName = `${newBrand || ""} ${newModel || ""}`.trim();
+
+      updateData.name = autoName;
+      updateData.accessoryName = autoName;
+    }
+
+    // ============================================
+    // STOCK STATUS
+    // ============================================
     if (updateData.stockQuantity !== undefined) {
       updateData.inStock = updateData.stockQuantity > 0;
     }
 
-    // Check for duplicate SKU if updating
+    // ============================================
+    // PRICE CONSISTENCY (Match Create Accessory)
+    // ============================================
+    if (
+      updateData.retailPrice !== undefined &&
+      updateData.sellingPrice === undefined
+    ) {
+      updateData.sellingPrice = updateData.retailPrice;
+    }
+
+    // ============================================
+    // SKU DUPLICATE CHECK
+    // ============================================
     if (updateData.sku && updateData.sku !== existingProduct.sku) {
-      const existingWithSKU = await Product.findOne({ 
-        sku: updateData.sku, 
+      const existingWithSKU = await Product.findOne({
+        sku: updateData.sku,
         category: "Accessories",
-        _id: { $ne: id }
+        _id: { $ne: id },
       });
+
       if (existingWithSKU) {
         return res.status(400).json({
           success: false,
-          message: "SKU already exists for another accessory"
+          message: "SKU already exists for another accessory",
         });
       }
     }
 
-    const updatedProduct = await Product.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true, runValidators: true }
-    );
+    // ============================================
+    // AUTO SEO IF NAME CHANGES
+    // ============================================
+    const finalName = updateData.name || existingProduct.name;
+
+    if (!updateData.seoTitle && updateData.name) {
+      updateData.seoTitle = finalName;
+    }
+
+    if (!updateData.seoDescription && updateData.name) {
+      updateData.seoDescription = `Buy ${finalName} - Premium Accessory`;
+    }
+
+    // ============================================
+    // UPDATE PRODUCT
+    // ============================================
+    const updatedProduct = await Product.findByIdAndUpdate(id, updateData, {
+      new: true,
+      runValidators: true,
+    });
 
     if (!updatedProduct) {
       return res.status(404).json({
@@ -588,11 +673,10 @@ const updateAccessory = async (req, res) => {
       message: "Accessory updated successfully",
       data: updatedProduct,
     });
-
   } catch (error) {
     console.error("Error updating accessory:", error);
-    
-    // Handle duplicate key errors
+
+    // Duplicate key error
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
       return res.status(400).json({
@@ -600,17 +684,18 @@ const updateAccessory = async (req, res) => {
         message: `Duplicate entry found. ${field} already exists.`,
       });
     }
-    
-    // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
+
+    // Validation errors
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
         success: false,
         message: "Validation error",
         errors,
       });
     }
-    
+
+    // Server error
     res.status(500).json({
       success: false,
       message: "Server error, could not update accessory",
@@ -629,13 +714,13 @@ const deleteAccessory = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid accessory ID format"
+        message: "Invalid accessory ID format",
       });
     }
 
     // Verify it's an accessory
     const existingProduct = await Product.findById(id);
-    
+
     if (!existingProduct) {
       return res.status(404).json({
         success: false,
@@ -653,10 +738,10 @@ const deleteAccessory = async (req, res) => {
     // Soft delete by setting published to false and out of stock
     const updatedProduct = await Product.findByIdAndUpdate(
       id,
-      { 
-        published: false, 
+      {
+        published: false,
         inStock: false,
-        visibility: "hidden"
+        visibility: "hidden",
       },
       { new: true }
     );
@@ -666,7 +751,6 @@ const deleteAccessory = async (req, res) => {
       message: "Accessory deleted successfully",
       data: updatedProduct,
     });
-
   } catch (error) {
     console.error("Error deleting accessory:", error);
     res.status(500).json({
@@ -687,13 +771,13 @@ const hardDeleteAccessory = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid accessory ID format"
+        message: "Invalid accessory ID format",
       });
     }
 
     // Verify it's an accessory
     const existingProduct = await Product.findById(id);
-    
+
     if (!existingProduct) {
       return res.status(404).json({
         success: false,
@@ -715,7 +799,6 @@ const hardDeleteAccessory = async (req, res) => {
       success: true,
       message: "Accessory permanently deleted",
     });
-
   } catch (error) {
     console.error("Error hard deleting accessory:", error);
     res.status(500).json({
@@ -736,12 +819,12 @@ const toggleFeaturedAccessory = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid accessory ID format"
+        message: "Invalid accessory ID format",
       });
     }
 
     const existingProduct = await Product.findById(id);
-    
+
     if (!existingProduct) {
       return res.status(404).json({
         success: false,
@@ -764,10 +847,11 @@ const toggleFeaturedAccessory = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Accessory ${updatedProduct.featured ? 'marked as' : 'removed from'} featured`,
+      message: `Accessory ${
+        updatedProduct.featured ? "marked as" : "removed from"
+      } featured`,
       data: updatedProduct,
     });
-
   } catch (error) {
     console.error("Error toggling featured status:", error);
     res.status(500).json({
@@ -788,12 +872,12 @@ const togglePublishedAccessory = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid accessory ID format"
+        message: "Invalid accessory ID format",
       });
     }
 
     const existingProduct = await Product.findById(id);
-    
+
     if (!existingProduct) {
       return res.status(404).json({
         success: false,
@@ -816,10 +900,11 @@ const togglePublishedAccessory = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Accessory ${updatedProduct.published ? 'published' : 'unpublished'}`,
+      message: `Accessory ${
+        updatedProduct.published ? "published" : "unpublished"
+      }`,
       data: updatedProduct,
     });
-
   } catch (error) {
     console.error("Error toggling published status:", error);
     res.status(500).json({
@@ -841,19 +926,19 @@ const updateAccessoryStock = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid accessory ID format"
+        message: "Invalid accessory ID format",
       });
     }
 
     if (stockQuantity === undefined && inStock === undefined) {
       return res.status(400).json({
         success: false,
-        message: "Either stockQuantity or inStock must be provided"
+        message: "Either stockQuantity or inStock must be provided",
       });
     }
 
     const existingProduct = await Product.findById(id);
-    
+
     if (!existingProduct) {
       return res.status(404).json({
         success: false,
@@ -869,12 +954,12 @@ const updateAccessoryStock = async (req, res) => {
     }
 
     const updateData = {};
-    
+
     if (stockQuantity !== undefined) {
       updateData.stockQuantity = stockQuantity;
       updateData.inStock = stockQuantity > 0;
     }
-    
+
     if (inStock !== undefined && stockQuantity === undefined) {
       updateData.inStock = inStock;
       // If setting to inStock but quantity is 0, set to 1
@@ -883,18 +968,15 @@ const updateAccessoryStock = async (req, res) => {
       }
     }
 
-    const updatedProduct = await Product.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true }
-    );
+    const updatedProduct = await Product.findByIdAndUpdate(id, updateData, {
+      new: true,
+    });
 
     res.status(200).json({
       success: true,
       message: "Accessory stock updated successfully",
       data: updatedProduct,
     });
-
   } catch (error) {
     console.error("Error updating accessory stock:", error);
     res.status(500).json({
@@ -915,37 +997,37 @@ const bulkUpdateAccessories = async (req, res) => {
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "IDs array is required"
+        message: "IDs array is required",
       });
     }
 
-    if (!updateData || typeof updateData !== 'object') {
+    if (!updateData || typeof updateData !== "object") {
       return res.status(400).json({
         success: false,
-        message: "updateData object is required"
+        message: "updateData object is required",
       });
     }
 
     // Validate all IDs
-    const invalidIds = ids.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    const invalidIds = ids.filter((id) => !mongoose.Types.ObjectId.isValid(id));
     if (invalidIds.length > 0) {
       return res.status(400).json({
         success: false,
         message: "Invalid accessory ID(s) found",
-        invalidIds
+        invalidIds,
       });
     }
 
     // Verify all products are accessories
-    const products = await Product.find({ 
+    const products = await Product.find({
       _id: { $in: ids },
-      category: "Accessories" 
+      category: "Accessories",
     });
 
     if (products.length !== ids.length) {
       return res.status(400).json({
         success: false,
-        message: "Some IDs do not belong to accessories or do not exist"
+        message: "Some IDs do not belong to accessories or do not exist",
       });
     }
 
@@ -955,20 +1037,24 @@ const bulkUpdateAccessories = async (req, res) => {
     }
 
     // Handle pricing consistency
-    if (updateData.regularPrice !== undefined && updateData.salePrice === undefined) {
+    if (
+      updateData.regularPrice !== undefined &&
+      updateData.salePrice === undefined
+    ) {
       updateData.salePrice = updateData.regularPrice;
     }
-    
-    if (updateData.retailPrice !== undefined && updateData.sellingPrice === undefined) {
+
+    if (
+      updateData.retailPrice !== undefined &&
+      updateData.sellingPrice === undefined
+    ) {
       updateData.sellingPrice = updateData.retailPrice;
     }
 
     // Perform bulk update
-    const result = await Product.updateMany(
-      { _id: { $in: ids } },
-      updateData,
-      { runValidators: true }
-    );
+    const result = await Product.updateMany({ _id: { $in: ids } }, updateData, {
+      runValidators: true,
+    });
 
     // Get updated products
     const updatedProducts = await Product.find({ _id: { $in: ids } });
@@ -979,22 +1065,21 @@ const bulkUpdateAccessories = async (req, res) => {
       data: {
         matchedCount: result.matchedCount,
         modifiedCount: result.modifiedCount,
-        accessories: updatedProducts
-      }
+        accessories: updatedProducts,
+      },
     });
-
   } catch (error) {
     console.error("Error in bulk update accessories:", error);
-    
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
+
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
         success: false,
         message: "Validation error",
         errors,
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: "Server error",
@@ -1016,44 +1101,56 @@ const getAccessoryStatistics = async (req, res) => {
       categoryStats,
       brandStats,
       priceStats,
-      monthlyAdded
+      monthlyAdded,
     ] = await Promise.all([
       // Total accessories
       Product.countDocuments({ category: "Accessories" }),
-      
+
       // Published accessories
       Product.countDocuments({ category: "Accessories", published: true }),
-      
+
       // Out of stock accessories
       Product.countDocuments({ category: "Accessories", inStock: false }),
-      
+
       // Featured accessories
       Product.countDocuments({ category: "Accessories", featured: true }),
-      
+
       // Category statistics
       Product.aggregate([
         { $match: { category: "Accessories" } },
-        { $group: { 
-          _id: "$accessoryCategory", 
-          count: { $sum: 1 },
-          published: { $sum: { $cond: ["$published", 1, 0] } },
-          inStock: { $sum: { $cond: ["$inStock", 1, 0] } }
-        }},
-        { $sort: { count: -1 } }
+        {
+          $group: {
+            _id: "$accessoryCategory",
+            count: { $sum: 1 },
+            published: { $sum: { $cond: ["$published", 1, 0] } },
+            inStock: { $sum: { $cond: ["$inStock", 1, 0] } },
+          },
+        },
+        { $sort: { count: -1 } },
       ]),
-      
+
       // Brand statistics (top 10)
       Product.aggregate([
         { $match: { category: "Accessories", brand: { $ne: null } } },
-        { $group: { 
-          _id: "$brand", 
-          count: { $sum: 1 },
-          avgPrice: { $avg: { $cond: [{ $gt: ["$salePrice", 0] }, "$salePrice", "$regularPrice"] } }
-        }},
+        {
+          $group: {
+            _id: "$brand",
+            count: { $sum: 1 },
+            avgPrice: {
+              $avg: {
+                $cond: [
+                  { $gt: ["$salePrice", 0] },
+                  "$salePrice",
+                  "$regularPrice",
+                ],
+              },
+            },
+          },
+        },
         { $sort: { count: -1 } },
-        { $limit: 10 }
+        { $limit: 10 },
       ]),
-      
+
       // Price statistics
       Product.aggregate([
         { $match: { category: "Accessories" } },
@@ -1063,10 +1160,10 @@ const getAccessoryStatistics = async (req, res) => {
               $cond: [
                 { $and: [{ $gt: ["$salePrice", 0] }] },
                 "$salePrice",
-                "$regularPrice"
-              ]
-            }
-          }
+                "$regularPrice",
+              ],
+            },
+          },
         },
         {
           $group: {
@@ -1074,11 +1171,11 @@ const getAccessoryStatistics = async (req, res) => {
             minPrice: { $min: "$price" },
             maxPrice: { $max: "$price" },
             avgPrice: { $avg: "$price" },
-            totalValue: { $sum: { $multiply: ["$price", "$stockQuantity"] } }
-          }
-        }
+            totalValue: { $sum: { $multiply: ["$price", "$stockQuantity"] } },
+          },
+        },
       ]),
-      
+
       // Monthly added accessories (last 6 months)
       Product.aggregate([
         { $match: { category: "Accessories" } },
@@ -1086,14 +1183,14 @@ const getAccessoryStatistics = async (req, res) => {
           $group: {
             _id: {
               year: { $year: "$createdAt" },
-              month: { $month: "$createdAt" }
+              month: { $month: "$createdAt" },
             },
-            count: { $sum: 1 }
-          }
+            count: { $sum: 1 },
+          },
         },
         { $sort: { "_id.year": -1, "_id.month": -1 } },
-        { $limit: 6 }
-      ])
+        { $limit: 6 },
+      ]),
     ]);
 
     res.status(200).json({
@@ -1106,10 +1203,9 @@ const getAccessoryStatistics = async (req, res) => {
         categories: categoryStats,
         topBrands: brandStats,
         priceStatistics: priceStats[0] || {},
-        monthlyAdded: monthlyAdded.reverse()
-      }
+        monthlyAdded: monthlyAdded.reverse(),
+      },
     });
-
   } catch (error) {
     console.error("Error getting accessory statistics:", error);
     res.status(500).json({
@@ -1130,7 +1226,7 @@ const searchAccessories = async (req, res) => {
     if (!q || q.trim().length < 2) {
       return res.status(400).json({
         success: false,
-        message: "Search query must be at least 2 characters long"
+        message: "Search query must be at least 2 characters long",
       });
     }
 
@@ -1138,20 +1234,21 @@ const searchAccessories = async (req, res) => {
       {
         category: "Accessories",
         published: true,
-        $text: { $search: q }
+        $text: { $search: q },
       },
       { score: { $meta: "textScore" } }
     )
-    .select('name accessoryName accessoryCategory brand images salePrice sellingPrice')
-    .sort({ score: { $meta: "textScore" } })
-    .limit(parseInt(limit));
+      .select(
+        "name accessoryName accessoryCategory brand images salePrice sellingPrice"
+      )
+      .sort({ score: { $meta: "textScore" } })
+      .limit(parseInt(limit));
 
     res.status(200).json({
       success: true,
       count: products.length,
-      data: products
+      data: products,
     });
-
   } catch (error) {
     console.error("Error searching accessories:", error);
     res.status(500).json({
@@ -1173,26 +1270,30 @@ const getAccessoriesByCategory = async (req, res) => {
     let filter = {
       category: "Accessories",
       published: true,
-      accessoryCategory: category
+      accessoryCategory: category,
     };
 
-    if (featured === 'true') {
+    if (featured === "true") {
       filter.featured = true;
     }
 
     const accessories = await Product.find(filter)
-      .select('name accessoryName accessoryCategory accessorySubCategory brand images salePrice sellingPrice regularPrice retailPrice featured')
+      .select(
+        "name accessoryName accessoryCategory accessorySubCategory brand images salePrice sellingPrice regularPrice retailPrice featured"
+      )
       .limit(parseInt(limit))
       .sort({ featured: -1, createdAt: -1 });
 
     // Get category info
     const categoryStats = await Product.aggregate([
       { $match: { category: "Accessories", accessoryCategory: category } },
-      { $group: {
-        _id: "$accessorySubCategory",
-        count: { $sum: 1 }
-      }},
-      { $sort: { count: -1 } }
+      {
+        $group: {
+          _id: "$accessorySubCategory",
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } },
     ]);
 
     res.status(200).json({
@@ -1201,10 +1302,9 @@ const getAccessoriesByCategory = async (req, res) => {
         category,
         accessories,
         subcategories: categoryStats,
-        total: accessories.length
-      }
+        total: accessories.length,
+      },
     });
-
   } catch (error) {
     console.error("Error getting accessories by category:", error);
     res.status(500).json({
@@ -1225,18 +1325,19 @@ const getFeaturedAccessories = async (req, res) => {
     const accessories = await Product.find({
       category: "Accessories",
       published: true,
-      featured: true
+      featured: true,
     })
-    .select('name accessoryName accessoryCategory brand images salePrice sellingPrice regularPrice retailPrice')
-    .limit(parseInt(limit))
-    .sort({ createdAt: -1 });
+      .select(
+        "name accessoryName accessoryCategory brand images salePrice sellingPrice regularPrice retailPrice"
+      )
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
       count: accessories.length,
-      data: accessories
+      data: accessories,
     });
-
   } catch (error) {
     console.error("Error getting featured accessories:", error);
     res.status(500).json({
@@ -1261,18 +1362,19 @@ const getNewArrivalsAccessories = async (req, res) => {
     const accessories = await Product.find({
       category: "Accessories",
       published: true,
-      createdAt: { $gte: thirtyDaysAgo }
+      createdAt: { $gte: thirtyDaysAgo },
     })
-    .select('name accessoryName accessoryCategory brand images salePrice sellingPrice regularPrice retailPrice badges createdAt')
-    .limit(parseInt(limit))
-    .sort({ createdAt: -1 });
+      .select(
+        "name accessoryName accessoryCategory brand images salePrice sellingPrice regularPrice retailPrice badges createdAt"
+      )
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
       count: accessories.length,
-      data: accessories
+      data: accessories,
     });
-
   } catch (error) {
     console.error("Error getting new arrivals accessories:", error);
     res.status(500).json({
@@ -1287,19 +1389,19 @@ const getNewArrivalsAccessories = async (req, res) => {
 // EXPORT ALL FUNCTIONS
 // ============================================
 module.exports = {
-  getAccessoriesProducts,       // Get all with filtering & pagination
-  getAccessoryById,             // Get single by ID
-  createAccessory,              // Create new accessory
-  updateAccessory,              // Update accessory
-  deleteAccessory,              // Soft delete
-  hardDeleteAccessory,          // Permanent delete
-  toggleFeaturedAccessory,      // Toggle featured status
-  togglePublishedAccessory,     // Toggle published status
-  updateAccessoryStock,         // Update stock
-  bulkUpdateAccessories,        // Bulk update
-  getAccessoryStatistics,       // Get statistics
-  searchAccessories,            // Search
-  getAccessoriesByCategory,     // Get by category
-  getFeaturedAccessories,       // Get featured
-  getNewArrivalsAccessories     // Get new arrivals
+  getAccessoriesProducts, // Get all with filtering & pagination
+  getAccessoryById, // Get single by ID
+  createAccessory, // Create new accessory
+  updateAccessory, // Update accessory
+  deleteAccessory, // Soft delete
+  hardDeleteAccessory, // Permanent delete
+  toggleFeaturedAccessory, // Toggle featured status
+  togglePublishedAccessory, // Toggle published status
+  updateAccessoryStock, // Update stock
+  bulkUpdateAccessories, // Bulk update
+  getAccessoryStatistics, // Get statistics
+  searchAccessories, // Search
+  getAccessoriesByCategory, // Get by category
+  getFeaturedAccessories, // Get featured
+  getNewArrivalsAccessories, // Get new arrivals
 };
