@@ -19,6 +19,7 @@ const orderRoute = require("./routes/orderRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const filterRouter = require('./routes/filterRouter') 
 const invontryStock = require('./routes/inventoryRoutes')
+const adminsRoute = require('./routes/adminRoute')
 
 const PORT = process.env.PORT || 9000;
 
@@ -95,6 +96,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/filter",filterRouter);
 app.use('/api/recommend', recommendRoutes);
 app.use('/api/invontry',invontryStock)
+app.use('/api/admin',adminsRoute)
 
 
 // ✅ Error Handler
