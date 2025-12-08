@@ -401,7 +401,7 @@ const getProducts = async (req, res) => {
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
         "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition category description visibility published featured inStock " +
-        "badges images createdAt updatedAt waterResistance complications crystal"
+        "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)

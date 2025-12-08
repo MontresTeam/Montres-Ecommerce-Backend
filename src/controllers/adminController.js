@@ -1,30 +1,34 @@
+require('dotenv').config(); // Load environment variables
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
-// Inbuilt Admin Users
+
+
+
 const admins = [
   {
     id: 1,
-    username: "ceo",
-    password: bcrypt.hashSync("ceo123", 10),
+    username: process.env.ADMIN_CEO_USERNAME,
+    password: bcrypt.hashSync(process.env.ADMIN_CEO_PASSWORD, 12),
     role: "ceo",
     profile: null,
   },
   {
     id: 2,
-    username: "sales",
-    password: bcrypt.hashSync("sales123", 10),
+    username: process.env.ADMIN_SALES_USERNAME,
+    password: bcrypt.hashSync(process.env.ADMIN_SALES_PASSWORD, 12),
     role: "sales",
     profile: null,
   },
   {
     id: 3,
-    username: "developer",
-    password: bcrypt.hashSync("dev123", 10),
+    username: process.env.ADMIN_DEV_USERNAME,
+    password: bcrypt.hashSync(process.env.ADMIN_DEV_PASSWORD, 12),
     role: "developer",
     profile: null,
   },
 ];
+
 
 // Admin login controller
 const adminlogin = async (req, res) => {

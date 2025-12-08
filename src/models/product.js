@@ -274,6 +274,11 @@ const productSchema = new mongoose.Schema(
       enum: ["taxable", "shipping", "none"],
       default: "taxable",
     },
+    limitedEdition: {
+      type: Boolean,
+      default: false,
+    },
+
     stockQuantity: {
       type: Number,
       default: 0,
