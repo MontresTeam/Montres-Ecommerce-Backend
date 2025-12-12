@@ -8,12 +8,15 @@ const {
   getMyOrders,
   getShippingAddresses,
   createTabbyOrder,
+  createTamaraOrder,
 } = require("../controllers/orderController");
 
 // ✅ Place this route BEFORE /:id
 router.get("/myorders", protect, getMyOrders);
 
 router.post("/tabby", createTabbyOrder);
+
+router.post("/tamara",createTamaraOrder)
 
 router.get("/shipping-addresses", protect, getShippingAddresses);
 

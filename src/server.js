@@ -83,10 +83,11 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/admin/order", orderRoute);
 app.use("/api/order", orderRoute);
 app.use("/api/MyOrders", orderRoute);
+app.use("/api/payment",orderRoute)
 app.use("/api/products", productRoutes);
 app.use("/api", productRoutes);
 app.use("/api/createProduct", productRoutes);
-app.use("/api/Auth", userRoute); // ✅ Auth Routes (Google + Facebook)
+app.use("/api/Auth", userRoute); 
 app.use("/api/watches", watchesRoute);
 app.use("/api/leather", leatherRoute);
 app.use("/api/accessories", accessoriesRoute);

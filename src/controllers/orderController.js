@@ -362,7 +362,194 @@ const createTabbyOrder = async (req, res) => {
 
 
 
+const TAMARA_SECRET_KEY = process.env.TAMARA_SECRET_KEY;
+const TAMARA_API_BASE = process.env.TAMARA_API_BASE;
+const TAMARA_API_URL = `${TAMARA_API_BASE}/checkout`;
 
+const createTamaraOrder = async (req, res) => {
+  try {
+    const { userId } = req.user || {};
+    const { items, shippingAddress, billingAddress, instalments = 3 } = req.body || {};
+
+    if (!items?.length) {
+      return res.status(400).json({ message: "Items are required" });
+    }
+
+    // ------------------------------
+    // 1️⃣ POPULATE ITEMS FROM DATABASE
+    // ------------------------------
+    const populatedItems = await Promise.all(
+      items.map(async (it) => {
+        const product = await Product.findById(it.productId)
+          .select("name images salePrice")
+          .lean();
+
+        if (!product) throw new Error(`Product not found: ${it.productId}`);
+
+        return {
+          productId: product._id,
+          name: product.name,
+          image: product.images?.[0]?.url || "",
+          price: product.salePrice || 0,
+          quantity: it.quantity || 1,
+        };
+      })
+    );
+
+    // ------------------------------
+    // 2️⃣ CALCULATE TOTALS
+    // ------------------------------
+    const subtotal = populatedItems.reduce(
+      (acc, item) => acc + item.price * item.quantity,
+      0
+    );
+
+    const { shippingFee, region } = calculateShippingFee({
+      country: shippingAddress?.country || "AE",
+      subtotal,
+    });
+
+    const total = subtotal + shippingFee;
+
+    // ------------------------------
+    // 3️⃣ SAVE ORDER
+    // ------------------------------
+    const order = await Order.create({
+      userId,
+      items: populatedItems,
+      subtotal,
+      shippingFee,
+      total,
+      vat: 0,
+      region,
+      currency: "AED",
+      shippingAddress,
+      billingAddress: billingAddress || shippingAddress,
+      paymentMethod: "tamara",
+      paymentStatus: "pending",
+    });
+
+    // ------------------------------
+    // 4️⃣ FORMAT ITEMS FOR TAMARA
+    // ------------------------------
+    const tamaraItems = populatedItems.map((i) => ({
+      name: i.name,
+      type: "Physical",
+      reference_id: i.productId.toString(),
+      sku: i.productId.toString(),
+      quantity: i.quantity,
+      unit_price: {
+        amount: i.price,
+        currency: "AED",
+      },
+      total_amount: {
+        amount: i.price * i.quantity,
+        currency: "AED",
+      },
+    }));
+
+    // ------------------------------
+    // 5️⃣ TAMARA PAYLOAD
+    // ------------------------------
+    const tamaraPayload = {
+      total_amount: { amount: total, currency: "AED" },
+      shipping_amount: { amount: shippingFee, currency: "AED" },
+      tax_amount: { amount: 0, currency: "AED" },
+
+      order_reference_id: order._id.toString(),
+      order_number: order._id.toString(),
+
+      items: tamaraItems,
+
+      consumer: {
+        email: shippingAddress?.email,
+        first_name: shippingAddress?.firstName,
+        last_name: shippingAddress?.lastName,
+        phone_number: shippingAddress?.phone,
+      },
+
+      country_code: "AE",
+      description: `Order ${order._id}`,
+
+      merchant_url: {
+        success: `${process.env.TAMARA_MERCHANT_URL_BASE}/success?orderId=${order._id}`,
+        cancel: `${process.env.TAMARA_MERCHANT_URL_BASE}/cancel?orderId=${order._id}`,
+        failure: `${process.env.TAMARA_MERCHANT_URL_BASE}/failure?orderId=${order._id}`,
+        notification: `${process.env.TAMARA_MERCHANT_URL_BASE}/webhook`,
+      },
+
+      billing_address: {
+        city: billingAddress?.city,
+        country_code: billingAddress?.country || "AE",
+        first_name: billingAddress?.firstName,
+        last_name: billingAddress?.lastName,
+        line1: billingAddress?.line1,
+        phone_number: billingAddress?.phone,
+      },
+
+      shipping_address: {
+        city: shippingAddress?.city,
+        country_code: shippingAddress?.country || "AE",
+        first_name: shippingAddress?.firstName,
+        last_name: shippingAddress?.lastName,
+        line1: shippingAddress?.line1,
+        phone_number: shippingAddress?.phone,
+      },
+
+      payment_type: "PAY_BY_INSTALMENTS",
+      instalments,
+      platform: "Montres Ecommerce",
+      is_mobile: false,
+      locale: "en_US",
+    };
+
+    // ------------------------------
+    // 6️⃣ CALL TAMARA API
+    // ------------------------------
+    const tamaraResponse = await axios.post(TAMARA_API_URL, tamaraPayload, {
+      headers: {
+        Authorization: `Bearer ${TAMARA_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const checkoutUrl =
+      tamaraResponse.data?._links?.checkout?.href ||
+      tamaraResponse.data?.checkout_url;
+
+    if (!checkoutUrl) {
+      return res.status(400).json({
+        message: "Tamara did not return checkout URL",
+      });
+    }
+
+    order.tamaraSessionId = tamaraResponse.data?.order_id;
+    await order.save();
+
+    // ------------------------------
+    // 7️⃣ CLEAR USER CART
+    // ------------------------------
+    if (userId) {
+      await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
+    }
+
+    return res.status(201).json({
+      success: true,
+      order,
+      checkoutUrl,
+    });
+  } catch (error) {
+    console.error("Tamara Error:", error?.response?.data || error.message);
+    return res.status(500).json({
+      error: error?.response?.data || error.message,
+    });
+  }
+};
+
+
+
+
+//pending this function 
 const getShippingAddresses = async (req, res) => {
   try {
     // Assuming req.user.id contains the currently logged-in user's ID
@@ -440,10 +627,11 @@ const getMyOrders = async (req, res) => {
 };
 
 module.exports = {
-  createStripeOrder,
   getOrderById,
   getAllOrders,
   getMyOrders,
   getShippingAddresses,
   createTabbyOrder,
+  createTamaraOrder,
+  createStripeOrder,
 };

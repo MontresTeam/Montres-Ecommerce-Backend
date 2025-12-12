@@ -152,7 +152,6 @@ const getAllLeatherGoods = async (req, res) => {
       ];
     }
 
-    console.log("Leather goods filter:", filter);
 
     // ✅ Convert pagination numbers
     const pageNum = parseInt(page, 10);
