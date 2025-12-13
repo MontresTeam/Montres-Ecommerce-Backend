@@ -84,6 +84,7 @@ app.use("/api/admin/order", orderRoute);
 app.use("/api/order", orderRoute);
 app.use("/api/MyOrders", orderRoute);
 app.use("/api/payment",orderRoute)
+app.use("/api/address",orderRoute)
 app.use("/api/products", productRoutes);
 app.use("/api", productRoutes);
 app.use("/api/createProduct", productRoutes);

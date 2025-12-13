@@ -1,5 +1,7 @@
 // controllers/orderController.js
 const Order = require("../models/OrderModel");
+const ShippingAddress = require('../models/ShippingAddress')
+const BillingAddress = require('../models/BillingAddress')
 const Product = require("../models/product");
 const userModel = require("../models/UserModel");
 const { calculateShippingFee } = require("../utils/shippingCalculator");
@@ -11,9 +13,11 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? stripePkg(process.env.STRIPE_SECRET_KEY)
   : null;
 
-const createStripeOrder = async (req, res) => {
+ const createStripeOrder = async (req, res) => {
   try {
-    const { userId } = req.user; // from JWT middleware
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
     const {
       items,
       shippingAddress,
@@ -22,36 +26,45 @@ const createStripeOrder = async (req, res) => {
       calculateOnly = false,
     } = req.body;
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "Cart items are required" });
+    // ------------------------------
+    // 1️⃣ VALIDATION
+    // ------------------------------
+    if (!items?.length) return res.status(400).json({ message: "Cart items are required" });
+    if (!shippingAddress?.line1 || !shippingAddress?.city)
+      return res.status(400).json({ message: "Valid shipping address is required" });
+
+    // ------------------------------
+    // 2️⃣ NORMALIZE BILLING ADDRESS
+    // ------------------------------
+    const finalBillingAddress =
+      billingAddress?.line1 && billingAddress?.city ? billingAddress : shippingAddress;
+
+    if (!finalBillingAddress?.line1 || !finalBillingAddress?.city) {
+      return res.status(400).json({ message: "Valid billing address is required" });
     }
 
-    if (!shippingAddress || !shippingAddress.country) {
-      return res
-        .status(400)
-        .json({ message: "Shipping address with country is required" });
-    }
-
-    // ✅ Populate product details
+    // ------------------------------
+    // 3️⃣ POPULATE PRODUCTS
+    // ------------------------------
     const populatedItems = await Promise.all(
       items.map(async (it) => {
         const product = await Product.findById(it.productId)
           .select("name images salePrice")
           .lean();
-
         if (!product) throw new Error(`Product not found: ${it.productId}`);
-
         return {
           productId: product._id,
           name: product.name,
-          image: product.images?.[0]?.url || product.images?.[0] || "",
+          image: product.images?.[0]?.url || "",
           price: product.salePrice || 0,
           quantity: it.quantity || 1,
         };
       })
     );
 
-    // ✅ Calculate totals
+    // ------------------------------
+    // 4️⃣ CALCULATE TOTALS
+    // ------------------------------
     const subtotal = populatedItems.reduce(
       (acc, item) => acc + (item.price || 0) * (item.quantity || 0),
       0
@@ -64,7 +77,9 @@ const createStripeOrder = async (req, res) => {
 
     const total = subtotal + shippingFee;
 
-    // ✅ Only return totals if calculateOnly is true
+    // ------------------------------
+    // 5️⃣ CALCULATE ONLY (OPTIONAL)
+    // ------------------------------
     if (calculateOnly) {
       return res.status(200).json({
         success: true,
@@ -77,7 +92,9 @@ const createStripeOrder = async (req, res) => {
       });
     }
 
-    // ✅ Save order to DB
+    // ------------------------------
+    // 6️⃣ CREATE ORDER
+    // ------------------------------
     const orderData = {
       userId,
       items: populatedItems.map((item) => ({
@@ -93,7 +110,7 @@ const createStripeOrder = async (req, res) => {
       total,
       region,
       shippingAddress,
-      billingAddress: billingAddress || shippingAddress,
+      billingAddress: finalBillingAddress,
       paymentMethod,
       paymentStatus: "pending",
       currency: "AED",
@@ -101,7 +118,9 @@ const createStripeOrder = async (req, res) => {
 
     const order = await Order.create(orderData);
 
-    // ✅ Send Email Notification to Admin
+    // ------------------------------
+    // 7️⃣ SEND EMAIL NOTIFICATIONS
+    // ------------------------------
     const productListHTML = populatedItems
       .map(
         (item) =>
@@ -136,25 +155,17 @@ const createStripeOrder = async (req, res) => {
       </div>
     `;
 
-    // send to admin
-    await sendEmail(
-      process.env.ADMIN_EMAIL,
-      "🛍️ New Order Notification",
-      emailHTML
-    );
+    await sendEmail(process.env.ADMIN_EMAIL, "🛍️ New Order Notification", emailHTML);
+    await sendEmail(process.env.SALES_EMAIL, "🛍️ New Order Notification", emailHTML);
 
-    // send to sales email
-    await sendEmail(
-      process.env.SALES_EMAIL, // make sure you define this in .env
-      "🛍️ New Order Notification",
-      emailHTML
-    );
-
-    // ✅ Clear the user's cart
-
+    // ------------------------------
+    // 8️⃣ CLEAR USER CART
+    // ------------------------------
     await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
 
-    // ✅ Create Stripe Checkout Session
+    // ------------------------------
+    // 9️⃣ CREATE STRIPE CHECKOUT SESSION
+    // ------------------------------
     if (paymentMethod === "stripe" && stripe) {
       const lineItems = populatedItems.map((item) => ({
         price_data: {
@@ -172,6 +183,8 @@ const createStripeOrder = async (req, res) => {
         payment_method_types: ["card"],
         line_items: lineItems,
         mode: "payment",
+        customer_email: finalBillingAddress.email, // links Stripe customer email
+        billing_address_collection: "required",   // ensures billing address is collected
         success_url: `https://www.montres.ae/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
         cancel_url: `https://www.montres.ae/paymentcancel?orderId=${order._id}`,
       });
@@ -188,7 +201,7 @@ const createStripeOrder = async (req, res) => {
 
     return res.status(201).json({ success: true, order: order.toObject() });
   } catch (error) {
-    console.error("CreateOrder Error:", error);
+    console.error("Stripe Create Order Error:", error);
     return res.status(500).json({ message: error.message || "Server error" });
   }
 };
@@ -362,58 +375,63 @@ const createTabbyOrder = async (req, res) => {
 
 
 
+
 const TAMARA_SECRET_KEY = process.env.TAMARA_SECRET_KEY;
 const TAMARA_API_BASE = process.env.TAMARA_API_BASE;
 const TAMARA_API_URL = `${TAMARA_API_BASE}/checkout`;
 
+// Helper to validate address
+const validateAddress = (addr) => {
+  if (!addr) return false;
+  return addr.firstName && addr.lastName && addr.phone && addr.address1 && addr.city && addr.country;
+};
+
+
+// ==================================================
+// CREATE TAMARA ORDER
+// ==================================================
 const createTamaraOrder = async (req, res) => {
   try {
-    const { userId } = req.user || {};
-    const { items, shippingAddress, billingAddress, instalments = 3 } = req.body || {};
+    const { userId } = req.user; // from JWT auth middleware
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    if (!items?.length) {
-      return res.status(400).json({ message: "Items are required" });
+    const { items = [], shippingAddress, billingAddress, instalments = 3 } = req.body || {};
+
+    // Validate items
+    if (!items.length) return res.status(400).json({ message: "Items are required" });
+
+    // Validate shipping address
+    if (!validateAddress(shippingAddress)) {
+      return res.status(400).json({ message: "Valid shipping address is required" });
     }
 
-    // ------------------------------
-    // 1️⃣ POPULATE ITEMS FROM DATABASE
-    // ------------------------------
+    // Determine billing address
+    const finalBillingAddress = validateAddress(billingAddress) ? billingAddress : shippingAddress;
+
+    // Populate items from DB
     const populatedItems = await Promise.all(
       items.map(async (it) => {
-        const product = await Product.findById(it.productId)
-          .select("name images salePrice")
-          .lean();
-
+        const product = await Product.findById(it.productId).select("name images salePrice").lean();
         if (!product) throw new Error(`Product not found: ${it.productId}`);
-
         return {
           productId: product._id,
           name: product.name,
           image: product.images?.[0]?.url || "",
-          price: product.salePrice || 0,
+          price: product.salePrice,
           quantity: it.quantity || 1,
         };
       })
     );
 
-    // ------------------------------
-    // 2️⃣ CALCULATE TOTALS
-    // ------------------------------
-    const subtotal = populatedItems.reduce(
-      (acc, item) => acc + item.price * item.quantity,
-      0
-    );
-
+    // Calculate totals
+    const subtotal = populatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
     const { shippingFee, region } = calculateShippingFee({
-      country: shippingAddress?.country || "AE",
+      country: shippingAddress.country || "AE",
       subtotal,
     });
-
     const total = subtotal + shippingFee;
 
-    // ------------------------------
-    // 3️⃣ SAVE ORDER
-    // ------------------------------
+    // Create order
     const order = await Order.create({
       userId,
       items: populatedItems,
@@ -424,88 +442,69 @@ const createTamaraOrder = async (req, res) => {
       region,
       currency: "AED",
       shippingAddress,
-      billingAddress: billingAddress || shippingAddress,
+      billingAddress: finalBillingAddress,
       paymentMethod: "tamara",
       paymentStatus: "pending",
     });
 
-    // ------------------------------
-    // 4️⃣ FORMAT ITEMS FOR TAMARA
-    // ------------------------------
-    const tamaraItems = populatedItems.map((i) => ({
-      name: i.name,
+    // Format items for Tamara
+    const tamaraItems = populatedItems.map((item) => ({
+      name: item.name,
       type: "Physical",
-      reference_id: i.productId.toString(),
-      sku: i.productId.toString(),
-      quantity: i.quantity,
-      unit_price: {
-        amount: i.price,
-        currency: "AED",
-      },
-      total_amount: {
-        amount: i.price * i.quantity,
-        currency: "AED",
-      },
+      reference_id: item.productId.toString(),
+      sku: item.productId.toString(),
+      quantity: item.quantity,
+      unit_price: { amount: item.price, currency: "AED" },
+      total_amount: { amount: item.price * item.quantity, currency: "AED" },
     }));
 
-    // ------------------------------
-    // 5️⃣ TAMARA PAYLOAD
-    // ------------------------------
+    // Tamara payload
     const tamaraPayload = {
+      order_reference_id: order._id.toString(),
+      order_number: order._id.toString(),
       total_amount: { amount: total, currency: "AED" },
       shipping_amount: { amount: shippingFee, currency: "AED" },
       tax_amount: { amount: 0, currency: "AED" },
-
-      order_reference_id: order._id.toString(),
-      order_number: order._id.toString(),
-
       items: tamaraItems,
-
       consumer: {
-        email: shippingAddress?.email,
-        first_name: shippingAddress?.firstName,
-        last_name: shippingAddress?.lastName,
-        phone_number: shippingAddress?.phone,
+        first_name: shippingAddress.firstName,
+        last_name: shippingAddress.lastName,
+        email: shippingAddress.email || "",
+        phone_number: shippingAddress.phone,
       },
-
-      country_code: "AE",
-      description: `Order ${order._id}`,
-
-      merchant_url: {
-        success: `${process.env.TAMARA_MERCHANT_URL_BASE}/success?orderId=${order._id}`,
-        cancel: `${process.env.TAMARA_MERCHANT_URL_BASE}/cancel?orderId=${order._id}`,
-        failure: `${process.env.TAMARA_MERCHANT_URL_BASE}/failure?orderId=${order._id}`,
-        notification: `${process.env.TAMARA_MERCHANT_URL_BASE}/webhook`,
-      },
-
       billing_address: {
-        city: billingAddress?.city,
-        country_code: billingAddress?.country || "AE",
-        first_name: billingAddress?.firstName,
-        last_name: billingAddress?.lastName,
-        line1: billingAddress?.line1,
-        phone_number: billingAddress?.phone,
+        first_name: finalBillingAddress.firstName,
+        last_name: finalBillingAddress.lastName,
+        line1: finalBillingAddress.address1,
+        line2: finalBillingAddress.address2 || "",
+        city: finalBillingAddress.city,
+        country_code: finalBillingAddress.country || "AE",
+        phone_number: finalBillingAddress.phone,
       },
-
       shipping_address: {
-        city: shippingAddress?.city,
-        country_code: shippingAddress?.country || "AE",
-        first_name: shippingAddress?.firstName,
-        last_name: shippingAddress?.lastName,
-        line1: shippingAddress?.line1,
-        phone_number: shippingAddress?.phone,
+        first_name: shippingAddress.firstName,
+        last_name: shippingAddress.lastName,
+        line1: shippingAddress.address1,
+        line2: shippingAddress.address2 || "",
+        city: shippingAddress.city,
+        country_code: shippingAddress.country || "AE",
+        phone_number: shippingAddress.phone,
       },
-
       payment_type: "PAY_BY_INSTALMENTS",
       instalments,
-      platform: "Montres Ecommerce",
-      is_mobile: false,
+      country_code: "AE",
       locale: "en_US",
+      is_mobile: false,
+      platform: "Montres Ecommerce",
+      merchant_url: {
+        success: `${process.env.TAMARA_MERCHANT_URL_BASE}/paymentsuccess?orderId=${order._id}`,
+        cancel: `${process.env.TAMARA_MERCHANT_URL_BASE}/paymentcancel?orderId=${order._id}`,
+        failure: `${process.env.TAMARA_MERCHANT_URL_BASE}/paymentfailure?orderId=${order._id}`,
+        notification: `${process.env.TAMARA_MERCHANT_URL_BASE}/webhook/tamara`,
+      },
     };
 
-    // ------------------------------
-    // 6️⃣ CALL TAMARA API
-    // ------------------------------
+    // Call Tamara API
     const tamaraResponse = await axios.post(TAMARA_API_URL, tamaraPayload, {
       headers: {
         Authorization: `Bearer ${TAMARA_SECRET_KEY}`,
@@ -513,34 +512,64 @@ const createTamaraOrder = async (req, res) => {
       },
     });
 
-    const checkoutUrl =
-      tamaraResponse.data?._links?.checkout?.href ||
-      tamaraResponse.data?.checkout_url;
+    const checkoutUrl = tamaraResponse.data?._links?.checkout?.href || tamaraResponse.data?.checkout_url;
+    if (!checkoutUrl) throw new Error("Tamara checkout URL not returned");
 
-    if (!checkoutUrl) {
-      return res.status(400).json({
-        message: "Tamara did not return checkout URL",
-      });
-    }
-
-    order.tamaraSessionId = tamaraResponse.data?.order_id;
+    order.tamaraSessionId = tamaraResponse.data.order_id;
     await order.save();
 
-    // ------------------------------
-    // 7️⃣ CLEAR USER CART
-    // ------------------------------
-    if (userId) {
-      await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
-    }
+    // Send email notifications
+    const productListHTML = populatedItems
+      .map(
+        (item) =>
+          `<tr>
+            <td style="padding:8px;border:1px solid #ddd;">${item.name}</td>
+            <td style="padding:8px;border:1px solid #ddd;">${item.quantity}</td>
+            <td style="padding:8px;border:1px solid #ddd;">AED ${item.price}</td>
+          </tr>`
+      )
+      .join("");
 
+    const emailHTML = `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <h2 style="color:#d4af37;">🛍️ New Order Received</h2>
+        <p><strong>Customer ID:</strong> ${userId}</p>
+        <p><strong>Region:</strong> ${region}</p>
+        <p><strong>Payment Method:</strong> Tamara</p>
+        <p><strong>Total:</strong> AED ${total}</p>
+        <h3>Products:</h3>
+        <table style="border-collapse:collapse;width:100%;border:1px solid #ddd;">
+          <thead>
+            <tr>
+              <th style="padding:8px;border:1px solid #ddd;">Product</th>
+              <th style="padding:8px;border:1px solid #ddd;">Qty</th>
+              <th style="padding:8px;border:1px solid #ddd;">Price</th>
+            </tr>
+          </thead>
+          <tbody>${productListHTML}</tbody>
+        </table>
+        <p><strong>Shipping Country:</strong> ${shippingAddress.country}</p>
+        <p style="margin-top:20px;">🕒 <em>Order placed on ${new Date().toLocaleString()}</em></p>
+      </div>
+    `;
+
+    await sendEmail(process.env.ADMIN_EMAIL, "🛍️ New Order Notification", emailHTML);
+    await sendEmail(process.env.SALES_EMAIL, "🛍️ New Order Notification", emailHTML);
+
+    // Clear user cart
+    await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
+
+    // Response
     return res.status(201).json({
       success: true,
-      order,
+      orderId: order._id,
       checkoutUrl,
     });
   } catch (error) {
-    console.error("Tamara Error:", error?.response?.data || error.message);
+    console.error("TAMARA ERROR:", error?.response?.data || error.message);
     return res.status(500).json({
+      success: false,
+      message: "Tamara payment initialization failed",
       error: error?.response?.data || error.message,
     });
   }
@@ -548,42 +577,173 @@ const createTamaraOrder = async (req, res) => {
 
 
 
-
-//pending this function 
 const getShippingAddresses = async (req, res) => {
-  try {
-    // Assuming req.user.id contains the currently logged-in user's ID
-    const userId = req.user.id;
+ try {
+     const userId = req.user.userId; // 👈 change here
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    // Fetch only this user's orders
-    const orders = await Order.find({ userId })
-      .select("shippingAddress createdAt")
+    const addresses = await ShippingAddress.find({ userId })
+      .sort({ updatedAt: -1 })
       .lean();
 
-    // Remove duplicates if needed
-    const uniqueAddresses = [];
-    const map = new Map();
-
-    orders.forEach((order) => {
-      const key = JSON.stringify(order.shippingAddress);
-      if (!map.has(key)) {
-        map.set(key, true);
-        uniqueAddresses.push(order.shippingAddress);
-      }
-    });
-
-    return res.status(200).json({
+    return res.json({
       success: true,
-      count: uniqueAddresses.length,
-      addresses: uniqueAddresses,
+      count: addresses.length,
+      addresses
     });
-  } catch (error) {
-    console.error("getShippingAddresses Error:", error);
+  } catch (err) {
+    console.error("Get Shipping Addresses Error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };
 
 
+
+
+
+// ---------------------
+// Create Shipping Address
+// ---------------------
+const createShippingAddress = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const data = req.body;
+
+  
+
+    // Deduplicate per user
+    const existing = await ShippingAddress.findOne({
+      userId,
+      address1: data.address1,
+      city: data.city,
+      country: data.country,
+      phone: data.phone
+    });
+
+    if (existing) {
+      return res.json({ success: true, address: existing });
+    }
+
+    const address = await ShippingAddress.create({
+      userId,
+      ...data
+    });
+
+    return res.status(201).json({ success: true, address });
+  } catch (err) {
+    console.error("Create Shipping Address Error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+
+const deleteShippingAddress = async (req,res)=>{
+  try {
+    const userId = req.user.userId; // 👈 change here
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const { id } = req.params;
+
+    const deleted = await ShippingAddress.findOneAndDelete({
+      _id: id,
+      userId
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("Delete Shipping Address Error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+
+const getBillingAddresses =  async (req,res)=>{
+  try {
+  const userId = req.user.userId; // 👈 change here
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const addresses = await BillingAddress.find({ userId })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      count: addresses.length,
+      addresses
+    });
+  } catch (err) {
+    console.error("Get Billing Addresses Error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ---------------------
+// Create Billing Address
+// ---------------------
+const createBillingAddress = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const data = req.body;
+
+    if (!validateAddress(data)) {
+      return res.status(400).json({ message: "Invalid billing address" });
+    }
+
+    // Deduplicate per user
+    const existing = await BillingAddress.findOne({
+      userId,
+      address1: data.address1,
+      city: data.city,
+      country: data.country,
+      phone: data.phone
+    });
+
+    if (existing) {
+      return res.json({ success: true, address: existing });
+    }
+
+    const address = await BillingAddress.create({
+      userId,
+      ...data
+    });
+
+    return res.status(201).json({ success: true, address });
+  } catch (err) {
+    console.error("Create Billing Address Error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+const deleteBillingAddress = async (req,res)=>{
+  try {
+     const userId = req.user.userId; // 👈 change here
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const { id } = req.params;
+
+    const deleted = await BillingAddress.findOneAndDelete({
+      _id: id,
+      userId
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("Delete Billing Address Error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
 /**
  * Get order by ID
  */
@@ -631,6 +791,11 @@ module.exports = {
   getAllOrders,
   getMyOrders,
   getShippingAddresses,
+  createShippingAddress,
+  deleteShippingAddress,
+  getBillingAddresses,
+  createBillingAddress,
+  deleteBillingAddress,
   createTabbyOrder,
   createTamaraOrder,
   createStripeOrder,
