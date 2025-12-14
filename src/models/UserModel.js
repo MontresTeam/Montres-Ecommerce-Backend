@@ -38,7 +38,10 @@ const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true, validate: [validator.isEmail, "Invalid Email"] },
-    password: { type: String, required: true, minlength: 8 },
+    password: { type: String, minlength: 8, required: function() { return !this.googleId; } },
+    googleId: { type: String, unique: true, sparse: true },
+    avatar: { type: String },
+    provider: { type: String, enum: ["local", "google"], default: "local" },
     resetPasswordToken: String,
     refreshToken: String,
     cart: [cartItemSchema],
