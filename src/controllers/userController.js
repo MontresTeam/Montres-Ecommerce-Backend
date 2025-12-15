@@ -151,6 +151,8 @@ const Login = async (req, res) => {
 };
 
 
+
+
  const logout = async (req, res) => {
   try {
     // ✅ Clear refresh token cookie
@@ -593,6 +595,8 @@ const updateCart = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
 
 // getrecommed products
 const recommendationsProduct = async (req, res) => {

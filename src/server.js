@@ -20,6 +20,8 @@ const orderRoute = require("./routes/orderRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const filterRouter = require('./routes/filterRouter') 
 const tabbyRouter = require('./routes/tabbyRouter')
+const invontryStock = require('./routes/inventoryRoutes')
+const adminsRoute = require('./routes/adminRoute')
 
 const PORT = process.env.PORT || 9000;
 
@@ -83,6 +85,8 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/admin/order", orderRoute);
 app.use("/api/order", orderRoute);
 app.use("/api/MyOrders", orderRoute);
+app.use("/api/payment",orderRoute)
+app.use("/api/address",orderRoute)
 app.use("/api/products", productRoutes);
 app.use("/api", productRoutes);
 app.use("/api/createProduct", productRoutes);
@@ -98,6 +102,10 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/filter",filterRouter);
 app.use('/api/recommend', recommendRoutes);
 app.use(tabbyRouter)
+app.use('/api/invontry',invontryStock)
+app.use('/api/admin',adminsRoute)
+
+
 // ✅ Error Handler
 app.use((err, req, res, next) => {
   console.error("Error:", err.message);

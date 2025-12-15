@@ -397,11 +397,11 @@ const getProducts = async (req, res) => {
     // ✅ Query products
     const products = await Product.find(filterQuery)
       .select(
-        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery " +
+        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery scopeOfDeliveryWatch " +
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
         "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition category description visibility published featured inStock " +
-        "badges images createdAt updatedAt waterResistance complications crystal"
+        "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -445,6 +445,38 @@ const getProducts = async (req, res) => {
   }
 };
 
+
+const getBrandWatches = async (req, res) => {
+  try {
+    const { brand } = req.params;
+
+    // Find all watches for the brand
+    const products = await Product.find({
+      brand: { $regex: new RegExp(`^${brand}$`, 'i') }, // case-insensitive
+      category: "Watch" // only watches
+    });
+
+    if (!products || products.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No watches found for brand: ${brand}`,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};
 
 
 
@@ -750,5 +782,6 @@ module.exports = {
   getAllProductwithSearch,
   restockSubscribe,
   SimilarProduct,
-  YouMayAlsoLike
+  YouMayAlsoLike,
+  getBrandWatches
 };
