@@ -22,6 +22,22 @@ const wishlistGroupSchema = new mongoose.Schema({
   items: [wishlistItemSchema],
 });
 
+// Address Schema
+const addressSchema = new mongoose.Schema(
+  {
+    firstName: String,
+    lastName: String,
+    phone: String,
+    email: String,
+    country: String,
+    state: String,
+    city: String,
+    street: String,
+    postalCode: String,
+  },
+  { _id: false }
+);
+
 // Order schema
 const orderSchema = new mongoose.Schema({
   orderId: { type: String, required: true },
@@ -46,6 +62,7 @@ const userSchema = new mongoose.Schema(
     refreshToken: String,
     cart: [cartItemSchema],
     wishlistGroups: [wishlistGroupSchema],
+    shippingAddress: { type: addressSchema, default: {} },
     myOrders: [orderSchema],
   },
   { timestamps: true }

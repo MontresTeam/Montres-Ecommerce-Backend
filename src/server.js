@@ -14,6 +14,7 @@ const leatherRoute = require("./routes/leatheRouter");
 const accessoriesRoute = require("./routes/accessoriesRouter");
 const homeProductsRoute = require("./routes/homeProductRoutes");
 const adminProductRoute = require("./routes/adminPrdouctRouter");
+const addressRoutes = require("./routes/addressRoutes");
 const contactRoutes = require("./routes/contactFormRoutes");
 const orderRoute = require("./routes/orderRoutes");
 const customerRoutes = require("./routes/customerRoutes");
@@ -86,7 +87,8 @@ app.use("/api/products", productRoutes);
 app.use("/api", productRoutes);
 app.use("/api/createProduct", productRoutes);
 app.use("/api/Auth", userRoute);
-app.use("/api/auth", userRoute); // ✅ Lowercase alias for OAuth
+app.use('/api/tabby',tabbyRouter)
+app.use('/api/address', addressRoutes);;
 app.use("/api/watches", watchesRoute);
 app.use("/api/leather", leatherRoute);
 app.use("/api/accessories", accessoriesRoute);
@@ -95,7 +97,7 @@ app.use("/api/admin/product", adminProductRoute);
 app.use("/api/customers", customerRoutes);
 app.use("/api/filter",filterRouter);
 app.use('/api/recommend', recommendRoutes);
-app.use('/api/tabby',tabbyRouter)
+app.use(tabbyRouter)
 // ✅ Error Handler
 app.use((err, req, res, next) => {
   console.error("Error:", err.message);
