@@ -8,7 +8,8 @@ const {
   SimilarProduct,
   restockSubscribe,
   YouMayAlsoLike,
-  getBrandWatches
+  getBrandWatches,
+  getBookingService
 } = require("../controllers/productController");
 const {
   addToCart,
@@ -38,7 +39,8 @@ const router = express.Router();
 /* ----------------- Product Routes ----------------- */
 router.get("/products", getProducts);                       // Fetch all products
 router.post("/products", ImageUpload, addProduct);          // Add a new product
-router.post("/products/createBooking",protect, ImageUpload, addServiceForm); // Create service form
+router.post("/createBooking",protect, ImageUpload, addServiceForm); // Create service form
+router.get("/getBooking",getBookingService)
 router.get("/products/home", productHome);                 // Products for homepage
 router.get('/productall',getAllProductwithSearch)
 /* ----------------- Cart Routes ----------------- */

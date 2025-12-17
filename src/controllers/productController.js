@@ -557,28 +557,34 @@ const addProduct = async (req, res) => {
 const addServiceForm = async (req, res) => {
   try {
     const {
+      customerName,
+      phoneNumber,
+      countryCode, // optional, default +971 will be applied by schema
       productName,
       manufactureYear,
       watchType,
       selectedService,
-      image, // optional (can be a URL or base64)
+      images, // optional (can be a URL or base64)
     } = req.body;
 
     // 🔹 Validate required fields
-    if (!productName || !selectedService) {
+    if (!customerName || !phoneNumber || !productName || !selectedService) {
       return res.status(400).json({
         success: false,
-        message: "Product name and service type are required",
+        message: "Customer name, phone number, product name, and service type are required",
       });
     }
 
     // 🔹 Create new booking
     const newBooking = new WatchService({
+      customerName,
+      phoneNumber,
+      countryCode, // will use default if not provided
       productName,
       manufactureYear,
       watchType,
       selectedService,
-      image,
+      images,
     });
 
     await newBooking.save();
@@ -597,6 +603,37 @@ const addServiceForm = async (req, res) => {
     });
   }
 };
+
+
+
+// 📌 Get all service bookings
+const getBookingService = async (req, res) => {
+  try {
+    // Optionally, you could filter by query params, e.g., ?watchType=Luxury
+    const { watchType, selectedService } = req.query;
+
+    // Build query object dynamically
+    let query = {};
+    if (watchType) query.watchType = watchType;
+    if (selectedService) query.selectedService = selectedService;
+
+    const bookings = await WatchService.find(query).sort({ createdAt: -1 }); // latest first
+
+    res.status(200).json({
+      success: true,
+      message: "Service bookings retrieved successfully",
+      data: bookings,
+    });
+  } catch (error) {
+    console.log("❌ Error fetching service bookings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
 
 // Subscribe to restock notifications
 
@@ -783,5 +820,6 @@ module.exports = {
   restockSubscribe,
   SimilarProduct,
   YouMayAlsoLike,
-  getBrandWatches
+  getBrandWatches,
+  getBookingService
 };

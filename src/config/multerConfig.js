@@ -5,17 +5,17 @@ const cloudinary = require("cloudinary").v2;
 
 // Configure Cloudinary
 cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Configure Multer to store temporarily on local server
+// Configure Multer (temporary local storage)
 const storage = multer.diskStorage({
-    destination: path.join(__dirname, 'uploads'), // Temporary folder
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + "-" + file.originalname);
-    }
+  destination: path.join(__dirname, "uploads"),
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
 });
 
 const upload = multer({ storage });
@@ -26,14 +26,15 @@ const imageUpload = (req, res, next) => {
       return res.status(400).json({ error: err.message });
     }
 
+    // ✅ IMPORTANT: If no files → just continue
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: "No images uploaded." });
+      req.body.images = []; // ensure safe default
+      return next();
     }
 
     try {
       const uploadedImages = [];
 
-      // Upload each file to Cloudinary
       for (const file of req.files) {
         const result = await cloudinary.uploader.upload(file.path, {
           folder: "MontresTradingLLC",
@@ -46,20 +47,21 @@ const imageUpload = (req, res, next) => {
           alt: file.originalname,
         });
 
-        // Delete local file after upload
+        // Remove local file
         fs.unlink(file.path, (error) => {
-          if (error) console.error("Error deleting local file:", error);
+          if (error) console.error("File delete error:", error);
         });
       }
 
-      req.body.images = uploadedImages; // Pass to controller
+      req.body.images = uploadedImages; // send to controller
       next();
     } catch (error) {
       console.error("Cloudinary upload error:", error);
-      return res.status(500).json({ message: "Error uploading files to Cloudinary" });
+      return res
+        .status(500)
+        .json({ message: "Error uploading files to Cloudinary" });
     }
   });
 };
-
 
 module.exports = imageUpload;

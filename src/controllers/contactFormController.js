@@ -13,13 +13,21 @@ exports.submitContactForm = async (req, res) => {
       message,
     } = req.body;
 
-    // ✅ Handle uploaded Cloudinary image(s)
+    // ✅ Optional attachment handling
     let attachmentUrl = "";
-    if (req.body.images && req.body.images.length > 0) {
-      attachmentUrl = req.body.images[0].url; // take the first uploaded file
+
+    // Case 1: Cloudinary upload (images array)
+    if (req.body.images && Array.isArray(req.body.images)) {
+      if (req.body.images.length > 0) {
+        attachmentUrl = req.body.images[0].url;
+      }
     }
 
-    // ✅ Create a new contact form entry
+    // Case 2: Single uploaded file (multer / cloudinary)
+    if (req.file && req.file.path) {
+      attachmentUrl = req.file.path;
+    }
+
     const newContact = new ContactForm({
       fullName,
       email,
@@ -28,7 +36,7 @@ exports.submitContactForm = async (req, res) => {
       companyName,
       subject,
       message,
-      attachment: attachmentUrl,
+      attachment: attachmentUrl, // ← empty string if not uploaded
     });
 
     await newContact.save();
@@ -47,6 +55,9 @@ exports.submitContactForm = async (req, res) => {
     });
   }
 };
+
+
+
 
 // 📜 Get all contact form submissions (admin use)
 exports.getAllContacts = async (req, res) => {
