@@ -28,6 +28,7 @@ const getInventory = async (req, res) => {
   }
 };
 
+
 // ---------------------- GET ONE ----------------------
 const getInventoryById = async (req, res) => {
   try {

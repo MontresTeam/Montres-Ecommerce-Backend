@@ -2,7 +2,9 @@ const Product = require("../models/product");
 const RestockSubscription = require("../models/RestockSubscription");
 const WatchService = require("../models/repairserviceModal");
 const mongoose = require("mongoose")
-const { brandList, InventoryStock } = require("../models/InventoryStockModel");
+const  InventoryStock  = require("../models/InventoryStockModel");
+const { brandList } = require("../models/constants");
+
 
 // Move selected products to inventory
 const moveToInventory = async (req, res) => {

@@ -1,6 +1,4 @@
-const mongoose = require('mongoose');
-
-const brandList = [
+module.exports.brandList = [
   "Aigner", "Akribos Xxiv", "Alfred Dunhill", "Alviero Martini", "Apogsum", "AquaMarin", "Aquaswiss", "Armin Strom",
   "Audemars Piguet", "Balenciaga", "Ball", "Bernhard H. Mayer", "Bertolucci",
   "Blancpain", "Borja", "Boss By Hugo Boss", "Boucheron", "Breitling", "Breguet",
@@ -28,46 +26,3 @@ const brandList = [
   "Tudor", "U-Boat", "Ulysse Nardin", "Vacheron Constantin", "Valentino", "Van Cleef & Arpels", "Versace",
   "Yves Saint Laurent", "Zenith", "Other"
 ];
-
-const InventoryStockSchema = new mongoose.Schema({
-  productName: { 
-    type: String,
-    required: true,
-    trim: true
-  },
-
-  brand: {
-    type: String,
-    enum: brandList,
-  },
-
-  internalCode: { type: String, trim: true, default: "" },
-  quantity: { type: Number, default: 0 },
-
-  status: {
-    type: String,
-    enum: ["AVAILABLE", "SOLD", "AUCTION"],
-    default: "AVAILABLE"
-  },
-
-  cost: { type: Number, default: 0 },
-  sellingPrice: { type: Number, default: 0 },
-  soldPrice: { type: Number, default: 0 },
-
-  paymentMethod: {
-    type: String,
-    enum: ["cash", "stripe", "tabby", "chrono", "bank_transfer", "other"],
-    default: "cash"
-  },
-
-  receivingAmount: { type: Number, default: 0 },
-
-    addedBy: { // Optional: track which admin added this
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Admin"
-  },
-
-}, { timestamps: true });
-
-module.exports = mongoose.model("InventoryStock", InventoryStockSchema)
-
