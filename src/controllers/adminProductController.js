@@ -196,10 +196,6 @@ const addProduct = async (req, res) => {
   }
 };
 
-// =============================
-// UPDATE PRODUCT
-// =============================
-
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -211,6 +207,9 @@ const updateProduct = async (req, res) => {
         message: "Product not found",
       });
     }
+
+    // 🔔 STORE OLD STOCK BEFORE UPDATE
+    const oldStockQuantity = product.stockQuantity;
 
     let updatedImages = [...(product.images || [])];
 
@@ -247,15 +246,9 @@ const updateProduct = async (req, res) => {
       ...(req.body.model && { model: req.body.model }),
       name: productName,
       ...(req.body.sku && { sku: req.body.sku }),
-      ...(req.body.referenceNumber && {
-        referenceNumber: req.body.referenceNumber,
-      }),
-      ...(req.body.serialNumber && {
-        serialNumber: req.body.serialNumber,
-      }),
-      ...(req.body.additionalTitle && {
-        additionalTitle: req.body.additionalTitle,
-      }),
+      ...(req.body.referenceNumber && { referenceNumber: req.body.referenceNumber }),
+      ...(req.body.serialNumber && { serialNumber: req.body.serialNumber }),
+      ...(req.body.additionalTitle && { additionalTitle: req.body.additionalTitle }),
       ...(req.body.watchType && { watchType: req.body.watchType }),
       ...(req.body.watchStyle && { watchStyle: req.body.watchStyle }),
       ...(req.body.scopeOfDeliveryWatch && {
@@ -269,14 +262,11 @@ const updateProduct = async (req, res) => {
       ...(req.body.condition && { condition: req.body.condition }),
       ...(req.body.itemCondition && { itemCondition: req.body.itemCondition }),
 
-      // ⭐ LIMITED EDITION UPDATE ⭐
       ...(req.body.limitedEdition !== undefined && {
         limitedEdition: parseBoolean(req.body.limitedEdition),
       }),
 
-      ...(req.body.productionYear && {
-        productionYear: req.body.productionYear,
-      }),
+      ...(req.body.productionYear && { productionYear: req.body.productionYear }),
       ...(req.body.approximateYear !== undefined && {
         approximateYear: parseBoolean(req.body.approximateYear),
       }),
@@ -288,13 +278,9 @@ const updateProduct = async (req, res) => {
       ...(req.body.movement && { movement: req.body.movement }),
       ...(req.body.dialColor && { dialColor: req.body.dialColor }),
       ...(req.body.caseMaterial && { caseMaterial: req.body.caseMaterial }),
-      ...(req.body.strapMaterial && {
-        strapMaterial: req.body.strapMaterial,
-      }),
+      ...(req.body.strapMaterial && { strapMaterial: req.body.strapMaterial }),
       ...(req.body.strapColor && { strapColor: req.body.strapColor }),
-      ...(req.body.badges && {
-        badges: parseJSON(req.body.badges),
-      }),
+      ...(req.body.badges && { badges: parseJSON(req.body.badges) }),
       ...(req.body.strapSize !== undefined && {
         strapSize: parseNumber(req.body.strapSize),
       }),
@@ -303,12 +289,8 @@ const updateProduct = async (req, res) => {
       }),
       ...(req.body.caseColor && { caseColor: req.body.caseColor }),
       ...(req.body.crystal && { crystal: req.body.crystal }),
-      ...(req.body.bezelMaterial && {
-        bezelMaterial: req.body.bezelMaterial,
-      }),
-      ...(req.body.dialNumerals && {
-        dialNumerals: req.body.dialNumerals,
-      }),
+      ...(req.body.bezelMaterial && { bezelMaterial: req.body.bezelMaterial }),
+      ...(req.body.dialNumerals && { dialNumerals: req.body.dialNumerals }),
       ...(req.body.caliber && { caliber: req.body.caliber }),
       ...(req.body.powerReserve !== undefined && {
         powerReserve: parseNumber(req.body.powerReserve),
@@ -329,24 +311,16 @@ const updateProduct = async (req, res) => {
       ...(req.body.salePrice !== undefined && {
         salePrice: parseNumber(req.body.salePrice),
       }),
-      ...(req.body.taxStatus && {
-        taxStatus: req.body.taxStatus,
-      }),
+      ...(req.body.taxStatus && { taxStatus: req.body.taxStatus }),
 
-      stockQuantity: stockQuantity,
-      inStock: inStock,
+      stockQuantity,
+      inStock,
 
-      ...(req.body.description && {
-        description: req.body.description,
-      }),
-      ...(req.body.visibility && {
-        visibility: req.body.visibility,
-      }),
+      ...(req.body.description && { description: req.body.description }),
+      ...(req.body.visibility && { visibility: req.body.visibility }),
 
       ...(req.body.seoTitle && { seoTitle: req.body.seoTitle }),
-      ...(req.body.seoDescription && {
-        seoDescription: req.body.seoDescription,
-      }),
+      ...(req.body.seoDescription && { seoDescription: req.body.seoDescription }),
       ...(req.body.seoKeywords && {
         seoKeywords: parseJSON(req.body.seoKeywords),
       }),
@@ -369,13 +343,12 @@ const updateProduct = async (req, res) => {
     const updatedProduct = await Product.findByIdAndUpdate(id, updatedFields, {
       new: true,
       runValidators: true,
-    }).select(
-      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDeliveryWatch " +
-        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor " +
-        "regularPrice salePrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
-        "condition itemCondition description visibility published featured inStock limitedEdition category " +
-        "badges images createdAt updatedAt"
-    );
+    });
+
+    // 🔔 RESTOCK EMAIL TRIGGER (FINAL & IMPORTANT)
+    if (oldStockQuantity === 0 && updatedProduct.stockQuantity > 0) {
+      await notifyRestock(updatedProduct._id);
+    }
 
     res.status(200).json({
       success: true,
@@ -391,7 +364,6 @@ const updateProduct = async (req, res) => {
     });
   }
 };
-
 // =============================
 // ⭐ GET ALL LIMITED EDITION PRODUCTS ⭐
 // =============================

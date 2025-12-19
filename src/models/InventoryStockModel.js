@@ -23,10 +23,11 @@ const brandList = [
   "Piaget", "Pierre Balmain", "Porsche Design", "Prada", "Quinting", "Rado",
   "Rolex", "Rama Swiss Watch", "Raymond Weil", "Richard Mille", "Robergé",
   "Roberto Cavalli", "Rochas", "Roger Dubuis", "S.T. Dupont", "Saint Laurent Paris",
-  "Salvatore Ferragamo", "Seiko", "Swarovski", "Swatch", "Tag Heuer", "Techno Com",
+  "Salvatore Ferragamo", "SEIKO", "Swarovski", "Swatch", "Tag Heuer", "Techno Com",
   "Technomarine", "Tiffany & Co.", "Tissot", "Tonino Lamborghini", "Trussardi",
   "Tudor", "Vacheron Constantin", "Valentino", "Van Cleef & Arpels", "Versace",
-  "Yves Saint Laurent", "Zenith", "Ingersoll", "IWC", "U-Boat", "Ulysse Nardin"
+  "Yves Saint Laurent", "Zenith", "Ingersoll", "IWC", "U-Boat", "Ulysse Nardin",
+  "Other"
 ];
 
 const InventoryStockSchema = new mongoose.Schema({
@@ -60,8 +61,16 @@ const InventoryStockSchema = new mongoose.Schema({
     default: "cash"
   },
 
-  receivingAmount: { type: Number, default: 0 }
+  receivingAmount: { type: Number, default: 0 },
+
+    addedBy: { // Optional: track which admin added this
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Admin"
+  },
 
 }, { timestamps: true });
 
-module.exports = mongoose.model("InventoryStock", InventoryStockSchema);
+module.exports = {
+  InventoryStock: mongoose.model("InventoryStock", InventoryStockSchema),
+  brandList
+};

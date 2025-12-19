@@ -11,6 +11,7 @@ const {
   googleLogin,
   facebookLogin,
   Newsletter,
+  currencyConver,
 } = require("../controllers/userController");
 const imageUploadUpdate = require("../config/ProfileUploadin");
 const { updateUserProfile } = require("../controllers/userProfileController");
@@ -32,6 +33,8 @@ router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:id/:token", ResetPassword);
 
 router.get("/convert-price", convertprice);
+
+router.get("/CurrencyAPI",currencyConver)
 
 router.post("/logout", logout);
 

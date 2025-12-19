@@ -1041,6 +1041,58 @@ const convertprice = async (req, res) => {
 };
 
 
+
+const currencyConver = async (req, res) => {
+  const { amount, from, to } = req.query;
+
+  // Validate input
+  if (!amount || !from || !to) {
+    return res.status(400).json({
+      error: "Missing params (amount, from, to)",
+    });
+  }
+
+ try {
+    const response = await axios.get(
+      "https://api.currencyapi.com/v3/latest",
+      {
+        headers: {
+          apikey: process.env.CURRENCY_API_KEY, // ✅ HEADER, NOT PARAM
+        },
+        params: {
+          base_currency: from,
+          currencies: to,
+        },
+      }
+    );
+
+    // Get rate
+    const rate = response.data?.data?.[to]?.value;
+
+    if (!rate) {
+      return res.status(400).json({
+        error: `Currency ${to} not supported`,
+      });
+    }
+
+    const converted = (parseFloat(amount) * rate).toFixed(2);
+
+    res.json({
+      base: from,
+      target: to,
+      rate,
+      amount: Number(amount),
+      converted: Number(converted),
+    });
+  } catch (err) {
+    console.error("CurrencyAPI Error:", err.response?.data || err.message);
+    res.status(500).json({
+      error: "Currency conversion failed",
+    });
+  }
+};
+
+
 //get cart Count
 const getCartCount = async (req, res) => {
   try {
@@ -1112,6 +1164,7 @@ module.exports = {
   logout,
   googleLogin,
   facebookLogin,
-  Newsletter
+  Newsletter,
+  currencyConver
   };
 

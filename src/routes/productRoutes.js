@@ -9,7 +9,8 @@ const {
   restockSubscribe,
   YouMayAlsoLike,
   getBrandWatches,
-  getBookingService
+  getBookingService,
+  moveToInventory
 } = require("../controllers/productController");
 const {
   addToCart,
@@ -75,6 +76,8 @@ router.post("/restock-notifications/subscribe",restockSubscribe)
 router.get("/:id/similar", SimilarProduct);
 router.get("/:id/you-may-also-like", YouMayAlsoLike);
 router.get('/brand/:brand/watches', getBrandWatches);
+
+router.post("/inventory/move",moveToInventory)
 
 
 module.exports = router;

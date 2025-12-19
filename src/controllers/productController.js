@@ -1,6 +1,84 @@
 const Product = require("../models/product");
-const RestockSubscription = require('../models/RestockSubscription')
+const RestockSubscription = require("../models/RestockSubscription");
 const WatchService = require("../models/repairserviceModal");
+const mongoose = require("mongoose")
+const { brandList, InventoryStock } = require("../models/InventoryStockModel");
+
+// Move selected products to inventory
+const moveToInventory = async (req, res) => {
+  try {
+    let { productId } = req.body;
+
+    // ✅ Accept single ID or array
+    if (!productId) {
+      return res.status(400).json({ message: "Product IDs required" });
+    }
+
+    // Convert single ID → array
+    if (!Array.isArray(productId)) {
+      productId = [productId];
+    }
+
+    const moved = [];
+    const skipped = [];
+
+    for (const id of productId) {
+      // Validate ObjectId
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        skipped.push(id);
+        continue;
+      }
+
+      const product = await Product.findById(id).lean();
+
+      if (!product) {
+        skipped.push(id);
+        continue;
+      }
+
+      // Check inventory existence (better: SKU)
+      const exists = await InventoryStock.findOne({
+        internalCode: product.sku,
+      });
+
+      if (exists) {
+        skipped.push(id);
+        continue;
+      }
+
+      // Enum-safe brand
+      const allowedBrand = brandList.includes(product.brand)
+        ? product.brand
+        : undefined;
+
+      const inventoryItem = await InventoryStock.create({
+        productName: product.name,
+        brand: allowedBrand,
+        internalCode: product.sku || "",
+        quantity: product.stockQuantity || 1,
+        sellingPrice: product.salePrice || 0,
+        status: "AVAILABLE",
+        addedBy: req.admin?._id,
+      });
+
+      moved.push(inventoryItem);
+    }
+
+    return res.json({
+      message: "Move to inventory completed",
+      movedCount: moved.length,
+      skippedCount: skipped.length,
+    });
+
+  } catch (err) {
+    console.error("Inventory move error:", err);
+    return res.status(500).json({
+      message: "Inventory move failed",
+      error: err.message, // 🔥 helpful for debugging
+    });
+  }
+};
+
 
 const getProducts = async (req, res) => {
   try {
@@ -73,7 +151,7 @@ const getProducts = async (req, res) => {
     const categoryList = normalizeArray(category);
     if (categoryList.length > 0) {
       andConditions.push({
-        category: { $in: categoryList.map(cat => new RegExp(cat, "i")) }
+        category: { $in: categoryList.map((cat) => new RegExp(cat, "i")) },
       });
     }
 
@@ -81,7 +159,7 @@ const getProducts = async (req, res) => {
     const brandList = normalizeArray(brand);
     if (brandList.length > 0) {
       andConditions.push({
-        brand: { $in: brandList.map(br => new RegExp(br, "i")) }
+        brand: { $in: brandList.map((br) => new RegExp(br, "i")) },
       });
     }
 
@@ -89,7 +167,7 @@ const getProducts = async (req, res) => {
     const modelList = normalizeArray(model);
     if (modelList.length > 0) {
       andConditions.push({
-        model: { $in: modelList.map(m => new RegExp(m, "i")) }
+        model: { $in: modelList.map((m) => new RegExp(m, "i")) },
       });
     }
 
@@ -97,7 +175,9 @@ const getProducts = async (req, res) => {
     const referenceNumberList = normalizeArray(referenceNumber);
     if (referenceNumberList.length > 0) {
       andConditions.push({
-        referenceNumber: { $in: referenceNumberList.map(ref => new RegExp(ref, "i")) }
+        referenceNumber: {
+          $in: referenceNumberList.map((ref) => new RegExp(ref, "i")),
+        },
       });
     }
 
@@ -105,7 +185,7 @@ const getProducts = async (req, res) => {
     const typeList = normalizeArray(type);
     if (typeList.length > 0) {
       andConditions.push({
-        watchType: { $in: typeList.map(t => new RegExp(t, "i")) }
+        watchType: { $in: typeList.map((t) => new RegExp(t, "i")) },
       });
     }
 
@@ -140,21 +220,14 @@ const getProducts = async (req, res) => {
     if (availList.length > 0) {
       const hasInStock = availList.includes("in_stock");
       const hasOutOfStock = availList.includes("out_of_stock");
-      
+
       if (hasInStock && !hasOutOfStock) {
         andConditions.push({
-          $or: [
-            { stockQuantity: { $gt: 0 } },
-            { inStock: true }
-          ]
+          $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }],
         });
-      }
-      else if (hasOutOfStock && !hasInStock) {
+      } else if (hasOutOfStock && !hasInStock) {
         andConditions.push({
-          $or: [
-            { stockQuantity: { $lte: 0 } },
-            { inStock: false }
-          ]
+          $or: [{ stockQuantity: { $lte: 0 } }, { inStock: false }],
         });
       }
     }
@@ -162,24 +235,26 @@ const getProducts = async (req, res) => {
     // ✅ Gender Filter
     const genderList = normalizeArray(gender);
     if (genderList.length > 0) {
-      andConditions.push({ 
-        gender: { $in: genderList.map(g => new RegExp(g, "i")) }
+      andConditions.push({
+        gender: { $in: genderList.map((g) => new RegExp(g, "i")) },
       });
     }
 
     // ✅ Condition Filter
     const conditionList = normalizeArray(condition);
     if (conditionList.length > 0) {
-      andConditions.push({ 
-        condition: { $in: conditionList.map(c => new RegExp(c, "i")) }
+      andConditions.push({
+        condition: { $in: conditionList.map((c) => new RegExp(c, "i")) },
       });
     }
 
     // ✅ Item Condition Filter
     const itemConditionList = normalizeArray(itemCondition);
     if (itemConditionList.length > 0) {
-      andConditions.push({ 
-        itemCondition: { $in: itemConditionList.map(ic => new RegExp(ic, "i")) }
+      andConditions.push({
+        itemCondition: {
+          $in: itemConditionList.map((ic) => new RegExp(ic, "i")),
+        },
       });
     }
 
@@ -187,7 +262,9 @@ const getProducts = async (req, res) => {
     const scopeList = normalizeArray(scopeOfDelivery);
     if (scopeList.length > 0) {
       andConditions.push({
-        scopeOfDelivery: { $in: scopeList.map(scope => new RegExp(scope, "i")) }
+        scopeOfDelivery: {
+          $in: scopeList.map((scope) => new RegExp(scope, "i")),
+        },
       });
     }
 
@@ -195,16 +272,16 @@ const getProducts = async (req, res) => {
     const badgesList = normalizeArray(badges);
     if (badgesList.length > 0) {
       andConditions.push({
-        badges: { 
-          $all: badgesList.map(badge => new RegExp(badge, "i"))
-        }
+        badges: {
+          $all: badgesList.map((badge) => new RegExp(badge, "i")),
+        },
       });
     }
 
     // ✅ Featured Filter
     if (featured !== undefined) {
-      andConditions.push({ 
-        featured: featured === 'true' || featured === true 
+      andConditions.push({
+        featured: featured === "true" || featured === true,
       });
     }
 
@@ -214,7 +291,9 @@ const getProducts = async (req, res) => {
     const dialColorList = normalizeArray(dialColor);
     if (dialColorList.length > 0) {
       andConditions.push({
-        dialColor: { $in: dialColorList.map(color => new RegExp(color, "i")) }
+        dialColor: {
+          $in: dialColorList.map((color) => new RegExp(color, "i")),
+        },
       });
     }
 
@@ -222,7 +301,9 @@ const getProducts = async (req, res) => {
     const caseColorList = normalizeArray(caseColor);
     if (caseColorList.length > 0) {
       andConditions.push({
-        caseColor: { $in: caseColorList.map(color => new RegExp(color, "i")) }
+        caseColor: {
+          $in: caseColorList.map((color) => new RegExp(color, "i")),
+        },
       });
     }
 
@@ -230,7 +311,9 @@ const getProducts = async (req, res) => {
     const strapColorList = normalizeArray(strapColor);
     if (strapColorList.length > 0) {
       andConditions.push({
-        strapColor: { $in: strapColorList.map(color => new RegExp(color, "i")) }
+        strapColor: {
+          $in: strapColorList.map((color) => new RegExp(color, "i")),
+        },
       });
     }
 
@@ -238,7 +321,9 @@ const getProducts = async (req, res) => {
     const strapMaterialList = normalizeArray(strapMaterial);
     if (strapMaterialList.length > 0) {
       andConditions.push({
-        strapMaterial: { $in: strapMaterialList.map(material => new RegExp(material, "i")) }
+        strapMaterial: {
+          $in: strapMaterialList.map((material) => new RegExp(material, "i")),
+        },
       });
     }
 
@@ -246,7 +331,9 @@ const getProducts = async (req, res) => {
     const caseMaterialList = normalizeArray(caseMaterial);
     if (caseMaterialList.length > 0) {
       andConditions.push({
-        caseMaterial: { $in: caseMaterialList.map(material => new RegExp(material, "i")) }
+        caseMaterial: {
+          $in: caseMaterialList.map((material) => new RegExp(material, "i")),
+        },
       });
     }
 
@@ -258,8 +345,8 @@ const getProducts = async (req, res) => {
         const [min, max] = range.split("-").map(Number);
         if (!isNaN(min) && !isNaN(max)) {
           caseSizeConditions.push({ caseSize: { $gte: min, $lte: max } });
-        } else if (range.includes('+')) {
-          const minSize = parseInt(range.replace('+', ''));
+        } else if (range.includes("+")) {
+          const minSize = parseInt(range.replace("+", ""));
           if (!isNaN(minSize)) {
             caseSizeConditions.push({ caseSize: { $gte: minSize } });
           }
@@ -290,7 +377,7 @@ const getProducts = async (req, res) => {
     if (yearList.length > 0) {
       const yearConditions = [];
       yearList.forEach((range) => {
-        if (range === 'pre_1950') {
+        if (range === "pre_1950") {
           yearConditions.push({ productionYear: { $lt: 1950 } });
         } else {
           const [min, max] = range.split("-").map(Number);
@@ -308,7 +395,9 @@ const getProducts = async (req, res) => {
     const waterResistanceList = normalizeArray(waterResistance);
     if (waterResistanceList.length > 0) {
       andConditions.push({
-        waterResistance: { $in: waterResistanceList.map(wr => new RegExp(wr, "i")) }
+        waterResistance: {
+          $in: waterResistanceList.map((wr) => new RegExp(wr, "i")),
+        },
       });
     }
 
@@ -316,7 +405,7 @@ const getProducts = async (req, res) => {
     const movementList = normalizeArray(movement);
     if (movementList.length > 0) {
       andConditions.push({
-        movement: { $in: movementList.map(mov => new RegExp(mov, "i")) }
+        movement: { $in: movementList.map((mov) => new RegExp(mov, "i")) },
       });
     }
 
@@ -324,7 +413,9 @@ const getProducts = async (req, res) => {
     const complicationsList = normalizeArray(complications);
     if (complicationsList.length > 0) {
       andConditions.push({
-        complications: { $in: complicationsList.map(comp => new RegExp(comp, "i")) }
+        complications: {
+          $in: complicationsList.map((comp) => new RegExp(comp, "i")),
+        },
       });
     }
 
@@ -332,7 +423,7 @@ const getProducts = async (req, res) => {
     const crystalList = normalizeArray(crystal);
     if (crystalList.length > 0) {
       andConditions.push({
-        crystal: { $in: crystalList.map(cryst => new RegExp(cryst, "i")) }
+        crystal: { $in: crystalList.map((cryst) => new RegExp(cryst, "i")) },
       });
     }
 
@@ -340,7 +431,9 @@ const getProducts = async (req, res) => {
     const accessoriesList = normalizeArray(includedAccessories);
     if (accessoriesList.length > 0) {
       andConditions.push({
-        includedAccessories: { $in: accessoriesList.map(acc => new RegExp(acc, "i")) }
+        includedAccessories: {
+          $in: accessoriesList.map((acc) => new RegExp(acc, "i")),
+        },
       });
     }
 
@@ -353,8 +446,8 @@ const getProducts = async (req, res) => {
           { brand: searchRegex },
           { model: searchRegex },
           { description: searchRegex },
-          { referenceNumber: searchRegex }
-        ]
+          { referenceNumber: searchRegex },
+        ],
       });
     }
 
@@ -373,11 +466,11 @@ const getProducts = async (req, res) => {
       name_desc: { name: -1 },
       featured: { featured: -1, createdAt: -1 },
       rating: { rating: -1 },
-      discount: { discountPercentage: -1 }
+      discount: { discountPercentage: -1 },
     };
 
     const sortObj = sortOptions[sortBy] || { createdAt: -1 };
-    if (sortOrder === 'asc' && sortObj[Object.keys(sortObj)[0]]) {
+    if (sortOrder === "asc" && sortObj[Object.keys(sortObj)[0]]) {
       sortObj[Object.keys(sortObj)[0]] = 1;
     }
 
@@ -398,10 +491,10 @@ const getProducts = async (req, res) => {
     const products = await Product.find(filterQuery)
       .select(
         "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery scopeOfDeliveryWatch " +
-        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
-        "condition itemCondition category description visibility published featured inStock " +
-        "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
+          "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+          "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+          "condition itemCondition category description visibility published featured inStock " +
+          "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -415,12 +508,16 @@ const getProducts = async (req, res) => {
       ...p,
       brand: p.brand || "",
       category: p.category || "",
-      image: p.images?.find(img => img.type === 'main')?.url || p.images?.[0]?.url || "",
-      available: (p.stockQuantity > 0) || p.inStock,
-      discount: p.regularPrice && p.salePrice && p.regularPrice > p.salePrice
-        ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
-        : 0,
-      isOnSale: p.regularPrice && p.salePrice && p.regularPrice > p.salePrice
+      image:
+        p.images?.find((img) => img.type === "main")?.url ||
+        p.images?.[0]?.url ||
+        "",
+      available: p.stockQuantity > 0 || p.inStock,
+      discount:
+        p.regularPrice && p.salePrice && p.regularPrice > p.salePrice
+          ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
+          : 0,
+      isOnSale: p.regularPrice && p.salePrice && p.regularPrice > p.salePrice,
     }));
 
     res.json({
@@ -441,78 +538,6 @@ const getProducts = async (req, res) => {
         process.env.NODE_ENV === "production"
           ? "Internal server error"
           : err.message,
-    });
-  }
-};
-
-
-const getBrandWatches = async (req, res) => {
-  try {
-    const { brand } = req.params;
-
-    // Find all watches for the brand
-    const products = await Product.find({
-      brand: { $regex: new RegExp(`^${brand}$`, 'i') }, // case-insensitive
-      category: "Watch" // only watches
-    });
-
-    if (!products || products.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `No watches found for brand: ${brand}`,
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      products,
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-      error: error.message,
-    });
-  }
-};
-
-
-
-const productHome = async (req, res) => {
-  try {
-    // Fetch last-added products (LIFO order) using createdAt timestamp
-    const brandNew = await Product.find()
-      .sort({ createdAt: 1 })
-      .skip(2) // newest first
-      .limit(6);
-
-    const newArrivals = await Product.find()
-      .sort({ createdAt: -1 })
-      .skip(19)
-      .limit(3);
-
-    const montresTrusted = await Product.find()
-      .sort({ createdAt: -1 })
-      .skip(8)
-      .limit(3);
-
-    const lastBrandNew = await Product.find()
-      .sort({ createdAt: -1 })
-      .skip(12)
-      .limit(6);
-
-    res.json({
-      brandNew,
-      newArrivals,
-      montresTrusted,
-      lastBrandNew,
-    });
-  } catch (err) {
-    res.status(500).json({
-      message: "❌ Error fetching home products",
-      error: err.message,
     });
   }
 };
@@ -571,7 +596,8 @@ const addServiceForm = async (req, res) => {
     if (!customerName || !phoneNumber || !productName || !selectedService) {
       return res.status(400).json({
         success: false,
-        message: "Customer name, phone number, product name, and service type are required",
+        message:
+          "Customer name, phone number, product name, and service type are required",
       });
     }
 
@@ -604,7 +630,73 @@ const addServiceForm = async (req, res) => {
   }
 };
 
+const getBrandWatches = async (req, res) => {
+  try {
+    const { brand } = req.params;
 
+    // Find all watches for the brand
+    const products = await Product.find({
+      brand: { $regex: new RegExp(`^${brand}$`, "i") }, // case-insensitive
+      category: "Watch", // only watches
+    });
+
+    if (!products || products.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No watches found for brand: ${brand}`,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};
+
+const productHome = async (req, res) => {
+  try {
+    // Fetch last-added products (LIFO order) using createdAt timestamp
+    const brandNew = await Product.find()
+      .sort({ createdAt: 1 })
+      .skip(2) // newest first
+      .limit(6);
+
+    const newArrivals = await Product.find()
+      .sort({ createdAt: -1 })
+      .skip(19)
+      .limit(3);
+
+    const montresTrusted = await Product.find()
+      .sort({ createdAt: -1 })
+      .skip(8)
+      .limit(3);
+
+    const lastBrandNew = await Product.find()
+      .sort({ createdAt: -1 })
+      .skip(12)
+      .limit(6);
+
+    res.json({
+      brandNew,
+      newArrivals,
+      montresTrusted,
+      lastBrandNew,
+    });
+  } catch (err) {
+    res.status(500).json({
+      message: "❌ Error fetching home products",
+      error: err.message,
+    });
+  }
+};
 
 // 📌 Get all service bookings
 const getBookingService = async (req, res) => {
@@ -634,35 +726,38 @@ const getBookingService = async (req, res) => {
   }
 };
 
-
 // Subscribe to restock notifications
 
-const restockSubscribe = async (req,res)=>{
+const restockSubscribe = async (req, res) => {
   const { productId, email } = req.body;
 
   if (!productId || !email) {
-    return res.status(400).json({ success: false, message: "Product and email are required" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Product and email are required" });
   }
 
   try {
     // Check if already subscribed
     const existing = await RestockSubscription.findOne({ productId, email });
     if (existing) {
-      return res.status(400).json({ success: false, message: "Already subscribed" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Already subscribed" });
     }
 
     const subscription = new RestockSubscription({ productId, email });
     await subscription.save();
 
-    res.json({ success: true, message: "Subscribed for restock notification!" });
+    res.json({
+      success: true,
+      message: "Subscribed for restock notification!",
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Server error" });
   }
-}
-
-
-
+};
 
 const getRecommendations = async (cartItems, limit = 4) => {
   try {
@@ -773,12 +868,10 @@ const SimilarProduct = async (req, res) => {
       success: true,
       products: similarProducts,
     });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 const YouMayAlsoLike = async (req, res) => {
   try {
@@ -789,10 +882,10 @@ const YouMayAlsoLike = async (req, res) => {
 
     const suggestions = await Product.find({
       _id: { $ne: product._id },
-      category: product.category,     // broad match
+      category: product.category, // broad match
       $or: [
-        { featured: true },           // trending
-        { discount: { $gte: 5 } },    // offers
+        { featured: true }, // trending
+        { discount: { $gte: 5 } }, // offers
         { brand: { $ne: product.brand } }, // DIFFERENT brand
       ],
     })
@@ -803,12 +896,10 @@ const YouMayAlsoLike = async (req, res) => {
       success: true,
       products: suggestions,
     });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 module.exports = {
   getProducts,
@@ -821,5 +912,6 @@ module.exports = {
   SimilarProduct,
   YouMayAlsoLike,
   getBrandWatches,
-  getBookingService
+  getBookingService,
+  moveToInventory,
 };
