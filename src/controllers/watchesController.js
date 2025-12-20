@@ -129,6 +129,8 @@ const getAllWatches = async (req, res) => {
   }
 };
 
+
+
 const getWatchesByStyle = async (req, res) => {
   try {
     const { 
