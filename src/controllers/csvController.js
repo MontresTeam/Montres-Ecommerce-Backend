@@ -40,6 +40,161 @@ const getInventoryById = async (req, res) => {
   }
 };
 
+
+const getMonthlySalesReport = async (req, res) => {
+  try {
+    const { year, month } = req.query;
+
+    // Validate input
+    if (!year || !month) {
+      return res.status(400).json({
+        success: false,
+        error: "Year and month parameters are required",
+      });
+    }
+
+    const yearNum = parseInt(year);
+    const monthNum = parseInt(month);
+
+    if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) {
+      return res.status(400).json({ success: false, error: "Invalid year" });
+    }
+
+    if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid month (1-12)" });
+    }
+
+    // Date range for the month
+    const startDate = new Date(yearNum, monthNum - 1, 1);
+    const endDate = new Date(yearNum, monthNum, 1);
+
+    // Fetch all SOLD items
+    let soldItems = await InventoryStock.find({ status: "SOLD" }).sort({
+      soldAt: -1,
+    });
+
+    // Parse any string soldAt values (legacy data)
+    soldItems = soldItems.map((item) => {
+      let soldAtDate = item.soldAt;
+
+      if (soldAtDate && typeof soldAtDate === "string") {
+        const parts = soldAtDate.split("/");
+        if (parts.length === 3) {
+          let day, month, year;
+          if (parseInt(parts[0]) > 12) {
+            day = parts[0];
+            month = parts[1];
+          } else {
+            month = parts[0];
+            day = parts[1];
+          }
+          year = parts[2];
+          soldAtDate = new Date(year, month - 1, day);
+        } else {
+          soldAtDate = new Date(soldAtDate);
+        }
+      }
+
+      return {
+        ...item.toObject(),
+        soldAt: soldAtDate,
+      };
+    });
+
+    // Filter items in the requested month
+    soldItems = soldItems.filter(
+      (item) => item.soldAt >= startDate && item.soldAt < endDate
+    );
+
+    // Calculate totals
+    const totalSales = soldItems.reduce(
+      (sum, item) => sum + (item.soldPrice || 0),
+      0
+    );
+    const totalCost = soldItems.reduce(
+      (sum, item) => sum + (item.cost || 0),
+      0
+    );
+    const profit = totalSales - totalCost;
+    const profitMargin = totalSales > 0 ? (profit / totalSales) * 100 : 0;
+
+    // Category-wise breakdown
+    const categoryBreakdown = {};
+    soldItems.forEach((item) => {
+      if (!categoryBreakdown[item.category]) {
+        categoryBreakdown[item.category] = { count: 0, revenue: 0, cost: 0 };
+      }
+      categoryBreakdown[item.category].count++;
+      categoryBreakdown[item.category].revenue += item.soldPrice || 0;
+      categoryBreakdown[item.category].cost += item.cost || 0;
+    });
+
+    // Response
+    const response = {
+      success: true,
+      period: {
+        year: yearNum,
+        month: monthNum,
+        monthName: new Date(yearNum, monthNum - 1, 1).toLocaleString(
+          "default",
+          { month: "long" }
+        ),
+        startDate,
+        endDate,
+      },
+      summary: {
+        totalItemsSold: soldItems.length,
+        totalSales,
+        totalCost,
+        profit,
+        profitMargin: parseFloat(profitMargin.toFixed(2)),
+        averageSaleValue:
+          soldItems.length > 0 ? totalSales / soldItems.length : 0,
+      },
+      categoryBreakdown: Object.entries(categoryBreakdown).map(
+        ([category, data]) => ({
+          category,
+          itemsSold: data.count,
+          revenue: data.revenue,
+          cost: data.cost,
+          profit: data.revenue - data.cost,
+        })
+      ),
+      soldItems: soldItems.map((item) => ({
+        id: item._id,
+        productName: item.productName,
+        category: item.category,
+        sku: item.sku,
+        soldAt: item.soldAt
+    ? `${item.soldAt.getMonth() + 1}/${item.soldAt.getDate()}/${item.soldAt.getFullYear()}`
+    : null,
+        cost: item.cost,
+        price: item.price,
+        soldPrice: item.soldPrice,
+        profit: (item.soldPrice || 0) - (item.cost || 0),
+        description: item.description,
+      })),
+      metadata: {
+        generatedAt: new Date(),
+        count: soldItems.length,
+      },
+    };
+
+    res.json(response);
+  } catch (err) {
+    console.error("Error fetching monthly sales report:", err);
+    res.status(500).json({
+      success: false,
+      error: "Server error while fetching sales report",
+      details: err.message,
+    });
+  }
+};
+
+
+
 // ---------------------- CREATE ----------------------
 const createInventory = async (req, res) => {
   try {
@@ -50,23 +205,105 @@ const createInventory = async (req, res) => {
   }
 };
 
-// ---------------------- UPDATE / EDIT ----------------------
-// UPDATE / EDIT
+
 const updateInventory = async (req, res) => {
   try {
-    const updated = await InventoryStock.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
+    const { id } = req.params;
+
+    const existingItem = await InventoryStock.findById(id);
+    if (!existingItem) {
+      return res.status(404).json({ message: "Inventory item not found" });
+    }
+
+    const updateData = { ...req.body };
+
+    /* =====================================================
+       🧩 SAFE DATE PARSER (STRING → DATE)
+    ===================================================== */
+    const parseSoldDate = (value) => {
+      if (!value) return null;
+
+      // Already a Date object
+      if (value instanceof Date) return value;
+
+      if (typeof value === "string") {
+        // Handle DD/MM/YYYY or MM/DD/YYYY
+        if (value.includes("/")) {
+          const parts = value.split("/");
+          if (parts.length === 3) {
+            let day, month, year;
+
+            // If day > 12 → must be DD/MM/YYYY
+            if (parseInt(parts[0]) > 12) {
+              day = parts[0];
+              month = parts[1];
+            } else {
+              // Default to MM/DD/YYYY
+              month = parts[0];
+              day = parts[1];
+            }
+
+            year = parts[2];
+            return new Date(year, month - 1, day);
+          }
+        }
+
+        // ISO or timestamp
+        const parsed = new Date(value);
+        if (!isNaN(parsed)) return parsed;
+      }
+
+      return null;
+    };
+
+    /* =====================================================
+       ✅ SOLD LOGIC
+    ===================================================== */
+    if (req.body.status === "SOLD") {
+      if (req.body.soldAt) {
+        updateData.soldAt = parseSoldDate(req.body.soldAt);
+      } 
+      else if (existingItem.status !== "SOLD") {
+        updateData.soldAt = new Date();
+      } 
+      else {
+        updateData.soldAt = existingItem.soldAt;
+      }
+    }
+
+    /* =====================================================
+       🔄 REVERT TO AVAILABLE
+    ===================================================== */
+    if (req.body.status === "AVAILABLE") {
+      updateData.soldAt = null;
+    }
+
+    /* =====================================================
+       🚀 UPDATE DB
+    ===================================================== */
+    const updatedItem = await InventoryStock.findByIdAndUpdate(
+      id,
+      updateData,
+      {
+        new: true,
+        runValidators: true,
+      }
     );
 
-    if (!updated) return res.status(404).json({ message: "Item not found" });
+    res.status(200).json({
+      success: true,
+      data: updatedItem,
+    });
 
-    res.status(200).json(updated);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message,
+    });
   }
-}
+};
+
+
 
 
 // ---------------------- DELETE ----------------------
@@ -208,4 +445,5 @@ module.exports = {
   deleteInventory,
   importInventory,
   exportInventory,
+  getMonthlySalesReport
 };

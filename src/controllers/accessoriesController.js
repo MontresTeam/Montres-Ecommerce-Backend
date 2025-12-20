@@ -498,7 +498,6 @@ const updateAccessory = async (req, res) => {
 
     // Fetch product
     const existingProduct = await Product.findById(id);
-
     if (!existingProduct) {
       return res.status(404).json({
         success: false,
@@ -513,63 +512,58 @@ const updateAccessory = async (req, res) => {
       });
     }
 
-    // Clone update body
-    let updateData = { ...req.body };
-
-    // ============================================
-    // YEAR HANDLING (Same logic as CREATE)
-    // ============================================
-    if (updateData.unknownYear === true) {
-      updateData.productionYear = "Unknown";
+    // Only include fields explicitly sent by client
+    const updateData = {};
+    for (const key in req.body) {
+      if (req.body[key] !== undefined) {
+        updateData[key] = req.body[key];
+      }
     }
 
-    if (updateData.unknownYear === false) {
-      if (updateData.productionYear === "Unknown") {
+    // ============================================
+    // YEAR HANDLING (update only if unknownYear sent)
+    // ============================================
+    if ('unknownYear' in updateData) {
+      if (updateData.unknownYear === true) {
+        updateData.productionYear = "Unknown";
+      } else if (updateData.unknownYear === false && updateData.productionYear === "Unknown") {
         updateData.productionYear = null;
       }
     }
 
     // ============================================
-    // AUTO NAME LOGIC (Brand/Model + Keep Name Sync)
+    // AUTO NAME LOGIC (only if name not sent)
     // ============================================
     const newBrand = updateData.brand ?? existingProduct.brand;
     const newModel = updateData.model ?? existingProduct.model;
-    const newName = updateData.name;
 
-    // If user updates name manually → sync accessoryName
-    if (newName) {
-      updateData.accessoryName = newName;
-    }
-
-    // If user changes brand or model but NOT name → auto-generate name
-    if (!newName && (updateData.brand || updateData.model)) {
+    if (!('name' in updateData) && (updateData.brand || updateData.model)) {
       const autoName = `${newBrand || ""} ${newModel || ""}`.trim();
-
       updateData.name = autoName;
       updateData.accessoryName = autoName;
+    } else if ('name' in updateData) {
+      // if user updates name manually → sync accessoryName
+      updateData.accessoryName = updateData.name;
     }
 
     // ============================================
     // STOCK STATUS
     // ============================================
-    if (updateData.stockQuantity !== undefined) {
+    if ('stockQuantity' in updateData) {
       updateData.inStock = updateData.stockQuantity > 0;
     }
 
     // ============================================
-    // PRICE CONSISTENCY (Match Create Accessory)
+    // PRICE CONSISTENCY
     // ============================================
-    if (
-      updateData.retailPrice !== undefined &&
-      updateData.sellingPrice === undefined
-    ) {
+    if ('retailPrice' in updateData && !('sellingPrice' in updateData)) {
       updateData.sellingPrice = updateData.retailPrice;
     }
 
     // ============================================
     // SKU DUPLICATE CHECK
     // ============================================
-    if (updateData.sku && updateData.sku !== existingProduct.sku) {
+    if ('sku' in updateData && updateData.sku !== existingProduct.sku) {
       const existingWithSKU = await Product.findOne({
         sku: updateData.sku,
         category: "Accessories",
@@ -587,13 +581,13 @@ const updateAccessory = async (req, res) => {
     // ============================================
     // AUTO SEO IF NAME CHANGES
     // ============================================
-    const finalName = updateData.name || existingProduct.name;
+    const finalName = updateData.name ?? existingProduct.name;
 
-    if (!updateData.seoTitle && updateData.name) {
+    if (!('seoTitle' in updateData) && 'name' in updateData) {
       updateData.seoTitle = finalName;
     }
 
-    if (!updateData.seoDescription && updateData.name) {
+    if (!('seoDescription' in updateData) && 'name' in updateData) {
       updateData.seoDescription = `Buy ${finalName} - Premium Accessory`;
     }
 
@@ -647,6 +641,7 @@ const updateAccessory = async (req, res) => {
     });
   }
 };
+
 
 // ============================================
 // DELETE ACCESSORY (SOFT DELETE)

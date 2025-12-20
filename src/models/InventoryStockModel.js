@@ -30,19 +30,21 @@ const brandList = [
 ];
 
 const InventoryStockSchema = new mongoose.Schema({
-  productName: { 
-    type: String,
-    required: true,
-    trim: true
-  },
+  productName: { type: String, required: true, trim: true },
 
   brand: {
     type: String,
     enum: brandList,
   },
 
+  category: {
+    type: String,
+    required: true,
+    enum: ['watch', 'Accessories', 'Leather Goods', 'Leather Bags']
+  },
+
   internalCode: { type: String, trim: true, default: "" },
-  quantity: { type: Number, default: 0 },
+  quantity: { type: Number, default: 1 },
 
   status: {
     type: String,
@@ -56,18 +58,21 @@ const InventoryStockSchema = new mongoose.Schema({
 
   paymentMethod: {
     type: String,
-    enum: ["cash", "stripe", "tabby", "chrono", "bank_transfer", "other"],
+    enum: ["cash", "stripe", "tabby", "chrono", "bank_transfer", "other","card/utap"],
     default: "cash"
   },
 
   receivingAmount: { type: Number, default: 0 },
 
-    addedBy: { // Optional: track which admin added this
+  soldAt: { type: Date, default: null },
+
+  addedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin"
-  },
+  }
 
 }, { timestamps: true });
+
 
 module.exports = mongoose.model("InventoryStock", InventoryStockSchema)
 
