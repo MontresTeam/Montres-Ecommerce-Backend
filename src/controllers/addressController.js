@@ -61,4 +61,75 @@ const getShippingAddress = async (req, res) => {
     }
 }
 
-module.exports = { saveShippingAddress, getShippingAddress };
+const saveBillingAddress = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const {
+      firstName,
+      lastName,
+      phone,
+      email,
+      country,
+      state,
+      city,
+      street,
+      postalCode,
+    } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.billingAddress = {
+      firstName,
+      lastName,
+      phone,
+      email,
+      country,
+      state,
+      city,
+      street,
+      postalCode,
+    };
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Billing address updated successfully",
+      billingAddress: user.billingAddress,
+    });
+  } catch (error) {
+    console.error("Save Billing Address Error:", error);
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
+/* ===========================
+   GET BILLING
+=========================== */
+const getBillingAddress = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.status(200).json({
+      message: "Billing address fetched",
+      billingAddress: user.billingAddress || {},
+    });
+  } catch (error) {
+    console.error("Get Billing Address Error:", error);
+    res.status(500).json({ message: "Server Error", error: error.message });
+  }
+};
+
+module.exports = {
+  saveShippingAddress,
+  getShippingAddress,
+  saveBillingAddress,
+  getBillingAddress,
+};
+
