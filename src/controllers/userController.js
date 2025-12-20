@@ -197,17 +197,12 @@ const Login = async (req, res) => {
 
 const googleLogin = async (req, res) => {
   try {
-    const { profile, token } = req.user; // <-- already normalized
-
+    const { profile, token } = req.user;
     if (!profile || !profile.email) {
-      console.error("Google profile missing email:", profile);
-      return res
-        .status(400)
-        .json({ message: "Email is required from Google account" });
+      return res.status(400).json({ success: false, message: "Email is required from Google account" });
     }
 
-    // Create user object for frontend
-    const frontendUser = {
+    const user = {
       id: profile.id,
       name: profile.name,
       email: profile.email,
@@ -215,17 +210,21 @@ const googleLogin = async (req, res) => {
       provider: profile.provider,
     };
 
-    // Redirect with token + user
- const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(
-      JSON.stringify(frontendUser)
-    )}`;
-    console.log("✅ Redirecting to:", redirectUrl);
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    if (req.query.returnJson === "true") {
+      return res.status(200).json({ success: true, token, user });
+    }
+
+    const redirectUrl = `${process.env.FRONTEND_URL}/auth/success?token=${token}`;
     return res.redirect(redirectUrl);
   } catch (err) {
-    console.error("Google login error:", err);
-    return res.redirect(
-      `${process.env.CLIENT_URL}/auth/login?error=google_login_failed`
-    );
+    return res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=google_login_failed`);
   }
 };
 
