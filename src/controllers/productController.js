@@ -82,6 +82,8 @@ const moveToInventory = async (req, res) => {
 };
 
 
+
+
 const getProducts = async (req, res) => {
   try {
     const {

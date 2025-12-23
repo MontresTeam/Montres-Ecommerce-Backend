@@ -39,7 +39,6 @@ const InventoryStockSchema = new mongoose.Schema({
 
   category: {
     type: String,
-    required: true,
     enum: ['watch', 'Accessories', 'Leather Goods', 'Leather Bags']
   },
 

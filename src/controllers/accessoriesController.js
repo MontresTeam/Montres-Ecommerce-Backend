@@ -482,7 +482,7 @@ const createAccessory = async (req, res) => {
 };
 
 // ============================================
-// UPDATE ACCESSORY
+// UPDATE ACCESSORY (with FormData support)
 // ============================================
 const updateAccessory = async (req, res) => {
   try {
@@ -512,37 +512,131 @@ const updateAccessory = async (req, res) => {
       });
     }
 
-    // Only include fields explicitly sent by client
-    const updateData = {};
-    for (const key in req.body) {
-      if (req.body[key] !== undefined) {
-        updateData[key] = req.body[key];
+    // Handle FormData or JSON body
+    let updateData = {};
+    
+    // Check if it's FormData (has 'data' field with JSON string)
+    if (req.body.data) {
+      try {
+        updateData = JSON.parse(req.body.data);
+      } catch (parseError) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid JSON data in form",
+        });
+      }
+    } else {
+      // Regular JSON request
+      updateData = req.body;
+    }
+
+    console.log("Update data received:", updateData);
+
+    // ============================================
+    // IMAGE HANDLING
+    // ============================================
+    if (req.files) {
+      console.log("Files received:", req.files);
+      
+      // Handle main image
+      if (req.files.main && req.files.main[0]) {
+        const mainFile = req.files.main[0];
+        const mainResult = await cloudinary.uploader.upload(mainFile.path, {
+          folder: 'accessories',
+          width: 800,
+          height: 800,
+          crop: 'fill'
+        });
+        updateData.mainImage = {
+          url: mainResult.secure_url,
+          publicId: mainResult.public_id
+        };
+      }
+
+      // Handle cover images
+      if (req.files.covers && req.files.covers.length > 0) {
+        const coverUploads = await Promise.all(
+          req.files.covers.map(async (file) => {
+            const result = await cloudinary.uploader.upload(file.path, {
+              folder: 'accessories/gallery',
+              width: 600,
+              height: 600,
+              crop: 'fill'
+            });
+            return {
+              url: result.secure_url,
+              publicId: result.public_id
+            };
+          })
+        );
+        
+        // Merge with existing images if needed
+        updateData.images = [...(existingProduct.images || []), ...coverUploads];
       }
     }
 
     // ============================================
-    // YEAR HANDLING (update only if unknownYear sent)
+    // FIELD VALIDATION AND CLEANUP
     // ============================================
-    if ('unknownYear' in updateData) {
-      if (updateData.unknownYear === true) {
-        updateData.productionYear = "Unknown";
-      } else if (updateData.unknownYear === false && updateData.productionYear === "Unknown") {
-        updateData.productionYear = null;
+    
+    // Convert string arrays if needed
+    const arrayFields = [
+      'accessoryMaterial', 'accessoryColor', 'accessoryDelivery',
+      'accessoryScopeOfDelivery', 'badges', 'seoKeywords'
+    ];
+    
+    arrayFields.forEach(field => {
+      if (updateData[field] && typeof updateData[field] === 'string') {
+        if (field === 'seoKeywords') {
+          updateData[field] = updateData[field]
+            .split(',')
+            .map(kw => kw.trim())
+            .filter(kw => kw.length > 0);
+        } else {
+          updateData[field] = [updateData[field]];
+        }
       }
+    });
+
+    // Convert numeric fields
+    if (updateData.regularPrice) {
+      updateData.regularPrice = parseFloat(updateData.regularPrice);
+    }
+    
+    if (updateData.salePrice) {
+      updateData.salePrice = parseFloat(updateData.salePrice);
+    }
+    
+    if (updateData.stockQuantity) {
+      updateData.stockQuantity = parseInt(updateData.stockQuantity);
+    }
+
+    // Set default sale price if not provided
+    if (updateData.regularPrice && !updateData.salePrice) {
+      updateData.salePrice = updateData.regularPrice;
     }
 
     // ============================================
-    // AUTO NAME LOGIC (only if name not sent)
+    // YEAR HANDLING
     // ============================================
-    const newBrand = updateData.brand ?? existingProduct.brand;
-    const newModel = updateData.model ?? existingProduct.model;
+    if (updateData.unknownYear === true) {
+      updateData.productionYear = "Unknown";
+      updateData.approximateYear = false;
+    } else if (updateData.productionYear && updateData.approximateYear === true) {
+      updateData.productionYear = `Approx. ${updateData.productionYear}`;
+    }
 
-    if (!('name' in updateData) && (updateData.brand || updateData.model)) {
-      const autoName = `${newBrand || ""} ${newModel || ""}`.trim();
-      updateData.name = autoName;
-      updateData.accessoryName = autoName;
-    } else if ('name' in updateData) {
-      // if user updates name manually → sync accessoryName
+    // ============================================
+    // AUTO NAME LOGIC
+    // ============================================
+    if (!updateData.name && (updateData.brand || updateData.model)) {
+      const brand = updateData.brand || existingProduct.brand || "";
+      const model = updateData.model || existingProduct.model || "";
+      updateData.name = `${brand} ${model}`.trim();
+    }
+    
+    // Sync accessoryName with name
+    if (updateData.name) {
       updateData.accessoryName = updateData.name;
     }
 
@@ -554,16 +648,9 @@ const updateAccessory = async (req, res) => {
     }
 
     // ============================================
-    // PRICE CONSISTENCY
-    // ============================================
-    if ('retailPrice' in updateData && !('sellingPrice' in updateData)) {
-      updateData.sellingPrice = updateData.retailPrice;
-    }
-
-    // ============================================
     // SKU DUPLICATE CHECK
     // ============================================
-    if ('sku' in updateData && updateData.sku !== existingProduct.sku) {
+    if (updateData.sku && updateData.sku !== existingProduct.sku) {
       const existingWithSKU = await Product.findOne({
         sku: updateData.sku,
         category: "Accessories",
@@ -579,25 +666,31 @@ const updateAccessory = async (req, res) => {
     }
 
     // ============================================
-    // AUTO SEO IF NAME CHANGES
+    // AUTO SEO
     // ============================================
-    const finalName = updateData.name ?? existingProduct.name;
-
-    if (!('seoTitle' in updateData) && 'name' in updateData) {
-      updateData.seoTitle = finalName;
+    const finalName = updateData.name || existingProduct.name;
+    
+    if (!updateData.seoTitle && finalName) {
+      updateData.seoTitle = `${finalName} | Luxury Accessories`;
     }
-
-    if (!('seoDescription' in updateData) && 'name' in updateData) {
-      updateData.seoDescription = `Buy ${finalName} - Premium Accessory`;
+    
+    if (!updateData.seoDescription && finalName) {
+      updateData.seoDescription = `Buy ${finalName} - Premium ${
+        updateData.accessoryCategory || existingProduct.accessoryCategory || 'Accessory'
+      }`;
     }
 
     // ============================================
     // UPDATE PRODUCT
     // ============================================
-    const updatedProduct = await Product.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    });
+    const updatedProduct = await Product.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     if (!updatedProduct) {
       return res.status(404).json({
@@ -606,11 +699,14 @@ const updateAccessory = async (req, res) => {
       });
     }
 
+    console.log("Product updated successfully:", updatedProduct._id);
+
     res.status(200).json({
       success: true,
       message: "Accessory updated successfully",
       data: updatedProduct,
     });
+
   } catch (error) {
     console.error("Error updating accessory:", error);
 
@@ -641,7 +737,6 @@ const updateAccessory = async (req, res) => {
     });
   }
 };
-
 
 // ============================================
 // DELETE ACCESSORY (SOFT DELETE)
