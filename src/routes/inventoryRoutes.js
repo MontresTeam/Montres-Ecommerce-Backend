@@ -13,7 +13,7 @@ const {
 const multer = require("multer")
 const upload = multer({ dest: "uploads/" }); // temp folder
 
-router.get("/", getInventory);
+router.get("/InvontryAll", getInventory);
 router.get("/:id", getInventoryById);
 router.post("/", createInventory);
 router.put("/updated/:id", updateInventory);

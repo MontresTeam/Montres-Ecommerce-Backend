@@ -10,7 +10,8 @@ const {
   YouMayAlsoLike,
   getBrandWatches,
   getBookingService,
-  moveToInventory
+  moveToInventory,
+  getProductById
 } = require("../controllers/productController");
 const {
   addToCart,
@@ -71,6 +72,9 @@ router.put("/wishlists/:wishlistId/visibility",protect,togglePublicSharing)
 router.get("/orders/my", protect, getMyOrders);             // My orders
 
 router.post("/restock-notifications/subscribe",restockSubscribe)
+// Single product by ID
+
+router.get("/:id", getProductById);
 
 /* ----------------- Simillar product ----------------- */
 router.get("/:id/similar", SimilarProduct);

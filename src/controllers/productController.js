@@ -546,6 +546,71 @@ const getProducts = async (req, res) => {
   }
 };
 
+
+
+const getProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // ✅ REQUIRED FIX
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        message: "❌ Invalid product ID",
+      });
+    }
+
+    const product = await Product.findById(id)
+      .select(
+        "brand model name sku referenceNumber serialNumber watchType watchStyle " +
+          "scopeOfDelivery scopeOfDeliveryWatch productionYear gender movement " +
+          "dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+          "salePrice regularPrice stockQuantity taxStatus strapSize caseSize " +
+          "includedAccessories condition itemCondition category description " +
+          "visibility published featured inStock badges images createdAt updatedAt " +
+          "waterResistance complications crystal limitedEdition"
+      )
+      .lean();
+
+    if (!product || !product.published) {
+      return res.status(404).json({
+        message: "❌ Product not found",
+      });
+    }
+
+    const formattedProduct = {
+      ...product,
+      brand: product.brand || "",
+      category: product.category || "",
+      image:
+        product.images?.find((img) => img.type === "main")?.url ||
+        product.images?.[0]?.url ||
+        "",
+      available: product.stockQuantity > 0 || product.inStock,
+      discount:
+        product.regularPrice &&
+        product.salePrice &&
+        product.regularPrice > product.salePrice
+          ? Math.round(
+              ((product.regularPrice - product.salePrice) /
+                product.regularPrice) *
+                100
+            )
+          : 0,
+      isOnSale:
+        product.regularPrice &&
+        product.salePrice &&
+        product.regularPrice > product.salePrice,
+    };
+
+    return res.status(200).json(formattedProduct);
+  } catch (err) {
+    console.error("❌ Error fetching product by ID:", err);
+    return res.status(500).json({
+      message: "❌ Error fetching product",
+    });
+  }
+};
+
 // Add Product
 const addProduct = async (req, res) => {
   try {
@@ -918,4 +983,5 @@ module.exports = {
   getBrandWatches,
   getBookingService,
   moveToInventory,
+  getProductById
 };
