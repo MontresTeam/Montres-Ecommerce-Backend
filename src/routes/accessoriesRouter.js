@@ -28,7 +28,7 @@ router.post("/createAccessory", addProductImageUpload, createAccessory);
 // ✅ UPDATE ACCESSORY (WITH IMAGE UPDATE)
 router.put("/UpdatedAccessories/:id", updateProductImageUpload, updateAccessory);
 
-router.get("/",getAllAccessories)
+router.get("/getAccessories",getAllAccessories)
 
 // EXPORT ROUTER
 module.exports = router;

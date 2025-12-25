@@ -211,8 +211,8 @@ const updateProduct = async (req, res) => {
     // 🔔 STORE OLD STOCK BEFORE UPDATE
     const oldStockQuantity = product.stockQuantity;
 
+    // Handle images
     let updatedImages = [...(product.images || [])];
-
     if (req.body.images && req.body.images.length > 0) {
       updatedImages = req.body.images;
     } else if (req.body.uploadedImages) {
@@ -220,31 +220,25 @@ const updateProduct = async (req, res) => {
       if (parsedImages.length > 0) updatedImages = parsedImages;
     }
 
-    let productName = product.name;
-    if (req.body.brand || req.body.model) {
-      const brand = req.body.brand || product.brand;
-      const model = req.body.model || product.model;
-      productName = `${brand} ${model}`;
-    }
+    // Generate product name
+    const brand = req.body.brand || product.brand;
+    const model = req.body.model || product.model;
+    const productName = `${brand} ${model}`;
 
-    let stockQuantity = product.stockQuantity;
-    if (req.body.stockQuantity !== undefined) {
-      stockQuantity = parseIntNum(req.body.stockQuantity);
-    }
+    // Stock & inStock
+    let stockQuantity = req.body.stockQuantity !== undefined ? parseIntNum(req.body.stockQuantity) : product.stockQuantity;
+    let inStock =
+      req.body.stockQuantity !== undefined
+        ? stockQuantity > 0
+        : req.body.inStock !== undefined
+        ? parseBoolean(req.body.inStock)
+        : product.inStock;
 
-    let inStock;
-    if (req.body.stockQuantity !== undefined) {
-      inStock = stockQuantity > 0;
-    } else if (req.body.inStock !== undefined) {
-      inStock = parseBoolean(req.body.inStock);
-    } else {
-      inStock = product.inStock;
-    }
-
+    // Build updated fields safely
     const updatedFields = {
+      name: productName,
       ...(req.body.brand && { brand: req.body.brand }),
       ...(req.body.model && { model: req.body.model }),
-      name: productName,
       ...(req.body.sku && { sku: req.body.sku }),
       ...(req.body.referenceNumber && { referenceNumber: req.body.referenceNumber }),
       ...(req.body.serialNumber && { serialNumber: req.body.serialNumber }),
@@ -258,14 +252,11 @@ const updateProduct = async (req, res) => {
         includedAccessories: parseJSON(req.body.includedAccessories),
       }),
       ...(req.body.category && { category: req.body.category }),
-
       ...(req.body.condition && { condition: req.body.condition }),
       ...(req.body.itemCondition && { itemCondition: req.body.itemCondition }),
-
       ...(req.body.limitedEdition !== undefined && {
         limitedEdition: parseBoolean(req.body.limitedEdition),
       }),
-
       ...(req.body.productionYear && { productionYear: req.body.productionYear }),
       ...(req.body.approximateYear !== undefined && {
         approximateYear: parseBoolean(req.body.approximateYear),
@@ -273,70 +264,44 @@ const updateProduct = async (req, res) => {
       ...(req.body.unknownYear !== undefined && {
         unknownYear: parseBoolean(req.body.unknownYear),
       }),
-
       ...(req.body.gender && { gender: req.body.gender }),
       ...(req.body.movement && { movement: req.body.movement }),
-      ...(req.body.dialColor && { dialColor: req.body.dialColor }),
+
+      // ✅ Safe enum handling for dialColor
+      ...(req.body.dialColor !== undefined && req.body.dialColor.trim() !== '' && {
+        dialColor: req.body.dialColor,
+      }),
+
       ...(req.body.caseMaterial && { caseMaterial: req.body.caseMaterial }),
       ...(req.body.strapMaterial && { strapMaterial: req.body.strapMaterial }),
-      ...(req.body.strapColor && { strapColor: req.body.strapColor }),
+      ...(req.body.strapColor && req.body.strapColor.trim() !== '' && { strapColor: req.body.strapColor }),
       ...(req.body.badges && { badges: parseJSON(req.body.badges) }),
-      ...(req.body.strapSize !== undefined && {
-        strapSize: parseNumber(req.body.strapSize),
-      }),
-      ...(req.body.caseSize !== undefined && {
-        caseSize: parseNumber(req.body.caseSize),
-      }),
-      ...(req.body.caseColor && { caseColor: req.body.caseColor }),
+      ...(req.body.strapSize !== undefined && { strapSize: parseNumber(req.body.strapSize) }),
+      ...(req.body.caseSize !== undefined && { caseSize: parseNumber(req.body.caseSize) }),
+      ...(req.body.caseColor && req.body.caseColor.trim() !== '' && { caseColor: req.body.caseColor }),
       ...(req.body.crystal && { crystal: req.body.crystal }),
       ...(req.body.bezelMaterial && { bezelMaterial: req.body.bezelMaterial }),
       ...(req.body.dialNumerals && { dialNumerals: req.body.dialNumerals }),
       ...(req.body.caliber && { caliber: req.body.caliber }),
-      ...(req.body.powerReserve !== undefined && {
-        powerReserve: parseNumber(req.body.powerReserve),
-      }),
-      ...(req.body.jewels !== undefined && {
-        jewels: parseIntNum(req.body.jewels),
-      }),
-      ...(req.body.functions && {
-        functions: parseJSON(req.body.functions),
-      }),
-      ...(req.body.replacementParts && {
-        replacementParts: parseJSON(req.body.replacementParts),
-      }),
-
-      ...(req.body.regularPrice !== undefined && {
-        regularPrice: parseNumber(req.body.regularPrice),
-      }),
-      ...(req.body.salePrice !== undefined && {
-        salePrice: parseNumber(req.body.salePrice),
-      }),
+      ...(req.body.powerReserve !== undefined && { powerReserve: parseNumber(req.body.powerReserve) }),
+      ...(req.body.jewels !== undefined && { jewels: parseIntNum(req.body.jewels) }),
+      ...(req.body.functions && { functions: parseJSON(req.body.functions) }),
+      ...(req.body.replacementParts && { replacementParts: parseJSON(req.body.replacementParts) }),
+      ...(req.body.regularPrice !== undefined && { regularPrice: parseNumber(req.body.regularPrice) }),
+      ...(req.body.salePrice !== undefined && { salePrice: parseNumber(req.body.salePrice) }),
       ...(req.body.taxStatus && { taxStatus: req.body.taxStatus }),
-
       stockQuantity,
       inStock,
-
       ...(req.body.description && { description: req.body.description }),
       ...(req.body.visibility && { visibility: req.body.visibility }),
-
       ...(req.body.seoTitle && { seoTitle: req.body.seoTitle }),
       ...(req.body.seoDescription && { seoDescription: req.body.seoDescription }),
-      ...(req.body.seoKeywords && {
-        seoKeywords: parseJSON(req.body.seoKeywords),
-      }),
-
-      ...(req.body.published !== undefined && {
-        published: parseBoolean(req.body.published),
-      }),
-      ...(req.body.featured !== undefined && {
-        featured: parseBoolean(req.body.featured),
-      }),
-
+      ...(req.body.seoKeywords && { seoKeywords: parseJSON(req.body.seoKeywords) }),
+      ...(req.body.published !== undefined && { published: parseBoolean(req.body.published) }),
+      ...(req.body.featured !== undefined && { featured: parseBoolean(req.body.featured) }),
       images: updatedImages,
-
       ...(req.body.meta && { meta: req.body.meta }),
       ...(req.body.attributes && { attributes: req.body.attributes }),
-
       updatedAt: new Date(),
     };
 
@@ -345,7 +310,7 @@ const updateProduct = async (req, res) => {
       runValidators: true,
     });
 
-    // 🔔 RESTOCK EMAIL TRIGGER (FINAL & IMPORTANT)
+    // 🔔 RESTOCK EMAIL TRIGGER
     if (oldStockQuantity === 0 && updatedProduct.stockQuantity > 0) {
       await notifyRestock(updatedProduct._id);
     }
@@ -364,6 +329,7 @@ const updateProduct = async (req, res) => {
     });
   }
 };
+
 // =============================
 // ⭐ GET ALL LIMITED EDITION PRODUCTS ⭐
 // =============================
