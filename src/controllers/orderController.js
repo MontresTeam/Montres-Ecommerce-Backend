@@ -15,7 +15,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
  const createStripeOrder = async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?._id;
+     const { userId } = req.user; // from JWT auth middleware
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const {
@@ -30,16 +30,16 @@ const stripe = process.env.STRIPE_SECRET_KEY
     // 1️⃣ VALIDATION
     // ------------------------------
     if (!items?.length) return res.status(400).json({ message: "Cart items are required" });
-    if (!shippingAddress?.line1 || !shippingAddress?.city)
+    if (!shippingAddress?.address1 || !shippingAddress?.city)
       return res.status(400).json({ message: "Valid shipping address is required" });
 
     // ------------------------------
     // 2️⃣ NORMALIZE BILLING ADDRESS
     // ------------------------------
     const finalBillingAddress =
-      billingAddress?.line1 && billingAddress?.city ? billingAddress : shippingAddress;
+      billingAddress?.address1 && billingAddress?.city ? billingAddress : shippingAddress;
 
-    if (!finalBillingAddress?.line1 || !finalBillingAddress?.city) {
+    if (!finalBillingAddress?.address1 || !finalBillingAddress?.city) {
       return res.status(400).json({ message: "Valid billing address is required" });
     }
 
@@ -155,8 +155,8 @@ const stripe = process.env.STRIPE_SECRET_KEY
       </div>
     `;
 
-    await sendEmail(process.env.ADMIN_EMAIL, "🛍️ New Order Notification", emailHTML);
-    await sendEmail(process.env.SALES_EMAIL, "🛍️ New Order Notification", emailHTML);
+    await sendEmail(process.env.ADMIN_EMAIL, "New Order Notification", emailHTML);
+    await sendEmail(process.env.SALES_EMAIL, "New Order Notification", emailHTML);
 
     // ------------------------------
     // 8️⃣ CLEAR USER CART
@@ -662,6 +662,77 @@ const deleteShippingAddress = async (req,res)=>{
   }
 }
 
+const updateShippingAddress = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { id } = req.params;   // shipping address id
+    const updateData = req.body; // fields to update
+
+    const updated = await ShippingAddress.findOneAndUpdate(
+      { _id: id, userId },        // ensure address belongs to this user
+      { $set: updateData },
+      { new: true, runValidators: true } // return updated doc + validate
+    );
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipping address not found",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Shipping address updated successfully",
+      data: updated,
+    });
+  } catch (err) {
+    console.error("Update Shipping Address Error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+const updateBillingAddress = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { id } = req.params; // billing address id
+    const updateData = req.body; // fields to update
+
+    const updated = await BillingAddress.findOneAndUpdate(
+      { _id: id, userId },   // ensure it belongs to the user
+      { $set: updateData },
+      { new: true, runValidators: true } // return updated doc + validate schema
+    );
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Billing address not found",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Billing address updated successfully",
+      data: updated,
+    });
+
+  } catch (err) {
+    console.error("Update Billing Address Error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
 
 const getBillingAddresses =  async (req,res)=>{
   try {
@@ -799,4 +870,6 @@ module.exports = {
   createTabbyOrder,
   createTamaraOrder,
   createStripeOrder,
+  updateBillingAddress,
+  updateShippingAddress
 };
