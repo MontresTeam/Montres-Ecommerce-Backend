@@ -4,13 +4,21 @@ const bcrypt = require("bcryptjs");
 
 // Cart schema
 const cartItemSchema = new mongoose.Schema({
-  productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
+  productId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Product",
+    required: true,
+  },
   quantity: { type: Number, required: true, default: 1 },
 });
 
 // Wishlist schema
 const wishlistItemSchema = new mongoose.Schema({
-  productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
+  productId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Product",
+    required: true,
+  },
   addedAt: { type: Date, default: Date.now },
 });
 
@@ -22,27 +30,75 @@ const wishlistGroupSchema = new mongoose.Schema({
   items: [wishlistItemSchema],
 });
 
+// Address Schema
+const addressSchema = new mongoose.Schema(
+  {
+    firstName: String,
+    lastName: String,
+    phone: String,
+    email: String,
+    country: String,
+    state: String,
+    city: String,
+    street: String,
+    postalCode: String,
+  },
+  { _id: false }
+);
+
 // Order schema
 const orderSchema = new mongoose.Schema({
   orderId: { type: String, required: true },
   items: [
-    { productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true }, quantity: { type: Number, required: true } },
+    {
+      productId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        required: true,
+      },
+      quantity: { type: Number, required: true },
+    },
   ],
   totalAmount: { type: Number, required: true },
-  paymentMethod: { type: String, enum: ["card", "cash", "wallet"], required: true },
-  status: { type: String, enum: ["pending", "completed", "cancelled"], default: "pending" },
+  paymentMethod: {
+    type: String,
+    enum: ["card", "cash", "wallet"],
+    required: true,
+  },
+  status: {
+    type: String,
+    enum: ["pending", "completed", "cancelled"],
+    default: "pending",
+  },
   createdAt: { type: Date, default: Date.now },
 });
 
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    email: { type: String, required: true, unique: true, validate: [validator.isEmail, "Invalid Email"] },
-    password: { type: String, required: true, minlength: 8 },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      validate: [validator.isEmail, "Invalid Email"],
+    },
+    password: {
+      type: String,
+      minlength: 8,
+      required: function () {
+        return !this.googleId;
+      },
+    },
+    googleId: { type: String, unique: true, sparse: true },
+    avatar: { type: String },
+    provider: { type: String, enum: ["local", "google"], default: "local" },
     resetPasswordToken: String,
     refreshToken: String,
     cart: [cartItemSchema],
     wishlistGroups: [wishlistGroupSchema],
+    // ✅ ADDRESSES
+    shippingAddress: { type: addressSchema, default: {} },
+    billingAddress: { type: addressSchema, default: {} }, // ✅ NEW
     myOrders: [orderSchema],
   },
   { timestamps: true }

@@ -14,10 +14,12 @@ const leatherRoute = require("./routes/leatheRouter");
 const accessoriesRoute = require("./routes/accessoriesRouter");
 const homeProductsRoute = require("./routes/homeProductRoutes");
 const adminProductRoute = require("./routes/adminPrdouctRouter");
+const addressRoutes = require("./routes/addressRoutes");
 const contactRoutes = require("./routes/contactFormRoutes");
 const orderRoute = require("./routes/orderRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const filterRouter = require('./routes/filterRouter') 
+const tabbyRouter = require('./routes/tabbyRouter')
 const invontryStock = require('./routes/inventoryRoutes')
 const adminsRoute = require('./routes/adminRoute')
 
@@ -27,15 +29,15 @@ const PORT = process.env.PORT || 9000;
 
 connectDB();
 
-// // ✅ Load Passport Strategies
-// require("./strategies/googleStrategy");   // Must include serializeUser / deserializeUser
-// require("./strategies/facebookStrategy"); // Must include serializeUser / deserializeUser
+// ✅ Load Passport Strategies
+require("./strategies/googleStrategy");
+require("./strategies/facebookStrategy");
 
 const app = express();
 
 // ✅ CORS setup
 const allowedOrigins = [
-  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL || 'http://localhost:3000',
   process.env.ADMIN_URL,
   process.env.LOCAL_URL,
 ];
@@ -88,7 +90,9 @@ app.use("/api/address",orderRoute)
 app.use("/api/products", productRoutes);
 app.use("/api", productRoutes);
 app.use("/api/createProduct", productRoutes);
-app.use("/api/Auth", userRoute); 
+app.use("/api/Auth", userRoute);
+app.use('/api/tabby',tabbyRouter)
+app.use('/api/address', addressRoutes);;
 app.use("/api/watches", watchesRoute);
 app.use("/api/leather", leatherRoute);
 app.use("/api/accessories", accessoriesRoute);
@@ -97,6 +101,7 @@ app.use("/api/admin/product", adminProductRoute);
 app.use("/api/customers", customerRoutes);
 app.use("/api/filter",filterRouter);
 app.use('/api/recommend', recommendRoutes);
+app.use(tabbyRouter)
 app.use('/api/invontry',invontryStock)
 app.use('/api/admin',adminsRoute)
 
