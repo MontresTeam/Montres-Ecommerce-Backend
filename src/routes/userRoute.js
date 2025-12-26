@@ -7,14 +7,14 @@ const {
   ResetPassword,
   convertprice,
   logout,
-  refreshToken,
   googleLogin,
   facebookLogin,
   Newsletter,
   currencyConver,
+  RefreshToken,
 } = require("../controllers/userController");
 const imageUploadUpdate = require("../config/ProfileUploadin");
-const { updateUserProfile } = require("../controllers/userProfileController");
+const {createUserProfile, getUserProfile } = require("../controllers/userProfileController");
 const {protect} = require('../middlewares/authMiddleware')
 
 const router = express.Router();
@@ -22,7 +22,7 @@ const router = express.Router();
 // ✅ Correct routes
 router.post("/register", Registration);
 
-router.post("/refresh-token", refreshToken);
+router.post("/refresh-token", RefreshToken);
 
 // router.post("/logout",logout)
 
@@ -38,8 +38,8 @@ router.get("/CurrencyAPI",currencyConver)
 
 router.post("/logout", logout);
 
-router.put("/profile",protect,imageUploadUpdate,updateUserProfile)
-
+router.post("/profile/create", protect, imageUploadUpdate, createUserProfile);
+router.get("/profile/get",protect,getUserProfile)
 
 // ✅ Step 1: Redirect to Google for authentication
 router.get(

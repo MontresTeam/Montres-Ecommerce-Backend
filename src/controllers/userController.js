@@ -10,8 +10,7 @@ const {
   generateAccessToken,
   generateRefreshToken,
 } = require("../utils/generateToken");
-const analytics = require('../utils/customerio');
-const NewsletterModel = require("../models/NewsletterModel")
+const {sendWelcomeEmail} = require("../services/emailService")
 
 
 const transporter = nodemailer.createTransport({
@@ -28,37 +27,7 @@ const transporter = nodemailer.createTransport({
 
 
 const Newsletter = async (req, res) => {
-  try {
-    const { email, name } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    // Save to MongoDB
-    const existing = await NewsletterModel.findOne({ email });
-    if (existing) {
-      return res.status(400).json({ message: "Email already subscribed" });
-    }
-
-    const newSubscriber = new NewsletterModel({ email, name });
-    await newSubscriber.save();
-
-    // Send subscriber data to Customer.io
-    await analytics.identify({
-      userId: email, // use email as ID if no userId yet
-      traits: {
-        email,
-        name: name || "",
-        source: "Newsletter Signup",
-      },
-    });
-
-    res.status(200).json({ message: "Subscribed successfully!" });
-  } catch (error) {
-    console.error("Customer.io Error:", error);
-    res.status(500).json({ message: "Subscription failed" });
-  }
+  
 };
 
 
@@ -66,8 +35,7 @@ const Newsletter = async (req, res) => {
 
 
 
-// ✅ User Registration
-const Registration = async (req, res) => {
+ const Registration = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -78,50 +46,60 @@ const Registration = async (req, res) => {
     if (existingUser)
       return res.status(400).json({ message: "Email already registered" });
 
-    const newUser = await userModel.create({ name, email, password });
+    // hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Auto-login after registration
+    const newUser = await userModel.create({
+      name,
+      email,
+      password: hashedPassword,
+    });
+
     const accessToken = generateAccessToken(newUser._id, newUser.email);
     const refreshToken = generateRefreshToken(newUser._id);
 
     newUser.refreshToken = refreshToken;
     await newUser.save();
+ 
+        // 🚀 Send Welcome Email (non-blocking)
+    sendWelcomeEmail(newUser.email, newUser.name).catch(console.log);
 
     res
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: false, // false for local dev
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000,
       })
       .status(201)
       .json({
         message: "Registration successful",
         accessToken,
-        user: { id: newUser._id, name: newUser.name, email: newUser.email },
+        user: {
+          id: newUser._id,
+          name: newUser.name,
+          email: newUser.email,
+        },
       });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
+
+
 const Login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log(email)
+
     if (!email || !password)
       return res.status(400).json({ message: "Email and password required" });
 
-    // ✅ Check if user exists
     const user = await userModel.findOne({ email });
-    if (!user) {
-      return res.status(404).json({
-        status: "Fail",
-        message: "User not found.",
-      });
-    }
+    if (!user)
+      return res.status(404).json({ message: "User not found" });
 
-    const isMatch = await bcrypt.compare(password, user.password);
+   const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch)
       return res.status(401).json({ message: "Invalid credentials" });
 
@@ -134,7 +112,7 @@ const Login = async (req, res) => {
     res
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: false, // false for local dev
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       })
@@ -145,11 +123,9 @@ const Login = async (req, res) => {
         user: { id: user._id, name: user.name, email: user.email },
       });
   } catch (err) {
-    console.log(err,'err')
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
-
 
 
 
@@ -170,28 +146,33 @@ const Login = async (req, res) => {
 };
 
 
-  // RefreshToken
-
-
- const refreshToken = async (req, res) => {
+  const RefreshToken = async (req, res) => {
   try {
     const token = req.cookies.refreshToken;
-    if (!token) return res.status(401).json({ message: "No refresh token" });
+    if (!token)
+      return res.status(401).json({ message: "No refresh token" });
 
-    jwt.verify(token, process.env.USER_REFRESH_TOKEN_SECRET, async (err, decoded) => {
-      if (err) return res.status(403).json({ message: "Invalid or expired refresh token" });
+    jwt.verify(
+      token,
+      process.env.USER_REFRESH_TOKEN_SECRET,
+      async (err, decoded) => {
+        if (err)
+          return res.status(403).json({ message: "Invalid or expired refresh token" });
 
-      const user = await userModel.findById(decoded.id);
-      if (!user || user.refreshToken !== token)
-        return res.status(403).json({ message: "Invalid refresh token" });
+        const user = await userModel.findById(decoded.id);
+        if (!user || user.refreshToken !== token)
+          return res.status(403).json({ message: "Invalid refresh token" });
 
-      const newAccessToken = generateAccessToken(user._id);
-      return res.status(200).json({ accessToken: newAccessToken });
-    });
+        const newAccessToken = generateAccessToken(user._id, user.email);
+
+        return res.status(200).json({ accessToken: newAccessToken });
+      }
+    );
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 
@@ -786,13 +767,13 @@ const togglePublicSharing = async (req, res) => {
     const { wishlistId } = req.params;
     const { isPublic } = req.body;
 
-    // ✅ Validate isPublic
-    if (typeof isPublic !== "boolean") {
-      return res.status(400).json({
-        success: false,
-        message: "isPublic field is required and must be a boolean",
-      });
-    }
+    // // ✅ Validate isPublic
+    // if (typeof isPublic !== "boolean") {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "isPublic field is required and must be a boolean",
+    //   });
+    // }
 
     // ✅ Find user
     const user = await userModel.findById(userId);
@@ -928,7 +909,7 @@ const Setdefaultwishlist = async (req, res) => {
 // Delete entire wishlist
 const Deleteentirewishlist = async (req, res) => {
   try {
-    const { userId } = req.user;
+     const { userId } = req.user;
     const { wishlistId } = req.params;
 
     const user = await userModel.findById(userId);
@@ -949,12 +930,12 @@ const Deleteentirewishlist = async (req, res) => {
         .json({ message: "Cannot delete default wishlist" });
     }
 
-    // Prevent deletion if it's the only wishlist
-    if (user.wishlistGroups.length <= 1) {
-      return res
-        .status(400)
-        .json({ message: "Cannot delete the only wishlist" });
-    }
+    // // Prevent deletion if it's the only wishlist
+    // if (user.wishlistGroups.length <= 1) {
+    //   return res
+    //     .status(400)
+    //     .json({ message: "Cannot delete the only wishlist" });
+    // }
 
     // Remove the wishlist
     user.wishlistGroups.pull({ _id: wishlistId });
@@ -1158,7 +1139,7 @@ module.exports = {
   getCart,
   updateCart,
   recommendationsProduct,
-  refreshToken,
+  RefreshToken,
   getCartCount,
   getWishlistCount,
   logout,
