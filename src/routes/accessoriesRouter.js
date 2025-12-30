@@ -9,6 +9,8 @@ const {
   createAccessory,
   updateAccessory,
   getAllAccessories,
+  getProductsByAccessoriesCategory,
+  getAccessoriesByCategoryAndSub,
 } = require("../controllers/accessoriesController");
 
 // Image Upload Middlewares
@@ -30,5 +32,7 @@ router.put("/UpdatedAccessories/:id", updateProductImageUpload, updateAccessory)
 
 router.get("/getAccessories",getAllAccessories)
 
+// Get accessories by category / subcategory
+router.get("/subcategories/:subcategory", getProductsByAccessoriesCategory);
 // EXPORT ROUTER
 module.exports = router;

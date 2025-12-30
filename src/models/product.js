@@ -30,13 +30,13 @@ const LEATHER_MAIN_CATEGORIES = [
 
 const LEATHER_SUB_CATEGORIES = [
   "Tote Bag",
-  "Crossbody Bag",
+  "Crossbody Bag", 
   "Card Holder",
   "Shoulder/Crossbody Bag",
-  "Shoulder Bag",
+  "Shoulder Bag", 
   "Clutch",
   "Backpack",
-  "Hand Bag",
+  "Hand Bag", 
   "Coin Purse",
   "Key Holder",
   "Travel Bag",

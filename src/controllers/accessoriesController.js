@@ -192,6 +192,71 @@ const getAccessoriesProducts = async (req, res) => {
 };
 
 
+const getProductsByAccessoriesCategory = async (req, res) => {
+  try {
+    const { subcategory } = req.params; // from /subcategories/:subcategory
+    const { page = 1, limit = 16, sortBy = "newest" } = req.query;
+
+    if (!subcategory) {
+      return res.status(400).json({ success: false, message: "Sub-category is required" });
+    }
+
+    // Normalize URL value (replace dashes with spaces, decode URI, trim)
+    const normalized = decodeURIComponent(subcategory).replace(/-/g, " ").trim();
+
+    // Filter only by accessoryCategory
+    const filter = {
+      category: "Accessories",
+      accessoryCategory: new RegExp(`^${normalized}$`, "i"), // case-insensitive
+    };
+
+    // Pagination
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+
+    // Sorting
+    let sortOptions = {};
+    switch (sortBy) {
+      case "price_low_high":
+        sortOptions = { salePrice: 1 };
+        break;
+      case "price_high_low":
+        sortOptions = { salePrice: -1 };
+        break;
+      case "rating":
+        sortOptions = { rating: -1 };
+        break;
+      default:
+        sortOptions = { createdAt: -1 };
+    }
+
+    // Count & fetch
+    const totalProducts = await Product.countDocuments(filter);
+
+    const products = await Product.find(filter)
+      .sort(sortOptions)
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .select("-__v");
+
+    res.json({
+      success: true,
+      totalProducts,
+      totalPages: Math.ceil(totalProducts / limitNum),
+      currentPage: pageNum,
+      products,
+    });
+  } catch (err) {
+    console.error("Error fetching products by accessoryCategory:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching products by accessoryCategory",
+      error: err.message,
+    });
+  }
+};
+
+
 // ============================================
 // GET SINGLE ACCESSORY BY ID
 // ============================================
@@ -891,5 +956,6 @@ module.exports = {
   createAccessory, 
   updateAccessory, 
   deleteAccessory, 
-  getAllAccessories
+  getAllAccessories,
+  getProductsByAccessoriesCategory
 };

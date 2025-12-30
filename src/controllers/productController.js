@@ -730,6 +730,40 @@ const getBrandWatches = async (req, res) => {
   }
 };
 
+
+const getBrandBags = async (req, res) => {
+  try {
+    // Trim the brand from URL params to avoid accidental spaces
+    const brandParam = req.params.brand.trim();
+
+    // Find all products for the brand (case-insensitive, ignores extra spaces)
+    const products = await Product.find({
+      brand: { $regex: brandParam, $options: "i" }, // case-insensitive match
+      leatherMainCategory: "Bag" // Only bags
+    });
+
+    if (!products || products.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No bags found for brand: ${brandParam}`,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};
+
+
 const productHome = async (req, res) => {
   try {
     // Fetch last-added products (LIFO order) using createdAt timestamp
@@ -795,27 +829,49 @@ const getBookingService = async (req, res) => {
   }
 };
 
-// Subscribe to restock notifications
-
 const restockSubscribe = async (req, res) => {
-  const { productId, email } = req.body;
+  const { id } = req.params; // productId from URL
+  const { email } = req.body;
 
-  if (!productId || !email) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Product and email are required" });
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required",
+    });
   }
 
   try {
-    // Check if already subscribed
-    const existing = await RestockSubscription.findOne({ productId, email });
-    if (existing) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Already subscribed" });
+    // Fetch product info
+    const product = await Product.findById(id).select("name category");
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
     }
 
-    const subscription = new RestockSubscription({ productId, email });
+    // Check if already subscribed
+    const existing = await RestockSubscription.findOne({
+      productId: product._id,
+      email,
+    });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: "Already subscribed for this product",
+      });
+    }
+
+    // Create subscription
+    const subscription = new RestockSubscription({
+      productId: product._id,   // ✅ Store ObjectId
+      productName: product.name,
+      category: product.category,
+      email,
+      status: "pending",
+      notified: false,
+    });
+
     await subscription.save();
 
     res.json({
@@ -827,6 +883,74 @@ const restockSubscribe = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+const getRestockSubscribers = async (req, res) => {
+  try {
+    const { productId } = req.query;
+
+    // Build query
+    let query = {};
+    if (productId) {
+      query.productId = productId;
+    }
+
+    // Fetch subscriptions, populate product info
+    const subscriptions = await RestockSubscription.find(query)
+      .sort({ createdAt: -1 })
+      .lean(); // lean() returns plain JS objects
+
+    res.json({
+      success: true,
+      total: subscriptions.length,
+      subscribers: subscriptions,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+
+const unsubscribeRestock = async (req, res) => {
+  const { id } = req.params; // productId from URL
+  const { email } = req.body; // Email comes from request body
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required to unsubscribe",
+    });
+  }
+
+  try {
+    // Find and delete the subscription
+    const result = await RestockSubscription.findOneAndDelete({
+      productId: id, // ✅ use id from params
+      email,
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "Subscription not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Unsubscribed successfully",
+    });
+  } catch (err) {
+    console.error("Unsubscribe error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error while unsubscribing",
+    });
+  }
+};
+
+
+
 
 const getRecommendations = async (cartItems, limit = 4) => {
   try {
@@ -983,5 +1107,8 @@ module.exports = {
   getBrandWatches,
   getBookingService,
   moveToInventory,
-  getProductById
+  getProductById,
+  getBrandBags,
+  getRestockSubscribers,
+  unsubscribeRestock
 };

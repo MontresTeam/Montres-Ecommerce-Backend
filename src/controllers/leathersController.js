@@ -217,6 +217,70 @@ const getAllLeatherGoods = async (req, res) => {
   }
 };
 
+
+const getProductsByLeatherSubCategory = async (req, res) => {
+  try {
+    const { subCategory } = req.params;
+    const { page = 1, limit = 16, sortBy = "newest" } = req.query;
+
+    if (!subCategory) {
+      return res.status(400).json({ success: false, message: "Sub-category is required" });
+    }
+
+    // Base filter — leather products in this sub-category
+    const filter = {
+      categorisOne: "leather",
+      leatherSubCategory: subCategory
+    };
+
+    // Pagination
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+
+    // Sorting
+    let sortOptions = {};
+    switch (sortBy) {
+      case "price_low_high":
+        sortOptions = { salePrice: 1 };
+        break;
+      case "price_high_low":
+        sortOptions = { salePrice: -1 };
+        break;
+      case "rating":
+        sortOptions = { rating: -1 };
+        break;
+      default:
+        sortOptions = { createdAt: -1 };
+    }
+
+    // Count and fetch
+    const totalProducts = await Product.countDocuments(filter);
+
+    const products = await Product.find(filter)
+      .sort(sortOptions)
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .select("-__v");
+
+    res.json({
+      success: true,
+      totalProducts,
+      totalPages: Math.ceil(totalProducts / limitNum),
+      currentPage: pageNum,
+      products
+    });
+
+  } catch (err) {
+    console.error("Error fetching products by sub-category:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching products by sub-category",
+      error: err.message
+    });
+  }
+};
+
+
 const addLeathergoods = async (req, res) => {
   try {
     const {
@@ -704,4 +768,4 @@ const getLeatherBags = async (req, res) => {
   }
 };
 
-module.exports = { getAllLeatherGoods, addLeathergoods, updateLeathergoods,getLeatherBags };
+module.exports = { getAllLeatherGoods, addLeathergoods, updateLeathergoods,getLeatherBags ,getProductsByLeatherSubCategory};

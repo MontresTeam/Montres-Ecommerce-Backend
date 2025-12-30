@@ -310,10 +310,11 @@ const updateProduct = async (req, res) => {
       runValidators: true,
     });
 
-    // 🔔 RESTOCK EMAIL TRIGGER
-    if (oldStockQuantity === 0 && updatedProduct.stockQuantity > 0) {
-      await notifyRestock(updatedProduct._id);
-    }
+    
+if (oldStockQuantity === 0 && updatedProduct.stockQuantity > 0) {
+  await notifyRestock(updatedProduct._id);
+}
+
 
     res.status(200).json({
       success: true,

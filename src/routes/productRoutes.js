@@ -11,7 +11,10 @@ const {
   getBrandWatches,
   getBookingService,
   moveToInventory,
-  getProductById
+  getProductById,
+  getBrandBags,
+  getRestockSubscribers,
+  unsubscribeRestock
 } = require("../controllers/productController");
 const {
   addToCart,
@@ -75,7 +78,9 @@ router.put("/wishlists/:wishlistId/visibility",protect,togglePublicSharing)
        // Place order
 router.get("/orders/my", protect, getMyOrders);             // My orders
 
-router.post("/restock-notifications/subscribe",restockSubscribe)
+router.post("/restock/:id/subscribe",restockSubscribe)
+router.get("/restock/subscribers",getRestockSubscribers)
+router.delete("/restock/:id/subscribe",unsubscribeRestock)
 // Single product by ID
 
 router.get("/:id", getProductById);
@@ -83,8 +88,9 @@ router.get("/:id", getProductById);
 /* ----------------- Simillar product ----------------- */
 router.get("/:id/similar", SimilarProduct);
 router.get("/:id/you-may-also-like", YouMayAlsoLike);
-router.get('/brand/:brand/watches', getBrandWatches);
 
+router.get('/brand/:brand/watches', getBrandWatches);
+router.get("/brand/:brand/handbags", getBrandBags);
 router.post("/inventory/move",moveToInventory)
 
 

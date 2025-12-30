@@ -1,6 +1,6 @@
 const RestockSubscription = require("../models/RestockSubscription");
 const nodemailer = require("nodemailer");
-const Product = require("../models/product");
+const Product = require("../models/product"); // fix capitalization
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -8,9 +8,9 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS, // Gmail App Password
   },
-   tls: {
-        rejectUnauthorized: false, // <-- allows self-signed certificates
-      },
+  tls: {
+    rejectUnauthorized: false,
+  },
 });
 
 async function notifyRestock(productId) {
@@ -18,12 +18,13 @@ async function notifyRestock(productId) {
     const product = await Product.findById(productId);
     if (!product) return;
 
-    // 🔐 Only notify when stock > 0
+    // Only notify when stock > 0
     if (product.stockQuantity <= 0) return;
 
+    // Fetch all pending subscribers
     const subscriptions = await RestockSubscription.find({
       productId,
-      isNotified: false,
+      notified: false, // match schema
     });
 
     if (!subscriptions.length) return;
@@ -46,14 +47,20 @@ async function notifyRestock(productId) {
           `,
         });
 
-        // ✅ Mark as notified
-        sub.isNotified = true;
+        // Mark subscription as notified
+        sub.notified = true;
+        sub.status = "notified"; // optional, keep status updated
         await sub.save();
 
       } catch (mailError) {
-        console.error("Email failed for:", sub.email, mailError);
+        console.error("Failed to send email to:", sub.email, mailError);
       }
     }
+
+    console.log(
+      `Restock notifications sent for product: ${product.name} (${subscriptions.length})`
+    );
+
   } catch (error) {
     console.error("notifyRestock error:", error);
   }

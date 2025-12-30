@@ -54,6 +54,8 @@ const createSession = async (req, res) => {
       });
     }
 
+
+
     // ✅ Create order in DB
     const order = await Order.create({
       orderId: payment.order.reference_id,
@@ -118,7 +120,7 @@ const createSession = async (req, res) => {
       checkoutUrl,
     });
   } catch (error) {
-    console.error(
+    console.log(
       "Tabby session creation error:",
       error.response?.data || error.message
     );
