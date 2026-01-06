@@ -22,6 +22,7 @@ const filterRouter = require('./routes/filterRouter')
 const tabbyRouter = require('./routes/tabbyRouter')
 const invontryStock = require('./routes/inventoryRoutes')
 const adminsRoute = require('./routes/adminRoute')
+const seoRoutes = require('./routes/seoPage.routes')
 
 const PORT = process.env.PORT || 9000;
 
@@ -104,6 +105,7 @@ app.use('/api/recommend', recommendRoutes);
 app.use(tabbyRouter)
 app.use('/api/invontry',invontryStock)
 app.use('/api/admin',adminsRoute)
+app.use("/api/seo-pages", seoRoutes);
 
 
 // ✅ Error Handler

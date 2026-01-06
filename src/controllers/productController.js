@@ -829,9 +829,10 @@ const getBookingService = async (req, res) => {
   }
 };
 
+
 const restockSubscribe = async (req, res) => {
-  const { id } = req.params; // productId from URL
-  const { email } = req.body;
+  const { id } = req.params; // productId
+  const { email, customerName, phone } = req.body;
 
   if (!email) {
     return res.status(400).json({
@@ -841,8 +842,10 @@ const restockSubscribe = async (req, res) => {
   }
 
   try {
-    // Fetch product info
-    const product = await Product.findById(id).select("name category");
+    // Get product info
+    const product = await Product.findById(id)
+      .select("name category sku");
+
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -850,65 +853,90 @@ const restockSubscribe = async (req, res) => {
       });
     }
 
-    // Check if already subscribed
+    // Prevent duplicate entry
     const existing = await RestockSubscription.findOne({
       productId: product._id,
       email,
     });
+
     if (existing) {
       return res.status(400).json({
         success: false,
-        message: "Already subscribed for this product",
+        message: "You are already subscribed for this product",
       });
     }
 
-    // Create subscription
     const subscription = new RestockSubscription({
-      productId: product._id,   // ✅ Store ObjectId
+      productId: product._id,
       productName: product.name,
       category: product.category,
+      productSKU: product.sku || null,
+
+      customerName: customerName || "",
       email,
+      phone: phone || "",
+
+      requestType: "restock",
       status: "pending",
       notified: false,
+      exportedToCSV: false,
     });
 
     await subscription.save();
 
     res.json({
       success: true,
-      message: "Subscribed for restock notification!",
+      message: "Customer added to restock / request list",
     });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
 };
+
 
 const getRestockSubscribers = async (req, res) => {
   try {
     const { productId } = req.query;
 
-    // Build query
     let query = {};
-    if (productId) {
-      query.productId = productId;
-    }
+    if (productId) query.productId = productId;
 
-    // Fetch subscriptions, populate product info
     const subscriptions = await RestockSubscription.find(query)
       .sort({ createdAt: -1 })
-      .lean(); // lean() returns plain JS objects
+      .populate({
+        path: "productId",
+        select: "name sku category image images mainImage", // choose relevant fields
+      })
+      .lean();
+
+    const subscribers = subscriptions.map(s => ({
+      ...s,
+      productName: s.productId?.name || null,
+      productSKU: s.productId?.sku || null,
+      category: s.productId?.category || null,
+      productImage:
+        s.productId?.image ||
+        s.productId?.mainImage ||
+        s.productId?.images?.[0] ||
+        null,
+    }));
 
     res.json({
       success: true,
-      total: subscriptions.length,
-      subscribers: subscriptions,
+      total: subscribers.length,
+      subscribers,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 
 
 const unsubscribeRestock = async (req, res) => {

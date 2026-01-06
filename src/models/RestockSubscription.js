@@ -2,41 +2,75 @@
 const mongoose = require("mongoose");
 
 const restockSubscriptionSchema = new mongoose.Schema({
+
+  // Product Info
   productId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "Product", 
-    required: true 
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Product",
+    required: true
   },
 
-  productName: { 
-    type: String, 
-    required: true 
-  },   // Product title
-
-  category: { 
-    type: String 
-  },    // Product category
-
-  email: { 
-    type: String, 
-    required: true 
+  productName: {
+    type: String,
+    required: true
   },
 
-  status: { 
-    type: String, 
-    enum: ["pending", "notified"], 
-    default: "pending" 
-  },  // pending or notified
+  productSKU: {
+    type: String
+  },
 
-  notified: { 
-    type: Boolean, 
-    default: false 
-  },  // Has the notification been sent?
+  category: {
+    type: String
+  },
 
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
-  }   // Subscription date
+  // Customer Info
+  customerName: {
+    type: String,
+    default: ""
+  },
+
+  email: {
+    type: String,
+    required: true
+  },
+
+  phone: {
+    type: String,
+    default: ""
+  },
+
+  // Request Type (for admin clarity)
+  requestType: {
+    type: String,
+    enum: ["restock", "product_request"],
+    default: "restock"
+  },
+
+  // Admin Tracking
+  status: {
+    type: String,
+    enum: ["pending", "notified"],
+    default: "pending"
+  },
+
+  notified: {
+    type: Boolean,
+    default: false
+  },
+
+  notifiedAt: {
+    type: Date
+  },
+
+  exportedToCSV: {
+    type: Boolean,
+    default: false
+  },
+
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
 });
 
 module.exports = mongoose.model(

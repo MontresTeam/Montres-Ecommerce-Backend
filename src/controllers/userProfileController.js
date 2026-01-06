@@ -34,6 +34,8 @@ const createUserProfile = async (req, res) => {
 };
 
 
+
+
 const getUserProfile = async (req, res) => {
   try {
     const { userId } = req.user;

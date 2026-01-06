@@ -261,7 +261,7 @@ const forgotPassword = async (req, res) => {
     await user.save();
 
     // 🔑 Create reset link
-    const resetLink = `http://localhost:3000/ResetPassword/${user._id}/${token}`;
+    const resetLink = `https://www.montres.ae/ResetPassword/${user._id}/${token}`;
 
     const mailOptions = {
       from: `"Montres Trading L.L.C – The Art Of Time" <${process.env.EMAIL_USER}>`,
@@ -286,7 +286,7 @@ const forgotPassword = async (req, res) => {
             <!-- Header -->
             <tr>
               <td align="center" style="padding:30px 25px 20px 25px;">
-                <img src="https://yourdomain.com/logo.png" alt="Montres Logo" style="width:60px;height:auto;margin-bottom:12px;" />
+                <img src="https://www.montres.ae/apple-touch-icon.png" alt="Montres Logo" style="width:60px;height:auto;margin-bottom:12px;" />
                 <h2 style="margin:0;font-size:20px;font-weight:700;color:#0f172a;">Montres Trading L.L.C</h2>
                 <p style="margin:6px 0 0;font-size:14px;color:#64748b;">Reset your password</p>
               </td>
