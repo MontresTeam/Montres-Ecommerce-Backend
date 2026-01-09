@@ -38,11 +38,11 @@ const app = express();
 
 // ✅ CORS setup
 const allowedOrigins = [
-  process.env.FRONTEND_URL || 'http://localhost:3000',
+  process.env.CLIENT_URL,
   process.env.ADMIN_URL,
   process.env.LOCAL_URL,
 ];
-console.log("Allowed Origins:", allowedOrigins);
+
 
 app.use(
   cors({

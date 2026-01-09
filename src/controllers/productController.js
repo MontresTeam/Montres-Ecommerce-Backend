@@ -764,6 +764,37 @@ const getBrandBags = async (req, res) => {
 };
 
 
+const getBrandAccessories = async (req, res) => {
+  try {
+    const brandParam = req.params.brand.trim();
+
+    const products = await Product.find({
+      brand: { $regex: new RegExp(`^${brandParam}$`, "i") },
+      category: "Accessories",
+    });
+
+    if (!products?.length) {
+      return res.status(404).json({
+        success: false,
+        message: `No accessories found for brand: ${brandParam}`,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: error.message,
+    });
+  }
+};
+
+
 const productHome = async (req, res) => {
   try {
     // Fetch last-added products (LIFO order) using createdAt timestamp
@@ -1138,5 +1169,6 @@ module.exports = {
   getProductById,
   getBrandBags,
   getRestockSubscribers,
-  unsubscribeRestock
+  unsubscribeRestock,
+  getBrandAccessories
 };

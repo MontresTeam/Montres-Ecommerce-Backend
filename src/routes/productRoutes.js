@@ -14,7 +14,8 @@ const {
   getProductById,
   getBrandBags,
   getRestockSubscribers,
-  unsubscribeRestock
+  unsubscribeRestock,
+  getBrandAccessories
 } = require("../controllers/productController");
 const {
   addToCart,
@@ -91,6 +92,7 @@ router.get("/:id/you-may-also-like", YouMayAlsoLike);
 
 router.get('/brand/:brand/watches', getBrandWatches);
 router.get("/brand/:brand/handbags", getBrandBags);
+router.get("/brand/:brand/accessories",getBrandAccessories)
 router.post("/inventory/move",moveToInventory)
 
 

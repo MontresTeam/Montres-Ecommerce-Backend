@@ -1,9 +1,17 @@
 const SeoPage = require("../models/SeoPageModel");
 
-// ⭐ Create SEO Page
 const createSEOAllpage = async (req, res) => {
   try {
-    const { pageTitle, seoTitle, metaDescription, slug, pageContent } = req.body;
+    const {
+      pageTitle,
+      seoTitle,
+      metaDescription,
+      slug,
+      pageContent,
+      isActive,
+      views,
+      keywordRank,
+    } = req.body;
 
     if (!pageTitle || !seoTitle || !metaDescription || !slug) {
       return res.status(400).json({
@@ -11,10 +19,11 @@ const createSEOAllpage = async (req, res) => {
       });
     }
 
-    // Check if slug exists
     const exists = await SeoPage.findOne({ slug });
     if (exists) {
-      return res.status(409).json({ message: "SEO content for this slug already exists" });
+      return res
+        .status(409)
+        .json({ message: "SEO content for this slug already exists" });
     }
 
     const newPage = new SeoPage({
@@ -23,13 +32,22 @@ const createSEOAllpage = async (req, res) => {
       metaDescription,
       slug,
       pageContent: pageContent || "",
+      isActive: isActive ?? true,
+      views: views ?? 0,
+      keywordRank: keywordRank ?? 0,
     });
 
     const savedPage = await newPage.save();
-    return res.status(201).json({ message: "SEO page created successfully", data: savedPage });
+
+    return res.status(201).json({
+      message: "SEO page created successfully",
+      data: savedPage,
+    });
   } catch (error) {
     console.error("Create SEO Page Error:", error);
-    return res.status(500).json({ message: "Server error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
   }
 };
 
