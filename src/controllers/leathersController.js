@@ -229,7 +229,7 @@ const getProductsByLeatherSubCategory = async (req, res) => {
 
     // Base filter — leather products in this sub-category
     const filter = {
-      categorisOne: "leather",
+      leatherMainCategory: "Bag",
       leatherSubCategory: subCategory
     };
 

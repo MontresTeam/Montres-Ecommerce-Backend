@@ -6,7 +6,7 @@ const Product = require("./product"); // your Product model
 
 // Schema for Heading
 const homeProductsGridSchema = new Schema({
-  title: {
+  category: {
     type: String,
     required: true,
   },

@@ -1,4 +1,4 @@
-require('dotenv').config(); // <--- MUST be at the top, before using process.env
+require("dotenv").config(); // <--- MUST be at the top, before using process.env
 const userModel = require("../models/UserModel");
 const ProductModel = require("../models/product");
 const bcrypt = require("bcryptjs");
@@ -10,8 +10,9 @@ const {
   generateAccessToken,
   generateRefreshToken,
 } = require("../utils/generateToken");
-const {sendWelcomeEmail} = require("../services/emailService")
-
+const { OAuth2Client } = require("google-auth-library");
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const { sendWelcomeEmail } = require("../services/emailService");
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -26,16 +27,7 @@ const transporter = nodemailer.createTransport({
 
 
 
-const Newsletter = async (req, res) => {
-  
-};
-
-
-
-
-
-
- const Registration = async (req, res) => {
+const Registration = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
@@ -46,22 +38,23 @@ const Newsletter = async (req, res) => {
     if (existingUser)
       return res.status(400).json({ message: "Email already registered" });
 
-    // hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = await userModel.create({
+    // Create user instance (password is plain text here)
+    const newUser = new userModel({
       name,
       email,
-      password: hashedPassword,
+      password,
     });
 
     const accessToken = generateAccessToken(newUser._id, newUser.email);
     const refreshToken = generateRefreshToken(newUser._id);
 
+    // Set refresh token
     newUser.refreshToken = refreshToken;
+
+    // Save user -> Triggers pre('save') hook ONCE -> Hashes password -> Stores in DB
     await newUser.save();
- 
-        // 🚀 Send Welcome Email (non-blocking)
+
+    // 🚀 Send Welcome Email (non-blocking)
     sendWelcomeEmail(newUser.email, newUser.name).catch(console.log);
 
     res
@@ -86,8 +79,6 @@ const Newsletter = async (req, res) => {
   }
 };
 
-
-
 const Login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -96,10 +87,9 @@ const Login = async (req, res) => {
       return res.status(400).json({ message: "Email and password required" });
 
     const user = await userModel.findOne({ email });
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-   const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await user.matchPassword(password);
     if (!isMatch)
       return res.status(401).json({ message: "Invalid credentials" });
 
@@ -127,9 +117,7 @@ const Login = async (req, res) => {
   }
 };
 
-
-
- const logout = async (req, res) => {
+const logout = async (req, res) => {
   try {
     // ✅ Clear refresh token cookie
     res.clearCookie("refreshToken", {
@@ -145,19 +133,19 @@ const Login = async (req, res) => {
   }
 };
 
-
-  const RefreshToken = async (req, res) => {
+const RefreshToken = async (req, res) => {
   try {
     const token = req.cookies.refreshToken;
-    if (!token)
-      return res.status(401).json({ message: "No refresh token" });
+    if (!token) return res.status(401).json({ message: "No refresh token" });
 
     jwt.verify(
       token,
       process.env.USER_REFRESH_TOKEN_SECRET,
       async (err, decoded) => {
         if (err)
-          return res.status(403).json({ message: "Invalid or expired refresh token" });
+          return res
+            .status(403)
+            .json({ message: "Invalid or expired refresh token" });
 
         const user = await userModel.findById(decoded.id);
         if (!user || user.refreshToken !== token)
@@ -172,63 +160,6 @@ const Login = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
-
-
-const googleLogin = async (req, res) => {
-  try {
-    const { profile, token } = req.user;
-    if (!profile || !profile.email) {
-      return res.status(400).json({ success: false, message: "Email is required from Google account" });
-    }
-
-    const user = {
-      id: profile.id,
-      name: profile.name,
-      email: profile.email,
-      picture: profile.picture,
-      provider: profile.provider,
-    };
-
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    if (req.query.returnJson === "true") {
-      return res.status(200).json({ success: true, token, user });
-    }
-
-    const redirectUrl = `${process.env.FRONTEND_URL}/auth/success?token=${token}`;
-    return res.redirect(redirectUrl);
-  } catch (err) {
-    return res.redirect(`${process.env.FRONTEND_URL}/auth/login?error=google_login_failed`);
-  }
-};
-
-
-const facebookLogin = async (req, res) => {
-  try {
-    const profile = req.user?.profile;
-    const token = req.user?.token;
-
-    if (!profile || !token) {
-      return res.redirect(`${process.env.CLIENT_URL}/auth/login?error=facebook_login_failed`);
-    }
-
-    const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(JSON.stringify(profile))}`;
-    res.redirect(redirectUrl);
-  } catch (error) {
-    console.error("Facebook login error:", error);
-    res.redirect(`${process.env.CLIENT_URL}/auth/login?error=facebook_login_failed`);
-  }
-};
-
-
-
 
 // forgotPassword -> with email send verification
 
@@ -577,8 +508,6 @@ const updateCart = async (req, res) => {
   }
 };
 
-
-
 // getrecommed products
 const recommendationsProduct = async (req, res) => {
   try {
@@ -908,7 +837,7 @@ const Setdefaultwishlist = async (req, res) => {
 // Delete entire wishlist
 const Deleteentirewishlist = async (req, res) => {
   try {
-     const { userId } = req.user;
+    const { userId } = req.user;
     const { wishlistId } = req.params;
 
     const user = await userModel.findById(userId);
@@ -956,8 +885,6 @@ const Deleteentirewishlist = async (req, res) => {
   }
 };
 
-
-
 // 📦 Get My Orders
 
 const getMyOrders = async (req, res) => {
@@ -974,8 +901,6 @@ const getMyOrders = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-
 
 const convertprice = async (req, res) => {
   const { amount, from, to } = req.query;
@@ -1020,8 +945,6 @@ const convertprice = async (req, res) => {
   }
 };
 
-
-
 const currencyConver = async (req, res) => {
   const { amount, from, to } = req.query;
 
@@ -1032,19 +955,16 @@ const currencyConver = async (req, res) => {
     });
   }
 
- try {
-    const response = await axios.get(
-      "https://api.currencyapi.com/v3/latest",
-      {
-        headers: {
-          apikey: process.env.CURRENCY_API_KEY, // ✅ HEADER, NOT PARAM
-        },
-        params: {
-          base_currency: from,
-          currencies: to,
-        },
-      }
-    );
+  try {
+    const response = await axios.get("https://api.currencyapi.com/v3/latest", {
+      headers: {
+        apikey: process.env.CURRENCY_API_KEY, // ✅ HEADER, NOT PARAM
+      },
+      params: {
+        base_currency: from,
+        currencies: to,
+      },
+    });
 
     // Get rate
     const rate = response.data?.data?.[to]?.value;
@@ -1072,19 +992,21 @@ const currencyConver = async (req, res) => {
   }
 };
 
-
 //get cart Count
 const getCartCount = async (req, res) => {
   try {
-    const { userId } = req.user; 
-    console.log(userId)
+    const { userId } = req.user;
+    console.log(userId);
     if (!userId) return res.status(400).json({ message: "User ID required" });
 
     const user = await userModel.findById(userId).select("cart");
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const cartCount = user.cart.reduce((total, item) => total + item.quantity, 0);
+    const cartCount = user.cart.reduce(
+      (total, item) => total + item.quantity,
+      0
+    );
 
     res.status(200).json({ cartCount });
   } catch (error) {
@@ -1117,6 +1039,92 @@ const getWishlistCount = async (req, res) => {
   }
 };
 
+
+// Google Auth (Signup + Login)
+const googleSignup = async (req, res) => {
+  try {
+    const { name, email, avatar } = req.body;
+
+    let user = await userModel.findOne({ email });
+
+    if (!user) {
+      user = await userModel.create({
+        name,
+        email,
+        avatar,
+        provider: "google",
+      });
+
+      sendWelcomeEmail(user.email, user.name).catch(console.log);
+    }
+
+    const accessToken = generateAccessToken(user._id, user.email);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    res.status(200).json({
+      accessToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Google login failed" });
+  }
+};
+
+
+const facebookSignup = async (req, res) => {
+  try {
+    const { name, email, avatar, provider } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    let user = await userModel.findOne({ email });
+
+    if (!user) {
+      user = new userModel({ name, email, avatar, provider });
+      await user.save();
+    }
+
+    const accessToken = generateAccessToken(user._id, user.email);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    res
+      .cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      })
+      .status(200)
+      .json({
+        message: "Facebook login/signup successful",
+        accessToken,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar,
+        },
+      });
+  } catch (error) {
+    console.log("Facebook Signup Error:", error);
+    res.status(500).json({ message: "Facebook signup failed", error: error.message });
+  }
+};
+
+
+
+
+
 module.exports = {
   Registration,
   Login,
@@ -1142,9 +1150,7 @@ module.exports = {
   getCartCount,
   getWishlistCount,
   logout,
-  googleLogin,
-  facebookLogin,
-  Newsletter,
-  currencyConver
-  };
-
+  currencyConver,
+  googleSignup,
+  facebookSignup
+};

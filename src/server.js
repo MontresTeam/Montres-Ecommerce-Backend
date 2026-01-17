@@ -5,7 +5,6 @@ const cors = require('cors');
 const session = require('express-session');
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
-const passport = require("passport");
 const recommendRoutes = require('./routes/recommendRoutes')
 const productRoutes = require("./routes/productRoutes");
 const userRoute = require("./routes/userRoute");
@@ -30,9 +29,7 @@ const PORT = process.env.PORT || 9000;
 
 connectDB();
 
-// ✅ Load Passport Strategies
-require("./strategies/googleStrategy");
-require("./strategies/facebookStrategy");
+
 
 const app = express();
 
@@ -59,19 +56,8 @@ app.use(
   })
 );
 
-// ✅ Express session (must be BEFORE passport.initialize())
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || 'supersecretkey',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: false }, // true if using HTTPS only
-  })
-);
 
-// ✅ Passport initialization
-app.use(passport.initialize());
-app.use(passport.session()); // Important for persistent login sessions
+
 
 // ✅ Body parsing & cookies
 app.use(bodyParser.json());
