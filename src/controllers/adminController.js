@@ -3,8 +3,6 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
 
-
-
 const admins = [
   {
     id: 1,
@@ -25,6 +23,13 @@ const admins = [
     username: process.env.ADMIN_DEV_USERNAME,
     password: bcrypt.hashSync(process.env.ADMIN_DEV_PASSWORD, 12),
     role: "developer",
+    profile: null,
+  },
+  {
+    id: 4,
+    username: process.env.ADMIN_MARKETING_USERNAME,
+    password: bcrypt.hashSync(process.env.ADMIN_MARKETING_PASSWORD, 12),
+    role: "marketing",
     profile: null,
   },
 ];

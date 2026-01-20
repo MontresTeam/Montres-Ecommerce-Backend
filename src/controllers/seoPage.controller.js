@@ -8,6 +8,7 @@ const createSEOAllpage = async (req, res) => {
       metaDescription,
       slug,
       pageContent,
+      pageType,
       isActive,
       views,
       keywordRank,
@@ -29,6 +30,7 @@ const createSEOAllpage = async (req, res) => {
     const newPage = new SeoPage({
       pageTitle,
       seoTitle,
+      pageType,
       metaDescription,
       slug,
       pageContent: pageContent || "",
@@ -54,15 +56,29 @@ const createSEOAllpage = async (req, res) => {
 // ⭐ Get SEO Page by slug (frontend)
 const getSeoBySlug = async (req, res) => {
   try {
-    let slug = req.query.slug;
-    if (!slug) slug = "/"; // default Home page
+    let slug = req.query.slug || "home";
 
-    const page = await SeoPage.findOne({ slug, isActive: true });
-    if (!page) return res.status(404).json({ message: "SEO content not found" });
+    // normalize slug
+    slug = slug.replace(/^\/+/, "");
+
+    const page = await SeoPage.findOne({
+      slug,
+      isActive: true,
+    });
+
+    if (!page) {
+      return res.status(404).json({
+        message: "SEO content not found",
+      });
+    }
 
     return res.json(page);
   } catch (err) {
-    return res.status(500).json({ message: err.message });
+    console.error("SEO by slug error:", err);
+    return res.status(500).json({
+      message: "Server error",
+      error: err.message,
+    });
   }
 };
 
@@ -97,12 +113,13 @@ const DeleteSeoPages = async (req, res) => {
 const EditSeoPages = async (req, res) => {
   try {
     const { id } = req.params;
-    const { pageTitle, seoTitle, metaDescription, slug, pageContent, isActive } = req.body;
+    const { pageTitle, seoTitle, metaDescription, pageType, slug, pageContent, isActive } = req.body;
 
     const page = await SeoPage.findById(id);
     if (!page) return res.status(404).json({ message: "SEO page not found" });
 
     page.pageTitle = pageTitle || page.pageTitle;
+    page.pageType = pageType || page.pageType;
     page.seoTitle = seoTitle || page.seoTitle;
     page.metaDescription = metaDescription || page.metaDescription;
     page.slug = slug || page.slug;
@@ -117,10 +134,34 @@ const EditSeoPages = async (req, res) => {
   }
 };
 
+
+const getSeoById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate MongoDB ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ message: "❌ Invalid SEO page ID" });
+    }
+
+    const page = await SeoPage.findById(id);
+
+    if (!page) {
+      return res.status(404).json({ message: "SEO page not found" });
+    }
+
+    return res.json(page);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+
 module.exports = {
   createSEOAllpage,
   getSeoBySlug,
   getAllSeoPages,
   DeleteSeoPages,
   EditSeoPages,
+  getSeoById
 };

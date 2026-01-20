@@ -547,6 +547,61 @@ const getProducts = async (req, res) => {
 };
 
 
+const getAllBrands = async (req, res) => {
+  try {
+    const brands = await Product.aggregate([
+      {
+        $match: {
+          published: true,
+          category: { $regex: /^Leather Bags$/i },
+          brand: { $exists: true, $ne: "" },
+        },
+      },
+
+      // Normalize brand
+      {
+        $project: {
+          cleanBrand: {
+            $trim: {
+              input: { $toLower: "$brand" },
+            },
+          },
+        },
+      },
+
+      // Group by normalized brand
+      {
+        $group: {
+          _id: "$cleanBrand",
+        },
+      },
+
+      // Sort A-Z
+      {
+        $sort: { _id: 1 },
+      },
+    ]);
+
+    // Capitalize for frontend display
+    const formattedBrands = brands.map((b) => ({
+      name: b._id
+        .split(" ")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" "),
+    }));
+
+    res.json({
+      totalBrands: formattedBrands.length,
+      brands: formattedBrands.map((b) => b.name),
+    });
+  } catch (error) {
+    console.error("❌ Error fetching brands:", error);
+    res.status(500).json({ message: "Error fetching brands" });
+  }
+};
+
+
+
 
 const getProductById = async (req, res) => {
   try {
@@ -1170,5 +1225,6 @@ module.exports = {
   getBrandBags,
   getRestockSubscribers,
   unsubscribeRestock,
-  getBrandAccessories
+  getBrandAccessories,
+  getAllBrands
 };

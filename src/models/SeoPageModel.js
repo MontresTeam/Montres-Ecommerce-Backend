@@ -11,12 +11,19 @@ const seoPageSchema = new mongoose.Schema(
     },
     slug: { type: String, required: true, unique: true, trim: true },
 
+    pageTitle: { type: String, default: "" },
     pageContent: { type: String, default: "" },
 
+    pageType: {
+      type: String,
+      enum: ["page", "category", "brand", "product", "custom"],
+      default: "page",
+    },
+
     // --- Admin / SEO Control ---
-    isActive: { type: Boolean, default: true }, // published / draft
-    views: { type: Number, default: 0 }, // analytics
-    keywordRank: { type: Number, default: 0 }, // editable metric
+    isActive: { type: Boolean, default: true },
+    views: { type: Number, default: 0 },
+    keywordRank: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

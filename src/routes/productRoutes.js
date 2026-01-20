@@ -15,7 +15,8 @@ const {
   getBrandBags,
   getRestockSubscribers,
   unsubscribeRestock,
-  getBrandAccessories
+  getBrandAccessories,
+  getAllBrands
 } = require("../controllers/productController");
 const {
   addToCart,
@@ -24,7 +25,6 @@ const {
   removeFromWishlist,
   createWishlist,
   getWishlists,
-  placeOrder,
   getMyOrders,
   Emptywishlist,
   Setdefaultwishlist,
@@ -43,7 +43,8 @@ const { protect } = require("../middlewares/authMiddleware");
 const router = express.Router();
 
 /* ----------------- Product Routes ----------------- */
-router.get("/products", getProducts);                       // Fetch all products
+router.get("/products", getProducts); 
+router.get("/getAllBrands",getAllBrands)                      // Fetch all products
 router.post("/products", ImageUpload, addProduct);          // Add a new product
 router.post("/createBooking",protect, ImageUpload, addServiceForm); // Create service form
 router.get("/getBooking",getBookingService)
