@@ -31,10 +31,18 @@ const addressSnapshotSchema = new mongoose.Schema(
 
 const orderSchema = new mongoose.Schema(
   {
+
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true
+    },
+
+    orderId: {
+      type: String,
+      unique: true,
+      sparse: true, // Allow nulls if not all orders have this
       index: true
     },
 
@@ -68,8 +76,8 @@ const orderSchema = new mongoose.Schema(
       default: "pending"
     },
 
-    stripeSessionId: String,
-    stripePaymentIntentId: String,
+    stripeSessionId: { type: String, index: true },
+    stripePaymentIntentId: { type: String, index: true },
     tabbySessionId: String,
     tamaraOrderId: String,
 

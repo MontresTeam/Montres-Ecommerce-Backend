@@ -2,7 +2,7 @@ require("dotenv").config();
 const axios = require("axios");
 const crypto = require("crypto");
 const Order = require("../models/OrderModel"); // Adjust path to Order model if needed
-const userModel=require('../models/UserModel')
+const userModel = require('../models/UserModel')
 // ✅ 1. Pre-Scoring
 const preScoring = async (req, res) => {
   try {
@@ -83,7 +83,7 @@ const createSession = async (req, res) => {
         amount: payment.amount.toString(), // must be string
       },
       lang: lang || "en",
-      merchant_code: merchant_code || "MTAE",
+      merchant_code: merchant_code || "MOWA",
       merchant_urls,
     };
 
@@ -135,75 +135,162 @@ const createSession = async (req, res) => {
   }
 };
 
-// ✅ 3. Webhook Handler
+
+
+
+// =======================================
+// ✅ TABBY WEBHOOK HANDLER (FINAL SAFE)
+// =======================================
 const handleWebhook = async (req, res) => {
   try {
-    const signature = req.headers["tabby-signature"];
-    const payload = req.body;
+    console.log("🔔 Tabby Webhook Received");
 
-    if (process.env.TABBY_WEBHOOK_SECRET) {
+    const signature = req.headers["x-webhook-signature"];
+
+    // -----------------------------------
+    // Get RAW payload for signature
+    // -----------------------------------
+    const payloadString = Buffer.isBuffer(req.body)
+      ? req.body.toString("utf8")
+      : JSON.stringify(req.body);
+
+    const payload = JSON.parse(payloadString);
+
+
+    // -----------------------------------
+    // Signature verification
+    // (skip in local dev if needed)
+    // -----------------------------------
+    if (process.env.NODE_ENV === "production") {
       const expectedSignature = crypto
         .createHmac("sha256", process.env.TABBY_WEBHOOK_SECRET)
-        .update(JSON.stringify(payload))
+        .update(payloadString)
         .digest("hex");
 
       if (signature !== expectedSignature) {
-        return res.status(401).json({ error: "Invalid signature" });
+        console.error("❌ Invalid Tabby signature");
+        return res.sendStatus(401);
       }
     }
 
-    if (payload.event === "payment.authorized") {
-      const paymentId = payload.payload.id;
 
-      const paymentResponse = await axios.get(
-        `https://api.tabby.ai/api/v2/payments/${paymentId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
-          },
+    // -----------------------------------
+    // Respond immediately (IMPORTANT)
+    // -----------------------------------
+    res.sendStatus(200);
+
+
+    // -----------------------------------
+    // Extract data
+    // -----------------------------------
+    const { status, order, refunds, id } = payload;
+    const referenceId = order?.reference_id;
+
+    console.log("Status:", status);
+    console.log("Order Reference:", referenceId);
+
+    if (!referenceId) {
+      console.error("❌ No reference ID provided in webhook");
+      return;
+    }
+
+    // ✅ FIND ORDER (Robust Strategy)
+    // 1. Try finding by custom orderId
+    // 2. Fallback to _id if it looks like a MongoID
+    let savedOrder = await Order.findOne({ orderId: referenceId });
+
+    // Fallback check: strict regex for MongoDB ObjectId (24 hex characters)
+    if (!savedOrder && /^[0-9a-fA-F]{24}$/.test(referenceId)) {
+      console.log(`⚠️ Order not found by unique orderId. Trying fallback to _id for: ${referenceId}`);
+      savedOrder = await Order.findById(referenceId);
+    }
+
+    if (!savedOrder) {
+      console.error(`❌ Order not found in DB for reference: ${referenceId}`);
+      return;
+    }
+
+    console.log(`✅ Order matched: ${savedOrder._id} | Current Status: ${savedOrder.paymentStatus}`);
+
+
+    // -----------------------------------
+    // Process payment statuses
+    // -----------------------------------
+    switch (status) {
+
+      // -------------------------------
+      // AUTHORIZED (ignore)
+      // -------------------------------
+      case "authorized":
+        console.log("Payment authorized - waiting for closed");
+        return;
+
+
+      // -------------------------------
+      // CLOSED = SUCCESS PAYMENT
+      // -------------------------------
+      case "closed": {
+
+        // Refund
+        if (refunds?.length) {
+          console.log("Refund detected");
+          savedOrder.paymentStatus = "refunded";
+          await savedOrder.save();
+          return;
         }
-      );
 
-      if (paymentResponse.data.status === "AUTHORIZED") {
-        await axios.post(
-          `https://api.tabby.ai/api/v2/payments/${paymentId}/captures`,
-          {
-            amount: paymentResponse.data.amount.amount,
-            reference_id: `CAPTURE-${Date.now()}`,
-            items: paymentResponse.data.order.items,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        // Prevent duplicate updates
+        if (savedOrder.paymentStatus === "paid") {
+          console.log("Already paid (duplicate webhook ignored)");
+          return;
+        }
 
-        const orderReference = paymentResponse.data.order.reference_id;
+        console.log("✅ Marking order as PAID");
 
-        await Order.findOneAndUpdate(
-          { orderId: orderReference },
-          {
-            paymentStatus: "paid", // Update payment status
-            orderStatus: "Processing", // Update order workflow status
-            // tabbyPaymentId: paymentId // If you add this field to schema later
-          }
-        );
-        const order = await Order.findById(orderReference);
-        await userModel.findByIdAndUpdate(order.userId, {
-          $set: { cart: [] },
-        });
-        console.log(`Payment captured for order: ${orderReference}`);
+        savedOrder.paymentStatus = "paid";
+        savedOrder.orderStatus = "Processing";
+        savedOrder.tabbySessionId = id;
+
+        await savedOrder.save();
+
+        // Clear cart
+        if (savedOrder.userId) {
+          await userModel.findByIdAndUpdate(savedOrder.userId, {
+            $set: { cart: [] },
+          });
+        }
+
+        return;
       }
+
+
+      // -------------------------------
+      // FAILED
+      // -------------------------------
+      case "rejected":
+      case "expired":
+        console.log("❌ Payment failed");
+
+        savedOrder.paymentStatus = "failed";
+        await savedOrder.save();
+
+        return;
+
+
+      // -------------------------------
+      // Ignore others
+      // -------------------------------
+      default:
+        console.log("Ignored status:", status);
+        return;
     }
 
-    res.status(200).json({ received: true });
   } catch (error) {
-    console.error("Webhook error:", error);
-    res.status(500).json({ error: "Webhook processing failed" });
+    console.error("❌ Webhook error:", error.message);
   }
 };
+
+
 
 module.exports = {
   preScoring,

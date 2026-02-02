@@ -22,9 +22,9 @@ const {
 router.get("/myorders", protect, getMyOrders);
 
 
-router.post("/tabby", createTabbyOrder);
+router.post("/tabby/create-tabbycheckout", protect, createTabbyOrder);
 
-router.post("/tamara/create-checkout",protect,createTamaraOrder)
+router.post("/tamara/create-checkout", protect, createTamaraOrder)
 // Specific routes FIRST
 router.post("/stripe/create-checkout", protect, createStripeOrder);
 
@@ -33,13 +33,13 @@ router.post("/stripe/create-checkout", protect, createStripeOrder);
 router.get("/shipping", protect, getShippingAddresses);
 router.post("/shipping", protect, createShippingAddress);
 router.delete("/shipping/:id", protect, deleteShippingAddress);
-router.put("/shipping-address/:id",protect,updateShippingAddress)
+router.put("/shipping-address/:id", protect, updateShippingAddress)
 
 // Billing
 router.get("/billing", protect, getBillingAddresses);
 router.post("/billing", protect, createBillingAddress);
 router.delete("/billing/:id", protect, deleteBillingAddress);
-router.put("/billing-address/:id",protect,updateBillingAddress)
+router.put("/billing-address/:id", protect, updateBillingAddress)
 
 
 

@@ -13,9 +13,9 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? stripePkg(process.env.STRIPE_SECRET_KEY)
   : null;
 
- const createStripeOrder = async (req, res) => {
+const createStripeOrder = async (req, res) => {
   try {
-     const { userId } = req.user; // from JWT auth middleware
+    const { userId } = req.user; // from JWT auth middleware
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const {
@@ -119,49 +119,27 @@ const stripe = process.env.STRIPE_SECRET_KEY
     const order = await Order.create(orderData);
 
     // ------------------------------
-    // 7️⃣ SEND EMAIL NOTIFICATIONS
+    // 7️⃣ SEND EMAIL NOTIFICATIONS (To Admin/Sales)
     // ------------------------------
-    const productListHTML = populatedItems
-      .map(
-        (item) =>
-          `<tr>
-            <td style="padding:8px;border:1px solid #ddd;">${item.name}</td>
-            <td style="padding:8px;border:1px solid #ddd;">${item.quantity}</td>
-            <td style="padding:8px;border:1px solid #ddd;">AED ${item.price}</td>
-          </tr>`
-      )
-      .join("");
+    // ⚠️ For Stripe, we wait until payment is CONFIRMED via Webhook before sending emails.
+    if (paymentMethod !== "stripe") {
+      const emailHTML = generateProfessionalOrderEmail({
+        order,
+        statusTitle: "New Order Received",
+        message: `A new order has been placed on the website and is currently <strong>${order.paymentStatus}</strong>.`,
+      });
 
-    const emailHTML = `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2 style="color:#d4af37;">🛍️ New Order Received</h2>
-        <p><strong>Customer ID:</strong> ${userId}</p>
-        <p><strong>Region:</strong> ${region}</p>
-        <p><strong>Payment Method:</strong> ${paymentMethod}</p>
-        <p><strong>Total:</strong> AED ${total}</p>
-        <h3>Products:</h3>
-        <table style="border-collapse:collapse;width:100%;border:1px solid #ddd;">
-          <thead>
-            <tr>
-              <th style="padding:8px;border:1px solid #ddd;">Product</th>
-              <th style="padding:8px;border:1px solid #ddd;">Qty</th>
-              <th style="padding:8px;border:1px solid #ddd;">Price</th>
-            </tr>
-          </thead>
-          <tbody>${productListHTML}</tbody>
-        </table>
-        <p><strong>Shipping Country:</strong> ${shippingAddress.country}</p>
-        <p style="margin-top:20px;">🕒 <em>Order placed on ${new Date().toLocaleString()}</em></p>
-      </div>
-    `;
-
-    await sendEmail(process.env.ADMIN_EMAIL, "New Order Notification", emailHTML);
-    await sendEmail(process.env.SALES_EMAIL, "New Order Notification", emailHTML);
+      await sendEmail(process.env.ADMIN_EMAIL, `New Order Notification: ${order._id}`, emailHTML);
+      await sendEmail(process.env.SALES_EMAIL, `New Order Notification: ${order._id}`, emailHTML);
+    }
 
     // ------------------------------
     // 8️⃣ CLEAR USER CART
     // ------------------------------
-    await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
+    // ⚠️ For Stripe, we wait until payment is CONFIRMED via Webhook before clearing the cart.
+    if (paymentMethod !== "stripe") {
+      await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
+    }
 
     // ------------------------------
     // 9️⃣ CREATE STRIPE CHECKOUT SESSION
@@ -187,6 +165,10 @@ const stripe = process.env.STRIPE_SECRET_KEY
         billing_address_collection: "required",   // ensures billing address is collected
         success_url: `https://www.montres.ae/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
         cancel_url: `https://www.montres.ae/paymentcancel?orderId=${order._id}`,
+        metadata: {
+          orderId: order._id.toString(),
+          userId: userId.toString(),
+        },
       });
 
       order.stripeSessionId = session.id;
@@ -209,28 +191,36 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 
 
-const TABBY_PUBLIC_KEY = "pk_test_0194a887-5d2c-c408-94f4-65ee1ca745e8";
-const TABBY_SECRET_KEY = "sk_test_0194a887-5d2c-c408-94f4-65eeeb1ab113";
-const TABBY_MERCHANT_CODE = "MTAE";
+
+
 
 
 const createTabbyOrder = async (req, res) => {
   try {
-    const {
-      items,
-      shippingAddress,
-      billingAddress,
-      dummy = false,
-    } = req.body || {};
+    let { items, shippingAddress, billingAddress, dummy = false } = req.body || {};
 
+    // --------------------------------------------------
+    // ✅ Support frontend nested payload
+    // --------------------------------------------------
+    if (!items && req.body.order?.items) items = req.body.order.items;
+    if (!shippingAddress && req.body.customer?.shipping)
+      shippingAddress = req.body.customer.shipping;
+    if (!billingAddress) billingAddress = shippingAddress;
+
+    // --------------------------------------------------
+    // ✅ Prepare items
+    // --------------------------------------------------
     let populatedItems = [];
+
     if (!dummy && Array.isArray(items) && items.length > 0) {
       populatedItems = await Promise.all(
         items.map(async (it) => {
           const product = await Product.findById(it.productId)
             .select("name images salePrice")
             .lean();
+
           if (!product) throw new Error(`Product not found: ${it.productId}`);
+
           return {
             productId: product._id,
             name: product.name,
@@ -252,8 +242,11 @@ const createTabbyOrder = async (req, res) => {
       ];
     }
 
+    // --------------------------------------------------
+    // ✅ Totals
+    // --------------------------------------------------
     const subtotal = populatedItems.reduce(
-      (acc, item) => acc + (item.price || 0) * (item.quantity || 0),
+      (acc, item) => acc + item.price * item.quantity,
       0
     );
 
@@ -264,57 +257,83 @@ const createTabbyOrder = async (req, res) => {
 
     const total = subtotal + shippingFee;
 
-    const orderData = {
+    // --------------------------------------------------
+    // ✅ Create Order (Pending)
+    // --------------------------------------------------
+    const order = await Order.create({
       userId: req.user?.userId,
-      items: populatedItems.map((item) => ({
-        productId: item.productId,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-      })),
+      items: populatedItems,
       subtotal,
       vat: 0,
       shippingFee,
       total,
       region,
       shippingAddress,
-      billingAddress: billingAddress || shippingAddress,
+      billingAddress,
       paymentMethod: "tabby",
       paymentStatus: "pending",
       currency: "AED",
-    };
+    });
 
-    const order = await Order.create(orderData);
-
+    // --------------------------------------------------
+    // ✅ URLs
+    // --------------------------------------------------
     const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
-    const successUrl = `${clientUrl}/tabbyPayment/paymentSuccessful/?orderId=${order._id}`;
-    const cancelUrl = `${clientUrl}/tabbyPayment/paymentCancelantion/?orderId=${order._id}`;
-    const failureUrl = `${clientUrl}/tabbyPayment/paymentfailure/?orderId=${order._id}`;
 
+    const successUrl = `${clientUrl}/tabbyPayment/paymentSuccessful?orderId=${order._id}`;
+    const cancelUrl = `${clientUrl}/tabbyPayment/paymentCancelantion?orderId=${order._id}`;
+    const failureUrl = `${clientUrl}/tabbyPayment/paymentfailure?orderId=${order._id}`;
+
+    // --------------------------------------------------
+    // ✅ Tabby items
+    // --------------------------------------------------
     const tabbyItems = populatedItems.map((item) => ({
       title: item.name,
+      description: item.name,
       quantity: item.quantity,
-      unit_price: item.price,
+      unit_price: String(item.price.toFixed(2)),
+      category: "Watch"
     }));
+
+    // --------------------------------------------------
+    // ✅ Tabby Payload Preparation
+    // --------------------------------------------------
+    // Helper to format phone to E.164 (roughly)
+    const formatPhone = (p) => {
+      if (!p) return "+971500000001";
+      let cleaned = p.replace(/\D/g, '');
+      if (cleaned.startsWith("971")) return "+" + cleaned;
+      if (cleaned.startsWith("05")) return "+971" + cleaned.substring(1);
+      return "+" + cleaned;
+    };
+
+    const buyerPhone = formatPhone(shippingAddress?.phone);
+    const buyerEmail = shippingAddress?.email || "otp.success@tabby.ai";
+    const buyerName = `${shippingAddress?.firstName || "Test"} ${shippingAddress?.lastName || "User"}`;
 
     const tabbyPayload = {
       payment: {
-        amount: Math.max(1, Math.round(total * 100) / 100),
+        amount: String(total.toFixed(2)),
         currency: "AED",
-        description: `Order ${order._id}`,
+        description: `Order #${order._id}`,
         buyer: {
-          email: shippingAddress?.email || "otp.success@tabby.ai",
-          name: `${shippingAddress?.firstName || "Test"} ${
-            shippingAddress?.lastName || "User"
-          }`.trim(),
-          phone: shippingAddress?.phone || "+971500000001",
+          email: buyerEmail,
+          name: buyerName,
+          phone: buyerPhone,
+        },
+        shipping_address: {
+          city: shippingAddress?.city || "Dubai",
+          address: shippingAddress?.address1 || "Downtown",
+          zip: "00000",
         },
         order: {
           reference_id: order._id.toString(),
           items: tabbyItems,
+          shipping_amount: String(shippingFee.toFixed(2)),
+          tax_amount: "0.00"
         },
       },
-      merchant_code: TABBY_MERCHANT_CODE,
+      merchant_code: process.env.TABBY_MERCHANT_CODE,
       lang: "en",
       merchant_urls: {
         success: successUrl,
@@ -323,38 +342,56 @@ const createTabbyOrder = async (req, res) => {
       },
     };
 
+    // --------------------------------------------------
+    // ✅ Call Tabby API
+    // --------------------------------------------------
+    console.log("🟠 sending tabby payload:", JSON.stringify(tabbyPayload, null, 2));
+
     const response = await axios.post(
       "https://api.tabby.ai/api/v2/checkout",
       tabbyPayload,
       {
         headers: {
-          Authorization: `Bearer ${TABBY_PUBLIC_KEY}`,
+          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
           "Content-Type": "application/json",
         },
       }
     );
-    const config = response.data?.configuration;
 
-    // Extract installments array properly
-    const installments =
-      config?.products?.installments?.installments ||
-      config?.available_products?.installments ||
-      [];
+    const data = response.data;
+    console.log("🔵 Tabby FULL response:", JSON.stringify(data, null, 2));
 
-    if (!Array.isArray(installments) || installments.length === 0) {
-      return res
-        .status(400)
-        .json({ status: false, message: "No installment options" });
+    // --------------------------------------------------
+    // ✅ Extract Checkout URL
+    // --------------------------------------------------
+    const paymentUrl =
+      data?.checkout_url ||
+      data?.web_url ||
+      data?.configuration?.available_products?.installments?.[0]?.web_url ||
+      data?.configuration?.products?.installments?.[0]?.web_url ||
+      data?.configuration?.available_products?.pay_later?.[0]?.web_url ||
+      null;
+
+    if (!paymentUrl) {
+      console.error("❌ Tabby Returned No Payment URL. Data dump:", data);
+
+      const rejectionReason = data?.status === 'rejected'
+        ? (data.rejection_reason || "Tabby rejected the transaction")
+        : "No payment option available for this order (limit/currency/merchant code issue)";
+
+      return res.status(400).json({
+        success: false,
+        message: `Tabby checkout unavailable: ${rejectionReason}`,
+        debug: data,
+      });
     }
 
-    const paymentUrl = installments[0]?.web_url;
-
-    order.tabbySessionId = response.data?.id || null;
+    // --------------------------------------------------
+    // ✅ Save Session ID & Return
+    // --------------------------------------------------
+    order.tabbySessionId = data?.id || null;
     await order.save();
 
-        // ---------------------------------------------
-    // 6️⃣ CLEAR CART (Same as Stripe)
-    // ---------------------------------------------
     if (req.user?.userId) {
       await userModel.findByIdAndUpdate(req.user.userId, {
         $set: { cart: [] },
@@ -363,15 +400,20 @@ const createTabbyOrder = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      order: order.toObject(),
+      order,
       checkoutUrl: paymentUrl,
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ status: false, message: error.response?.data || error.message });
+    console.error("❌ Tabby error:", error.response?.data || error.message);
+    const apiErrorMsg = error.response?.data?.error || error.response?.data?.message || error.message;
+
+    return res.status(500).json({
+      success: false,
+      message: `Tabby API Error: ${JSON.stringify(apiErrorMsg)}`,
+    });
   }
 };
+
 
 
 
@@ -578,8 +620,8 @@ const createTamaraOrder = async (req, res) => {
 
 
 const getShippingAddresses = async (req, res) => {
- try {
-     const userId = req.user.userId; // 👈 change here
+  try {
+    const userId = req.user.userId; // 👈 change here
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const addresses = await ShippingAddress.find({ userId })
@@ -611,7 +653,7 @@ const createShippingAddress = async (req, res) => {
 
     const data = req.body;
 
-  
+
 
     // Deduplicate per user
     const existing = await ShippingAddress.findOne({
@@ -640,7 +682,7 @@ const createShippingAddress = async (req, res) => {
 
 
 
-const deleteShippingAddress = async (req,res)=>{
+const deleteShippingAddress = async (req, res) => {
   try {
     const userId = req.user.userId; // 👈 change here
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -734,9 +776,9 @@ const updateBillingAddress = async (req, res) => {
 
 
 
-const getBillingAddresses =  async (req,res)=>{
+const getBillingAddresses = async (req, res) => {
   try {
-  const userId = req.user.userId; // 👈 change here
+    const userId = req.user.userId; // 👈 change here
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const addresses = await BillingAddress.find({ userId })
@@ -794,9 +836,9 @@ const createBillingAddress = async (req, res) => {
 };
 
 
-const deleteBillingAddress = async (req,res)=>{
+const deleteBillingAddress = async (req, res) => {
   try {
-     const userId = req.user.userId; // 👈 change here
+    const userId = req.user.userId; // 👈 change here
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const { id } = req.params;
 
@@ -855,6 +897,96 @@ const getMyOrders = async (req, res) => {
     console.error("getMyOrders Error:", error);
     return res.status(500).json({ message: "Server error" });
   }
+};
+
+/**
+ * GENERATE PROFESSIONAL EMAIL HTML
+ */
+const generateProfessionalOrderEmail = ({ order, statusTitle, message }) => {
+  const itemsHTML = (order.items || [])
+    .map(
+      (item) => `
+    <tr>
+      <td style="padding: 15px 0; border-bottom: 1px solid #eeeeee;">
+        <div style="display: flex; align-items: center;">
+          <div style="margin-right: 15px;">
+            <p style="margin: 0; color: #1a1a1a; font-weight: 600; font-size: 14px;">${item.name}</p>
+          </div>
+        </div>
+      </td>
+      <td style="padding: 15px 0; border-bottom: 1px solid #eeeeee; text-align: center; color: #666666;">${item.quantity}</td>
+      <td style="padding: 15px 0; border-bottom: 1px solid #eeeeee; text-align: right; font-weight: 600; color: #1a1a1a;">AED ${item.price}</td>
+    </tr>
+  `
+    )
+    .join("");
+
+  const shipping = order.shippingAddress;
+  const shippingString = `
+    ${shipping.firstName} ${shipping.lastName}<br>
+    ${shipping.address1}${shipping.address2 ? ", " + shipping.address2 : ""}<br>
+    ${shipping.city}, ${shipping.state || ""}<br>
+    ${shipping.country}
+  `;
+
+  return `
+    <div style="background-color: #f8f8f8; padding: 40px 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+      <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+        <div style="background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%); padding: 30px; text-align: center;">
+          <h1 style="color: #d4af37; margin: 0; font-size: 28px; letter-spacing: 2px; font-family: 'Georgia', serif;">MONTRES TRADING</h1>
+          <p style="color: #ffffff; margin-top: 10px; font-size: 10px; opacity: 0.8; text-transform: uppercase; letter-spacing: 3px;">Excellence in Timepieces</p>
+        </div>
+        <div style="padding: 40px;">
+          <h2 style="color: #1a1a1a; margin-top: 0; font-size: 22px; font-weight: 700;">${statusTitle}</h2>
+          <p style="color: #666666; line-height: 1.6; font-size: 15px;">${message}</p>
+          
+          <div style="margin: 30px 0; border-top: 1px solid #eeeeee; border-bottom: 1px solid #eeeeee; padding: 20px 0;">
+            <div style="display: flex; justify-content: space-between;">
+              <p style="margin: 0; font-size: 13px; color: #999999; text-transform: uppercase;">Order ID</p>
+              <p style="margin: 0; font-size: 13px; color: #1a1a1a; font-weight: 600;">#${order._id}</p>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+              <p style="margin: 0; font-size: 13px; color: #999999; text-transform: uppercase;">Date</p>
+              <p style="margin: 0; font-size: 13px; color: #1a1a1a; font-weight: 600;">${new Date(order.createdAt).toLocaleDateString()}</p>
+            </div>
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr>
+                <th style="text-align: left; border-bottom: 2px solid #1a1a1a; padding-bottom: 10px; font-size: 12px; color: #1a1a1a; text-transform: uppercase; letter-spacing: 1px;">Item</th>
+                <th style="text-align: center; border-bottom: 2px solid #1a1a1a; padding-bottom: 10px; font-size: 12px; color: #1a1a1a; text-transform: uppercase; letter-spacing: 1px;">Qty</th>
+                <th style="text-align: right; border-bottom: 2px solid #1a1a1a; padding-bottom: 10px; font-size: 12px; color: #1a1a1a; text-transform: uppercase; letter-spacing: 1px;">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHTML}
+            </tbody>
+          </table>
+
+          <div style="margin-top: 30px; text-align: right;">
+            <p style="margin: 5px 0; color: #666666; font-size: 14px;">Subtotal: AED ${order.subtotal}</p>
+            <p style="margin: 5px 0; color: #666666; font-size: 14px;">Shipping: AED ${order.shippingFee}</p>
+            <h3 style="margin: 10px 0; color: #1a1a1a; font-size: 20px; font-weight: 700;">Total: AED ${order.total}</h3>
+          </div>
+
+          <div style="margin-top: 40px; padding: 25px; background-color: #fcfbf9; border-left: 4px solid #d4af37; border-radius: 4px;">
+            <h4 style="margin: 0 0 10px 0; color: #d4af37; text-transform: uppercase; font-size: 11px; letter-spacing: 1.5px; font-weight: 700;">Shipping Destination</h4>
+            <p style="margin: 0; color: #1a1a1a; font-size: 14px; line-height: 1.6;">
+              ${shippingString}
+            </p>
+          </div>
+          
+          <div style="margin-top: 40px; text-align: center;">
+            <p style="color: #666666; font-size: 14px;">If you have any questions, please contact us at <a href="mailto:support@montres.ae" style="color: #d4af37; text-decoration: none;">support@montres.ae</a></p>
+          </div>
+        </div>
+        <div style="background-color: #1a1a1a; padding: 30px; text-align: center;">
+          <p style="color: #ffffff; font-size: 11px; margin: 0; opacity: 0.5; letter-spacing: 1px; text-transform: uppercase;">&copy; 2026 Montres Trading LLC. Dubai, UAE.</p>
+        </div>
+      </div>
+    </div>
+  `;
 };
 
 module.exports = {
