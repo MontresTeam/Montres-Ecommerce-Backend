@@ -1,20 +1,21 @@
 const express = require("express");
 const { handleStripeWebhook } = require("../controllers/webhoockController");
+const { handleWebhook: handleTabbyWebhook } = require("../controllers/tabbyController");
 
 const router = express.Router();
 
 // Stripe needs raw body for signature verification
-// We apply express.raw() only to this route
+// Path: /api/webhook/stripe
 router.post(
-    "/stripe",
+    "/webhook/stripe",
     express.raw({ type: "application/json" }),
     handleStripeWebhook
 );
 
 // Tabby Webhook (Raw body for secure signature)
-const { handleWebhook: handleTabbyWebhook } = require("../controllers/tabbyController");
+// Path: /api/tabby/webhook
 router.post(
-    "/tabby",
+    "/tabby/webhook",
     express.raw({ type: "application/json" }),
     handleTabbyWebhook
 );

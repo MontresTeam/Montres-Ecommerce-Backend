@@ -23,7 +23,6 @@ const invontryStock = require('./routes/inventoryRoutes')
 const adminsRoute = require('./routes/adminRoute')
 const seoRoutes = require('./routes/seoPage.routes')
 const webhookRoute = require("./routes/webhookRoutes");
-const { handleWebhook } = require('./controllers/tabbyController');
 
 
 const PORT = process.env.PORT || 9000;
@@ -61,11 +60,8 @@ app.use(
 
 
 
-app.post(
-  "/api/tabby/webhook",
-  express.raw({ type: "application/json" }),
-  handleWebhook
-);
+// ✅ Webhooks (Must be before body parser for raw signature verification)
+app.use("/api", webhookRoute);
 
 // ✅ Body parsing & cookies
 app.use(bodyParser.json());
