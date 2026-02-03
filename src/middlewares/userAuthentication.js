@@ -10,7 +10,7 @@ module.exports = function verifyToken (req,res, next) {
     }
    
     jwt.verify(token, process.env.USER_ACCES_TOKEN_SECRET,(err, decode) => {
-                    console.log(err,"hau");
+                    // console.log(err,"hau");
         if(err) {    
            
             return res.status(401).json({error: "Unathorazed😠"})

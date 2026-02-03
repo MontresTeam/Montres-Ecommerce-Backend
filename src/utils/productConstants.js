@@ -42,7 +42,7 @@ const WATCHSTYLE_CATEGORY = [
   "Sports watch",
   "Vintage watch",
   "Dress watch",
-  "Drivers watch",
+  "Drivers watch", 
   "pilot watch",
   "Racing watch"
 ];
@@ -172,5 +172,6 @@ module.exports = {
   ITEM_CONDITIONS,
   INCLUDE_ACCESSORIES,
   REPLACEMENT_PARTS,
-  DIALNUMERALS
+  DIALNUMERALS,
+
 };

@@ -1,5 +1,4 @@
 const express = require("express");
-const passport = require("passport");
 const {
   Registration,
   Login,
@@ -7,25 +6,32 @@ const {
   ResetPassword,
   convertprice,
   logout,
-  refreshToken,
+  currencyConver,
+  RefreshToken,
   googleLogin,
-  facebookLogin,
-  Newsletter,
+  googleSignup,
+  facebookSignup,
 } = require("../controllers/userController");
 const imageUploadUpdate = require("../config/ProfileUploadin");
-const { updateUserProfile } = require("../controllers/userProfileController");
-const {protect} = require('../middlewares/authMiddleware')
+const {
+  createUserProfile,
+  getUserProfile,
+} = require("../controllers/userProfileController");
+const { protect } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
 // ✅ Correct routes
 router.post("/register", Registration);
 
-router.post("/refresh-token", refreshToken);
+router.post("/refresh-token", RefreshToken);
 
 // router.post("/logout",logout)
 
 router.post("/login", Login);
+
+router.post("/google-signup",googleSignup)
+router.post("/facebook-signup",facebookSignup)
 // 🔑 Forgot Password (send reset link to email)
 router.post("/forgot-password", forgotPassword);
 // 🔑 Reset Password (update with new password)
@@ -33,29 +39,12 @@ router.post("/reset-password/:id/:token", ResetPassword);
 
 router.get("/convert-price", convertprice);
 
+router.get("/CurrencyAPI", currencyConver);
+
 router.post("/logout", logout);
 
-router.put("/profile",protect,imageUploadUpdate,updateUserProfile)
+router.post("/profile/create", protect, imageUploadUpdate, createUserProfile);
+router.get("/profile/get", protect, getUserProfile);
 
-
-// ✅ Step 1: Redirect to Google for authentication
-router.get(
-  "/google",
-  passport.authenticate("google", { scope: ["profile", "email"] })
-);
-
-// ✅ Step 2: Handle callback from Google
-router.get(
-  "/google/callback",
-  passport.authenticate("google", { failureRedirect: "/auth/login" }),
-  googleLogin
-);
-
-// Facebook
-router.get("/facebook", passport.authenticate("facebook", { scope: ["email"] }));
-router.get("/facebook/callback", passport.authenticate("facebook", { session: false }), facebookLogin);
-
-
-router.post("/newsletter/subscribe", Newsletter)
 
 module.exports = router;

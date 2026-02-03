@@ -2,6 +2,23 @@ const mongoose = require("mongoose");
 
 const watchServiceSchema = new mongoose.Schema(
   {
+    // Customer details
+    customerName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    phoneNumber: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    countryCode: {
+      type: String,
+      default: "+971", // Default UAE country code
+    },
+
+    // Watch details
     productName: {
       type: String,
       required: true,
@@ -26,6 +43,8 @@ const watchServiceSchema = new mongoose.Schema(
         "Other",
       ],
     },
+
+    // Service details
     selectedService: {
       type: String,
       required: true,
@@ -40,7 +59,21 @@ const watchServiceSchema = new mongoose.Schema(
         "Vintage Restoration",
       ],
     },
-    image: { type: String },        
+
+    // Booking status
+    status: {
+      type: String,
+      enum: ["Pending", "In Progress", "Completed", "Cancelled"],
+      default: "Pending",
+    },
+
+    // Images
+    images: [
+      {
+        url: String,
+        alt: String,
+      },
+    ],
   },
   { timestamps: true }
 );

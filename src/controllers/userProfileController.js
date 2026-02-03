@@ -1,36 +1,59 @@
+const ProfileModal = require("../models/userProfileModal");
 
-const ProfileModal = require('../models/userProfileModal')
-
-
-// Update User Profile
-const updateUserProfile = async (req, res) => {
+const createUserProfile = async (req, res) => {
   try {
-    const userId = req.user.id; // From JWT middleware (protect)
-    const { phone, address, images } = req.body;
+    const { userId } = req.user; // comes from protected auth middleware
 
-    // Find user
-    const user = await ProfileModal.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    // Check if profile exists
+    const existingProfile = await ProfileModal.findById(userId);
+    if (existingProfile) {
+      return res.status(409).json({ message: "Profile already exists — use update" });
     }
 
-    // Update fields
-    if (phone) user.phone = phone;
-    if (address) user.address = address;
-    if (images) user.profileImage = images[0]?.url || user.profileImage; // Use first image as profile
+    const { name, email, phone, country, address, profilePicture } = req.body;
 
-    // Save updated user
-    await user.save();
+    if (!name || !email || !address) {
+      return res.status(400).json({ message: "Required fields missing" });
+    }
 
-    res.status(200).json({
-      message: "Profile updated successfully",
-      user,
+    const profile = await ProfileModal.create({
+      _id: userId,
+      name,
+      email,
+      phone,
+      country,
+      address,
+      profilePicture,
     });
-  } catch (error) {
-    console.error("Update Profile Error:", error);
-    res.status(500).json({ message: "Server Error", error: error.message });
+
+    return res.status(201).json({ message: "Profile created successfully", user: profile });
+  } catch (err) {
+    console.error("Profile create error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
 
-module.exports = {updateUserProfile}
+
+
+const getUserProfile = async (req, res) => {
+  try {
+    const { userId } = req.user;
+
+    const profile = await ProfileModal.findById(userId);
+    if (!profile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    return res.status(200).json({ message: "Profile fetched successfully", user: profile });
+  } catch (err) {
+    console.error("Get profile error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+module.exports = {
+   createUserProfile,
+   getUserProfile
+   };

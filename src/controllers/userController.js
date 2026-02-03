@@ -1,4 +1,4 @@
-require('dotenv').config(); // <--- MUST be at the top, before using process.env
+require("dotenv").config(); // <--- MUST be at the top, before using process.env
 const userModel = require("../models/UserModel");
 const ProductModel = require("../models/product");
 const bcrypt = require("bcryptjs");
@@ -10,9 +10,9 @@ const {
   generateAccessToken,
   generateRefreshToken,
 } = require("../utils/generateToken");
-const analytics = require('../utils/customerio');
-const NewsletterModel = require("../models/NewsletterModel")
-
+const { OAuth2Client } = require("google-auth-library");
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const { sendWelcomeEmail } = require("../services/emailService");
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -27,46 +27,6 @@ const transporter = nodemailer.createTransport({
 
 
 
-const Newsletter = async (req, res) => {
-  try {
-    const { email, name } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    // Save to MongoDB
-    const existing = await NewsletterModel.findOne({ email });
-    if (existing) {
-      return res.status(400).json({ message: "Email already subscribed" });
-    }
-
-    const newSubscriber = new NewsletterModel({ email, name });
-    await newSubscriber.save();
-
-    // Send subscriber data to Customer.io
-    await analytics.identify({
-      userId: email, // use email as ID if no userId yet
-      traits: {
-        email,
-        name: name || "",
-        source: "Newsletter Signup",
-      },
-    });
-
-    res.status(200).json({ message: "Subscribed successfully!" });
-  } catch (error) {
-    console.error("Customer.io Error:", error);
-    res.status(500).json({ message: "Subscription failed" });
-  }
-};
-
-
-
-
-
-
-// ✅ User Registration
 const Registration = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -78,27 +38,41 @@ const Registration = async (req, res) => {
     if (existingUser)
       return res.status(400).json({ message: "Email already registered" });
 
-    const newUser = await userModel.create({ name, email, password });
+    // Create user instance (password is plain text here)
+    const newUser = new userModel({
+      name,
+      email,
+      password,
+    });
 
-    // Auto-login after registration
     const accessToken = generateAccessToken(newUser._id, newUser.email);
     const refreshToken = generateRefreshToken(newUser._id);
 
+    // Set refresh token
     newUser.refreshToken = refreshToken;
+
+    // Save user -> Triggers pre('save') hook ONCE -> Hashes password -> Stores in DB
     await newUser.save();
+
+    // 🚀 Send Welcome Email (non-blocking)
+    sendWelcomeEmail(newUser.email, newUser.name).catch(console.log);
 
     res
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: false, // false for local dev
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000,
       })
       .status(201)
       .json({
         message: "Registration successful",
         accessToken,
-        user: { id: newUser._id, name: newUser.name, email: newUser.email },
+        user: {
+          id: newUser._id,
+          name: newUser.name,
+          email: newUser.email,
+        },
       });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
@@ -108,20 +82,14 @@ const Registration = async (req, res) => {
 const Login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log(email)
+
     if (!email || !password)
       return res.status(400).json({ message: "Email and password required" });
 
-    // ✅ Check if user exists
     const user = await userModel.findOne({ email });
-    if (!user) {
-      return res.status(404).json({
-        status: "Fail",
-        message: "User not found.",
-      });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await user.matchPassword(password);
     if (!isMatch)
       return res.status(401).json({ message: "Invalid credentials" });
 
@@ -134,7 +102,7 @@ const Login = async (req, res) => {
     res
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: false, // false for local dev
+        secure: process.env.NODE_ENV === "production",
         sameSite: "strict",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       })
@@ -145,13 +113,11 @@ const Login = async (req, res) => {
         user: { id: user._id, name: user.name, email: user.email },
       });
   } catch (err) {
-    console.log(err,'err')
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
-
- const logout = async (req, res) => {
+const logout = async (req, res) => {
   try {
     // ✅ Clear refresh token cookie
     res.clearCookie("refreshToken", {
@@ -167,86 +133,33 @@ const Login = async (req, res) => {
   }
 };
 
-
-  // RefreshToken
-
-
- const refreshToken = async (req, res) => {
+const RefreshToken = async (req, res) => {
   try {
     const token = req.cookies.refreshToken;
     if (!token) return res.status(401).json({ message: "No refresh token" });
 
-    jwt.verify(token, process.env.USER_REFRESH_TOKEN_SECRET, async (err, decoded) => {
-      if (err) return res.status(403).json({ message: "Invalid or expired refresh token" });
+    jwt.verify(
+      token,
+      process.env.USER_REFRESH_TOKEN_SECRET,
+      async (err, decoded) => {
+        if (err)
+          return res
+            .status(403)
+            .json({ message: "Invalid or expired refresh token" });
 
-      const user = await userModel.findById(decoded.id);
-      if (!user || user.refreshToken !== token)
-        return res.status(403).json({ message: "Invalid refresh token" });
+        const user = await userModel.findById(decoded.id);
+        if (!user || user.refreshToken !== token)
+          return res.status(403).json({ message: "Invalid refresh token" });
 
-      const newAccessToken = generateAccessToken(user._id);
-      return res.status(200).json({ accessToken: newAccessToken });
-    });
+        const newAccessToken = generateAccessToken(user._id, user.email);
+
+        return res.status(200).json({ accessToken: newAccessToken });
+      }
+    );
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
-
-const googleLogin = async (req, res) => {
-  try {
-    const { profile, token } = req.user; // <-- already normalized
-
-    if (!profile || !profile.email) {
-      console.error("Google profile missing email:", profile);
-      return res
-        .status(400)
-        .json({ message: "Email is required from Google account" });
-    }
-
-    // Create user object for frontend
-    const frontendUser = {
-      id: profile.id,
-      name: profile.name,
-      email: profile.email,
-      picture: profile.picture,
-      provider: profile.provider,
-    };
-
-    // Redirect with token + user
- const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(
-      JSON.stringify(frontendUser)
-    )}`;
-    console.log("✅ Redirecting to:", redirectUrl);
-    return res.redirect(redirectUrl);
-  } catch (err) {
-    console.error("Google login error:", err);
-    return res.redirect(
-      `${process.env.CLIENT_URL}/auth/login?error=google_login_failed`
-    );
-  }
-};
-
-
-const facebookLogin = async (req, res) => {
-  try {
-    const profile = req.user?.profile;
-    const token = req.user?.token;
-
-    if (!profile || !token) {
-      return res.redirect(`${process.env.CLIENT_URL}/auth/login?error=facebook_login_failed`);
-    }
-
-    const redirectUrl = `${process.env.CLIENT_URL}/oauth-handler?token=${token}&user=${encodeURIComponent(JSON.stringify(profile))}`;
-    res.redirect(redirectUrl);
-  } catch (error) {
-    console.error("Facebook login error:", error);
-    res.redirect(`${process.env.CLIENT_URL}/auth/login?error=facebook_login_failed`);
-  }
-};
-
-
-
 
 // forgotPassword -> with email send verification
 
@@ -279,7 +192,7 @@ const forgotPassword = async (req, res) => {
     await user.save();
 
     // 🔑 Create reset link
-    const resetLink = `http://localhost:3000/ResetPassword/${user._id}/${token}`;
+    const resetLink = `https://www.montres.ae/ResetPassword/${user._id}/${token}`;
 
     const mailOptions = {
       from: `"Montres Trading L.L.C – The Art Of Time" <${process.env.EMAIL_USER}>`,
@@ -304,7 +217,7 @@ const forgotPassword = async (req, res) => {
             <!-- Header -->
             <tr>
               <td align="center" style="padding:30px 25px 20px 25px;">
-                <img src="https://yourdomain.com/logo.png" alt="Montres Logo" style="width:60px;height:auto;margin-bottom:12px;" />
+                <img src="https://www.montres.ae/apple-touch-icon.png" alt="Montres Logo" style="width:60px;height:auto;margin-bottom:12px;" />
                 <h2 style="margin:0;font-size:20px;font-weight:700;color:#0f172a;">Montres Trading L.L.C</h2>
                 <p style="margin:6px 0 0;font-size:14px;color:#64748b;">Reset your password</p>
               </td>
@@ -782,13 +695,13 @@ const togglePublicSharing = async (req, res) => {
     const { wishlistId } = req.params;
     const { isPublic } = req.body;
 
-    // ✅ Validate isPublic
-    if (typeof isPublic !== "boolean") {
-      return res.status(400).json({
-        success: false,
-        message: "isPublic field is required and must be a boolean",
-      });
-    }
+    // // ✅ Validate isPublic
+    // if (typeof isPublic !== "boolean") {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "isPublic field is required and must be a boolean",
+    //   });
+    // }
 
     // ✅ Find user
     const user = await userModel.findById(userId);
@@ -945,12 +858,12 @@ const Deleteentirewishlist = async (req, res) => {
         .json({ message: "Cannot delete default wishlist" });
     }
 
-    // Prevent deletion if it's the only wishlist
-    if (user.wishlistGroups.length <= 1) {
-      return res
-        .status(400)
-        .json({ message: "Cannot delete the only wishlist" });
-    }
+    // // Prevent deletion if it's the only wishlist
+    // if (user.wishlistGroups.length <= 1) {
+    //   return res
+    //     .status(400)
+    //     .json({ message: "Cannot delete the only wishlist" });
+    // }
 
     // Remove the wishlist
     user.wishlistGroups.pull({ _id: wishlistId });
@@ -972,8 +885,6 @@ const Deleteentirewishlist = async (req, res) => {
   }
 };
 
-
-
 // 📦 Get My Orders
 
 const getMyOrders = async (req, res) => {
@@ -990,8 +901,6 @@ const getMyOrders = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-
 
 const convertprice = async (req, res) => {
   const { amount, from, to } = req.query;
@@ -1036,19 +945,68 @@ const convertprice = async (req, res) => {
   }
 };
 
+const currencyConver = async (req, res) => {
+  const { amount, from, to } = req.query;
+
+  // Validate input
+  if (!amount || !from || !to) {
+    return res.status(400).json({
+      error: "Missing params (amount, from, to)",
+    });
+  }
+
+  try {
+    const response = await axios.get("https://api.currencyapi.com/v3/latest", {
+      headers: {
+        apikey: process.env.CURRENCY_API_KEY, // ✅ HEADER, NOT PARAM
+      },
+      params: {
+        base_currency: from,
+        currencies: to,
+      },
+    });
+
+    // Get rate
+    const rate = response.data?.data?.[to]?.value;
+
+    if (!rate) {
+      return res.status(400).json({
+        error: `Currency ${to} not supported`,
+      });
+    }
+
+    const converted = (parseFloat(amount) * rate).toFixed(2);
+
+    res.json({
+      base: from,
+      target: to,
+      rate,
+      amount: Number(amount),
+      converted: Number(converted),
+    });
+  } catch (err) {
+    console.error("CurrencyAPI Error:", err.response?.data || err.message);
+    res.status(500).json({
+      error: "Currency conversion failed",
+    });
+  }
+};
 
 //get cart Count
 const getCartCount = async (req, res) => {
   try {
-    const { userId } = req.user; 
-    console.log(userId)
+    const { userId } = req.user;
+    console.log(userId);
     if (!userId) return res.status(400).json({ message: "User ID required" });
 
     const user = await userModel.findById(userId).select("cart");
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const cartCount = user.cart.reduce((total, item) => total + item.quantity, 0);
+    const cartCount = user.cart.reduce(
+      (total, item) => total + item.quantity,
+      0
+    );
 
     res.status(200).json({ cartCount });
   } catch (error) {
@@ -1081,6 +1039,92 @@ const getWishlistCount = async (req, res) => {
   }
 };
 
+
+// Google Auth (Signup + Login)
+const googleSignup = async (req, res) => {
+  try {
+    const { name, email, avatar } = req.body;
+
+    let user = await userModel.findOne({ email });
+
+    if (!user) {
+      user = await userModel.create({
+        name,
+        email,
+        avatar,
+        provider: "google",
+      });
+
+      sendWelcomeEmail(user.email, user.name).catch(console.log);
+    }
+
+    const accessToken = generateAccessToken(user._id, user.email);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    res.status(200).json({
+      accessToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Google login failed" });
+  }
+};
+
+
+const facebookSignup = async (req, res) => {
+  try {
+    const { name, email, avatar, provider } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    let user = await userModel.findOne({ email });
+
+    if (!user) {
+      user = new userModel({ name, email, avatar, provider });
+      await user.save();
+    }
+
+    const accessToken = generateAccessToken(user._id, user.email);
+    const refreshToken = generateRefreshToken(user._id);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    res
+      .cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      })
+      .status(200)
+      .json({
+        message: "Facebook login/signup successful",
+        accessToken,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar,
+        },
+      });
+  } catch (error) {
+    console.log("Facebook Signup Error:", error);
+    res.status(500).json({ message: "Facebook signup failed", error: error.message });
+  }
+};
+
+
+
+
+
 module.exports = {
   Registration,
   Login,
@@ -1102,12 +1146,11 @@ module.exports = {
   getCart,
   updateCart,
   recommendationsProduct,
-  refreshToken,
+  RefreshToken,
   getCartCount,
   getWishlistCount,
   logout,
-  googleLogin,
-  facebookLogin,
-  Newsletter
-  };
-
+  currencyConver,
+  googleSignup,
+  facebookSignup
+};

@@ -1,4 +1,4 @@
-const HomeProducts = require("../models/homeProuctsGrid");
+const HomeProductsGrid = require("../models/homeProuctsGrid");
 const Product = require("../models/product");
 const BrandNew = require("../models/brnadNewModel");
 const TrustedProducts = require("../models/trustedModel");
@@ -88,19 +88,86 @@ const updateHomeProducts = async (req, res) => {
   }
 };
 
+
+
+
 const getHomeProductsGrid = async (req, res) => {
   try {
-    console.log("hello");
+    // Define categories and their style fields
+    const categories = [
+      { title: "Watch", styleField: "watchStyle" },
+      { title: "Accessories", styleField: "accessoryCategory" },
+      { title: "Leather Goods", styleField: "leatherMainCategory", excludeBags: true },
+      { title: "Leather Bags", styleField: "leatherSubCategory", includeBags: true },
+    ];
 
-    // Fetch all documents and populate product details
-    const homeProducts = await HomeProducts.find().populate("products"); // assuming 'products' is an array of ObjectIds referencing Product
+    const homeProducts = await Promise.all(
+      categories.map(async (cat) => {
+        // Build filter
+        let filter = {
+          [cat.styleField]: { $exists: true, $ne: null },
+          inStock: true,
+          stockQuantity: { $gt: 0 }
+        };
 
-    res.status(200).json({ homeProducts });
+        if (cat.title === "Leather Bags") {
+          // Only get bag products
+          filter[cat.styleField] = { $in: ["Shoulder Bag", "Tote Bag", "Crossbody Bag"] };
+        }
+
+        if (cat.title === "Leather Goods") {
+          // Exclude bags
+          filter[cat.styleField] = { $nin: ["Hand Bag", "Tote Bag", "Crossbody Bag"] };
+        }
+
+        // Fetch products for this category
+        const productsInCategory = await Product.find(filter).sort({ createdAt: -1 });
+
+        // Get unique style/subcategory values
+        const styles = [
+          ...new Set(productsInCategory.map(p => p[cat.styleField]).filter(Boolean))
+        ];
+
+        // Pick products per style
+        const groupedProducts = styles.map(style => {
+          let matchedProducts = productsInCategory.filter(p => p[cat.styleField] === style);
+
+          // Logic: Watches = 1 product per style, Accessories = up to 3 products, Leather = 1 per style
+          let productsToReturn = [];
+          if (cat.title === "Watch" || cat.title.includes("Leather")) {
+            productsToReturn = matchedProducts.slice(0, 1);
+          } else if (cat.title === "Accessories") {
+            productsToReturn = matchedProducts.slice(0, 3);
+          }
+
+          return {
+            subCategory: style,
+            products: productsToReturn
+          };
+        });
+
+        return {
+          category: cat.title,
+          groupedProducts
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      category: homeProducts.length,
+      homeProducts
+    });
+
   } catch (error) {
-    console.error(error);
+    console.error("Home Grid Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+
+
 
 const getBrandNewProducts = async (req, res) => {
   try {

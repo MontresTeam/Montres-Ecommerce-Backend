@@ -4,7 +4,7 @@ const router = express.Router();
 
 router.post('/addhomeproduct',addHomeProductsGrid)
 router.put('/updatehomeproduct/:id',updateHomeProducts)
-router.get('/',getHomeProductsGrid)
+router.get('/homeAll',getHomeProductsGrid)
 router.get('/brandnew',getBrandNewProducts)
 router.put('/brandnew',updateBrandNewProducts)
 router.get('/trusted',getTrustedProduct),
