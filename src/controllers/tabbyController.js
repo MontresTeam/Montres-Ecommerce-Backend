@@ -85,15 +85,16 @@ const preScoring = async (req, res) => {
 
     const tabbyPayload = {
       payment: {
-        amount: String(Number(amount).toFixed(2)),
+        amount: Number(Number(amount).toFixed(2)),
         currency: currency,
         buyer: {
-          ...buyer,
-          id: userId || "guest_" + Date.now(),
+          email: buyer?.email,
+          name: buyer?.name,
           phone: formatPhone(buyer?.phone),
+          id: userId || "guest_" + Date.now(),
         },
         shipping_address: shipping_address || {
-          city: "N/A",
+          city: "Dubai",
           address: "N/A",
           zip: "00000"
         },
@@ -192,11 +193,14 @@ const createSession = async (req, res) => {
     const tabbyPayload = {
       payment: {
         ...payment,
-        amount: String(Number(payment.amount).toFixed(2)), // must be string with 2 decimals
+        amount: Number(Number(payment.amount).toFixed(2)), // Checklist says number
+        currency: payment.currency || "AED",
+        description: `Order #${order._id}`,
         buyer: {
-          ...payment.buyer,
-          id: userId || order._id.toString(),
+          email: payment.buyer?.email,
+          name: payment.buyer?.name,
           phone: formatPhone(payment.buyer?.phone),
+          id: userId || order._id.toString(),
         },
         shipping_address: {
           city: payment.shipping_address?.city || "Dubai",
@@ -208,22 +212,27 @@ const createSession = async (req, res) => {
           ...payment.order,
           reference_id: order._id.toString(), // Use MongoDB ID for easier lookup in webhook
           items: payment.order.items.map(item => ({
-            ...item,
-            unit_price: String(Number(item.unit_price || 0).toFixed(2)),
-            image_url: item.image_url || "",
+            title: item.title || item.name || "Product",
+            quantity: Number(item.quantity) || 1,
+            unit_price: Number(Number(item.unit_price || 0).toFixed(2)),
+            image_url: item.image_url || item.image || "",
             product_url: item.product_url || `${clientUrl}/product/${item.reference_id || item.id || ''}`,
             brand: item.brand || "Montres",
             is_refundable: item.is_refundable !== undefined ? item.is_refundable : true,
             category: item.category || "Watch"
           })),
-          shipping_amount: String(Number(payment.order?.shipping_amount || 0).toFixed(2)),
-          tax_amount: String(Number(payment.order?.tax_amount || 0).toFixed(2))
+          shipping_amount: Number(Number(payment.order?.shipping_amount || 0).toFixed(2)),
+          tax_amount: Number(Number(payment.order?.tax_amount || 0).toFixed(2))
         },
         order_history: orderHistory
       },
       lang: lang || "en",
       merchant_code: merchant_code || process.env.TABBY_MERCHANT_CODE || "MOWA",
-      merchant_urls,
+      merchant_urls: {
+        success: merchant_urls?.success || merchant_urls?.success_url || `${clientUrl}/checkout/success?orderId=${order._id}`,
+        cancel: merchant_urls?.cancel || merchant_urls?.cancel_url || `${clientUrl}/checkout?canceled=true&orderId=${order._id}`,
+        failure: merchant_urls?.failure || merchant_urls?.failure_url || `${clientUrl}/checkout?failed=true&orderId=${order._id}`,
+      },
     };
 
     console.log("Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
@@ -322,9 +331,8 @@ const handleWebhook = async (req, res) => {
 
       if (signature !== expectedSignature) {
         console.log("❌ Invalid signature. Received:", signature);
-        // Sometimes we respond 200 anyway to stop retries if we're debugging, 
-        // but for security it should be 401.
-        // return res.sendStatus(401);
+        // Reject invalid signatures as per checklist (optional 401 for debug)
+        return res.status(401).json({ success: false, message: "Invalid signature" });
       }
     }
 
@@ -407,7 +415,7 @@ const handleWebhook = async (req, res) => {
 
             const captureRes = await axios.post(
               `https://api.tabby.ai/api/v2/payments/${paymentId}/captures`,
-              { amount: captureAmount.toString() },
+              { amount: Number(Number(captureAmount).toFixed(2)) },
               {
                 headers: {
                   Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
