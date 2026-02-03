@@ -70,20 +70,23 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ✅ Routes
-app.get('/', (req, res) => res.send("Welcome To Montres Store"));
+app.get("/", (req, res) => res.send("Welcome To Montres Store"));
+
+// Specific routes first
+app.use("/api/tabby", tabbyRouter);
+
 
 app.use("/api/contact", contactRoutes);
 app.use("/api/admin/order", orderRoute);
+app.use("/api/address", addressRoutes);
+app.use("/api/payment", orderRoute);
 app.use("/api/order", orderRoute);
 app.use("/api/MyOrders", orderRoute);
-app.use("/api/payment", orderRoute)
-app.use("/api/address", orderRoute)
-app.use("/api/products", productRoutes);
-app.use("/api", productRoutes);
-app.use("/api/createProduct", productRoutes);
+
 app.use("/api/Auth", userRoute);
-app.use('/api/tabby', tabbyRouter)
-app.use('/api/address', addressRoutes);;
+
+app.use("/api/products", productRoutes);
+app.use("/api/createProduct", productRoutes);
 app.use("/api/watches", watchesRoute);
 app.use("/api/leather", leatherRoute);
 app.use("/api/accessories", accessoriesRoute);
@@ -92,10 +95,12 @@ app.use("/api/admin/product", adminProductRoute);
 app.use("/api/customers", customerRoutes);
 app.use("/api/filter", filterRouter);
 app.use('/api/recommend', recommendRoutes);
-
 app.use('/api/invontry', invontryStock)
 app.use('/api/admin', adminsRoute)
 app.use("/api/seo-pages", seoRoutes);
+
+// ✅ Catch-all generic /api route MUST be last
+app.use("/api", productRoutes);
 
 
 

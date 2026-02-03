@@ -41,6 +41,8 @@ const addressSchema = new mongoose.Schema(
     state: String,
     city: String,
     street: String,
+    address1: String,
+    address2: String,
     postalCode: String,
   },
   { _id: false }

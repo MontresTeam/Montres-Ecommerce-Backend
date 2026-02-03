@@ -1,15 +1,27 @@
 const express = require("express");
 const router = express.Router();
-const { saveShippingAddress, getShippingAddress, getBillingAddress, saveBillingAddress } = require("../controllers/addressController");
+const {
+    getShippingAddresses,
+    createShippingAddress,
+    deleteShippingAddress,
+    updateShippingAddress,
+    getBillingAddresses,
+    createBillingAddress,
+    deleteBillingAddress,
+    updateBillingAddress,
+} = require("../controllers/orderController");
 const { protect } = require("../middlewares/authMiddleware");
 
-// POST /api/address/shipping
-router.post("/shipping", protect, saveShippingAddress);
+// Shipping Address Routes
+router.get("/shipping", protect, getShippingAddresses);
+router.post("/shipping", protect, createShippingAddress);
+router.delete("/shipping/:id", protect, deleteShippingAddress);
+router.put("/shipping-address/:id", protect, updateShippingAddress);
 
-// GET /api/address/shipping (Optional but good to have)
-router.get("/shipping", protect, getShippingAddress);
+// Billing Address Routes
+router.get("/billing", protect, getBillingAddresses);
+router.post("/billing", protect, createBillingAddress);
+router.delete("/billing/:id", protect, deleteBillingAddress);
+router.put("/billing-address/:id", protect, updateBillingAddress);
 
-// Billing
-router.get("/billing", protect, getBillingAddress);
-router.post("/billing", protect, saveBillingAddress);
 module.exports = router;

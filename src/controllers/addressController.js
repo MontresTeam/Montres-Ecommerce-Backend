@@ -4,21 +4,21 @@ const saveShippingAddress = async (req, res) => {
   try {
     const userId = req.user.userId;
     const {
-        firstName,
+      firstName,
       lastName,
       phone,
       email,
       country,
       state,
       city,
-      street,
+      address1,
+      address2,
       postalCode,
     } = req.body;
-    
-    console.log(userId,'user id',req.user.userId);
+
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     user.shippingAddress = {
@@ -29,37 +29,56 @@ const saveShippingAddress = async (req, res) => {
       country,
       state,
       city,
-      street,
+      street: address1 + (address2 ? `, ${address2}` : ""),
       postalCode,
+      address1,
+      address2,
     };
 
     await user.save();
 
+    // Add virtual _id for frontend compatibility
+    const responseAddress = {
+      ...user.shippingAddress.toObject(),
+      _id: "default-shipping",
+    };
+
     res.status(200).json({
+      success: true,
       message: "Shipping address updated successfully",
-      shippingAddress: user.shippingAddress,
+      address: responseAddress,
+      shippingAddress: responseAddress,
     });
   } catch (error) {
     console.error("Save Address Error:", error);
-    res.status(500).json({ message: "Server Error", error: error.message });
+    res.status(500).json({ success: false, message: "Server Error", error: error.message });
   }
 };
 
 const getShippingAddress = async (req, res) => {
-    try {
-        const userId = req.user.userId;
-        const user = await User.findById(userId);
-        if(!user) return res.status(404).json({message: "User not found"});
+  try {
+    const userId = req.user.userId;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-        res.status(200).json({
-            message: "Address fetched",
-            shippingAddress: user.shippingAddress || {}
-        });
-    } catch (error) {
-        console.error("Get Address Error:", error);
-        res.status(500).json({ message: "Server Error", error: error.message });
+    let responseAddress = null;
+    if (user.shippingAddress && user.shippingAddress.firstName) {
+      responseAddress = {
+        ...user.shippingAddress.toObject(),
+        _id: "default-shipping",
+      };
     }
-}
+
+    res.status(200).json({
+      success: true,
+      message: "Address fetched",
+      shippingAddress: responseAddress || {},
+    });
+  } catch (error) {
+    console.error("Get Address Error:", error);
+    res.status(500).json({ success: false, message: "Server Error", error: error.message });
+  }
+};
 
 const saveBillingAddress = async (req, res) => {
   try {
@@ -73,13 +92,14 @@ const saveBillingAddress = async (req, res) => {
       country,
       state,
       city,
-      street,
+      address1,
+      address2,
       postalCode,
     } = req.body;
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     user.billingAddress = {
@@ -90,39 +110,54 @@ const saveBillingAddress = async (req, res) => {
       country,
       state,
       city,
-      street,
+      street: address1 + (address2 ? `, ${address2}` : ""),
       postalCode,
+      address1,
+      address2,
     };
 
     await user.save();
 
+    const responseAddress = {
+      ...user.billingAddress.toObject(),
+      _id: "default-billing",
+    };
+
     res.status(200).json({
+      success: true,
       message: "Billing address updated successfully",
-      billingAddress: user.billingAddress,
+      address: responseAddress,
+      billingAddress: responseAddress,
     });
   } catch (error) {
     console.error("Save Billing Address Error:", error);
-    res.status(500).json({ message: "Server Error", error: error.message });
+    res.status(500).json({ success: false, message: "Server Error", error: error.message });
   }
 };
 
-/* ===========================
-   GET BILLING
-=========================== */
 const getBillingAddress = async (req, res) => {
   try {
     const userId = req.user.userId;
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    let responseAddress = null;
+    if (user.billingAddress && user.billingAddress.firstName) {
+      responseAddress = {
+        ...user.billingAddress.toObject(),
+        _id: "default-billing",
+      };
+    }
 
     res.status(200).json({
+      success: true,
       message: "Billing address fetched",
-      billingAddress: user.billingAddress || {},
+      billingAddress: responseAddress || {},
     });
   } catch (error) {
     console.error("Get Billing Address Error:", error);
-    res.status(500).json({ message: "Server Error", error: error.message });
+    res.status(500).json({ success: false, message: "Server Error", error: error.message });
   }
 };
 

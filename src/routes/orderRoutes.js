@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const { protect } = require("../middlewares/authMiddleware");
+const { preScoring } = require("../controllers/tabbyController");
+
 const {
   createStripeOrder,
   getOrderById,
@@ -23,6 +25,8 @@ router.get("/myorders", protect, getMyOrders);
 
 
 router.post("/tabby/create-tabbycheckout", protect, createTabbyOrder);
+router.post("/tabby/check-eligibility", protect, preScoring);
+
 
 router.post("/tamara/create-checkout", protect, createTamaraOrder)
 // Specific routes FIRST

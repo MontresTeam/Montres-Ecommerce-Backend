@@ -197,15 +197,19 @@ const createStripeOrder = async (req, res) => {
 
 const createTabbyOrder = async (req, res) => {
   try {
-    let { items, shippingAddress, billingAddress, dummy = false } = req.body || {};
+    let { items, shippingAddress, billingAddress, customer, order: frontendOrder, successUrl: frontendSuccessUrl, cancelUrl: frontendCancelUrl, failureUrl: frontendFailureUrl, dummy = false } = req.body || {};
 
     // --------------------------------------------------
     // ✅ Support frontend nested payload
     // --------------------------------------------------
-    if (!items && req.body.order?.items) items = req.body.order.items;
-    if (!shippingAddress && req.body.customer?.shipping)
-      shippingAddress = req.body.customer.shipping;
+    if (!items && frontendOrder?.items) items = frontendOrder.items;
+    if (!shippingAddress && customer?.shipping) shippingAddress = customer.shipping;
     if (!billingAddress) billingAddress = shippingAddress;
+
+    const buyerInfo = customer?.buyer || frontendOrder?.buyer || {};
+    const buyerEmail = buyerInfo.email || shippingAddress?.email || "otp.success@tabby.ai";
+    const buyerPhone = buyerInfo.phone || shippingAddress?.phone || "+971500000001";
+    const buyerName = buyerInfo.name || `${shippingAddress?.firstName || "Test"} ${shippingAddress?.lastName || "User"}`;
 
     // --------------------------------------------------
     // ✅ Prepare items
@@ -215,11 +219,22 @@ const createTabbyOrder = async (req, res) => {
     if (!dummy && Array.isArray(items) && items.length > 0) {
       populatedItems = await Promise.all(
         items.map(async (it) => {
-          const product = await Product.findById(it.productId)
-            .select("name images salePrice")
+          const productId = it.productId || it.reference_id || it.id;
+          const product = await Product.findById(productId)
+            .select("name images salePrice sku referenceNumber")
             .lean();
 
-          if (!product) throw new Error(`Product not found: ${it.productId}`);
+          if (!product) {
+            // Fallback for dummy or manual items
+            return {
+              productId: productId || null,
+              name: it.name || it.title || "Product",
+              image: it.image || "",
+              price: Number(it.price || it.unit_price || 0),
+              quantity: Number(it.quantity || 1),
+              sku: it.sku || it.reference_id || "N/A"
+            };
+          }
 
           return {
             productId: product._id,
@@ -227,6 +242,7 @@ const createTabbyOrder = async (req, res) => {
             image: product.images?.[0]?.url || product.images?.[0] || "",
             price: product.salePrice || 0,
             quantity: it.quantity || 1,
+            sku: product.sku || product.referenceNumber || product._id.toString()
           };
         })
       );
@@ -238,6 +254,7 @@ const createTabbyOrder = async (req, res) => {
           image: "",
           price: 100,
           quantity: 1,
+          sku: "DUMMY-001"
         },
       ];
     }
@@ -278,11 +295,51 @@ const createTabbyOrder = async (req, res) => {
     // --------------------------------------------------
     // ✅ URLs
     // --------------------------------------------------
-    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+    const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
 
-    const successUrl = `${clientUrl}/tabbyPayment/paymentSuccessful?orderId=${order._id}`;
-    const cancelUrl = `${clientUrl}/tabbyPayment/paymentCancelantion?orderId=${order._id}`;
-    const failureUrl = `${clientUrl}/tabbyPayment/paymentfailure?orderId=${order._id}`;
+    const successUrl = frontendSuccessUrl || `${clientUrl}/checkout/success?orderId=${order._id}`;
+    const cancelUrl = frontendCancelUrl || `${clientUrl}/checkout?canceled=true&orderId=${order._id}`;
+    const failureUrl = frontendFailureUrl || `${clientUrl}/checkout?failed=true&orderId=${order._id}`;
+
+    // --------------------------------------------------
+    // ✅ Fetch User & History for Tabby
+    // --------------------------------------------------
+    let buyerHistory = {
+      registered_since: new Date().toISOString(),
+      loyalty_level: 0,
+      wishlist_count: 0,
+      is_social_networks_connected: false,
+      is_phone_number_verified: true,
+      is_email_verified: true
+    };
+
+    let orderHistory = [];
+
+    if (req.user?.userId) {
+      const user = await userModel.findById(req.user.userId);
+      if (user) {
+        buyerHistory = {
+          registered_since: user.createdAt.toISOString(),
+          loyalty_level: 0,
+          wishlist_count: user.wishlistGroups?.reduce((acc, g) => acc + (g.items?.length || 0), 0) || 0,
+          is_social_networks_connected: !!user.googleId,
+          is_phone_number_verified: true,
+          is_email_verified: true
+        };
+      }
+
+      const pastOrders = await Order.find({ userId: req.user.userId, paymentStatus: 'paid' })
+        .limit(10)
+        .sort({ createdAt: -1 });
+
+      orderHistory = pastOrders.map(o => ({
+        purchased_at: o.createdAt.toISOString(),
+        amount: String(o.total.toFixed(2)),
+        currency: o.currency || "AED",
+        status: o.paymentStatus === 'paid' ? 'captured' : (o.paymentStatus || 'new'),
+        payment_method: o.paymentMethod === 'stripe' ? 'card' : 'other'
+      }));
+    }
 
     // --------------------------------------------------
     // ✅ Tabby items
@@ -292,24 +349,26 @@ const createTabbyOrder = async (req, res) => {
       description: item.name,
       quantity: item.quantity,
       unit_price: String(item.price.toFixed(2)),
-      category: "Watch"
+      category: "Watch",
+      image_url: item.image || "",
+      product_url: `${clientUrl}/product/${item.productId}`,
+      brand: "Montres",
+      reference_id: item.sku || item.productId?.toString() || "N/A",
+      is_refundable: true
     }));
 
     // --------------------------------------------------
     // ✅ Tabby Payload Preparation
     // --------------------------------------------------
-    // Helper to format phone to E.164 (roughly)
+    // Helper to format phone to E.164
     const formatPhone = (p) => {
       if (!p) return "+971500000001";
       let cleaned = p.replace(/\D/g, '');
       if (cleaned.startsWith("971")) return "+" + cleaned;
       if (cleaned.startsWith("05")) return "+971" + cleaned.substring(1);
+      if (cleaned.length === 9 && cleaned.startsWith("5")) return "+971" + cleaned;
       return "+" + cleaned;
     };
-
-    const buyerPhone = formatPhone(shippingAddress?.phone);
-    const buyerEmail = shippingAddress?.email || "otp.success@tabby.ai";
-    const buyerName = `${shippingAddress?.firstName || "Test"} ${shippingAddress?.lastName || "User"}`;
 
     const tabbyPayload = {
       payment: {
@@ -317,14 +376,16 @@ const createTabbyOrder = async (req, res) => {
         currency: "AED",
         description: `Order #${order._id}`,
         buyer: {
+          id: req.user?.userId || order._id.toString(),
           email: buyerEmail,
           name: buyerName,
-          phone: buyerPhone,
+          phone: formatPhone(buyerPhone),
         },
+        buyer_history: buyerHistory,
         shipping_address: {
           city: shippingAddress?.city || "Dubai",
           address: shippingAddress?.address1 || "Downtown",
-          zip: "00000",
+          zip: shippingAddress?.postalCode || "00000",
         },
         order: {
           reference_id: order._id.toString(),
@@ -332,9 +393,10 @@ const createTabbyOrder = async (req, res) => {
           shipping_amount: String(shippingFee.toFixed(2)),
           tax_amount: "0.00"
         },
+        order_history: orderHistory,
       },
-      merchant_code: process.env.TABBY_MERCHANT_CODE,
-      lang: "en",
+      merchant_code: process.env.TABBY_MERCHANT_CODE || "MTAE",
+      lang: req.body.language || "en",
       merchant_urls: {
         success: successUrl,
         cancel: cancelUrl,
@@ -345,7 +407,7 @@ const createTabbyOrder = async (req, res) => {
     // --------------------------------------------------
     // ✅ Call Tabby API
     // --------------------------------------------------
-    console.log("🟠 sending tabby payload:", JSON.stringify(tabbyPayload, null, 2));
+    console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
     const response = await axios.post(
       "https://api.tabby.ai/api/v2/checkout",
@@ -359,7 +421,7 @@ const createTabbyOrder = async (req, res) => {
     );
 
     const data = response.data;
-    console.log("🔵 Tabby FULL response:", JSON.stringify(data, null, 2));
+    console.log("🔵 Tabby Response:", JSON.stringify(data, null, 2));
 
     // --------------------------------------------------
     // ✅ Extract Checkout URL
@@ -369,34 +431,18 @@ const createTabbyOrder = async (req, res) => {
       data?.web_url ||
       data?.configuration?.available_products?.installments?.[0]?.web_url ||
       data?.configuration?.products?.installments?.[0]?.web_url ||
-      data?.configuration?.available_products?.pay_later?.[0]?.web_url ||
       null;
 
     if (!paymentUrl) {
-      console.error("❌ Tabby Returned No Payment URL. Data dump:", data);
-
-      const rejectionReason = data?.status === 'rejected'
-        ? (data.rejection_reason || "Tabby rejected the transaction")
-        : "No payment option available for this order (limit/currency/merchant code issue)";
-
       return res.status(400).json({
         success: false,
-        message: `Tabby checkout unavailable: ${rejectionReason}`,
+        message: "Tabby checkout unavailable",
         debug: data,
       });
     }
 
-    // --------------------------------------------------
-    // ✅ Save Session ID & Return
-    // --------------------------------------------------
     order.tabbySessionId = data?.id || null;
     await order.save();
-
-    if (req.user?.userId) {
-      await userModel.findByIdAndUpdate(req.user.userId, {
-        $set: { cart: [] },
-      });
-    }
 
     return res.status(201).json({
       success: true,
@@ -405,11 +451,9 @@ const createTabbyOrder = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Tabby error:", error.response?.data || error.message);
-    const apiErrorMsg = error.response?.data?.error || error.response?.data?.message || error.message;
-
     return res.status(500).json({
       success: false,
-      message: `Tabby API Error: ${JSON.stringify(apiErrorMsg)}`,
+      message: "Tabby initialization failed",
     });
   }
 };

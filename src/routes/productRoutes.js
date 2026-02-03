@@ -35,7 +35,7 @@ const {
   updateCart,
   recommendationsProduct,
   getWishlistCount,
-  getCartCount,e
+  getCartCount
 } = require("../controllers/userController");
 const ImageUpload = require("../config/multerConfig");
 const { protect } = require("../middlewares/authMiddleware");
@@ -43,46 +43,46 @@ const { protect } = require("../middlewares/authMiddleware");
 const router = express.Router();
 
 /* ----------------- Product Routes ----------------- */
-router.get("/products", getProducts); 
-router.get("/getAllBrands",getAllBrands)                      // Fetch all products
+router.get("/products", getProducts);
+router.get("/getAllBrands", getAllBrands)                      // Fetch all products
 router.post("/products", ImageUpload, addProduct);          // Add a new product
-router.post("/createBooking",protect, ImageUpload, addServiceForm); // Create service form
-router.get("/getBooking",getBookingService)
+router.post("/createBooking", protect, ImageUpload, addServiceForm); // Create service form
+router.get("/getBooking", getBookingService)
 router.get("/products/home", productHome);                 // Products for homepage
-router.get('/productall',getAllProductwithSearch)
+router.get('/productall', getAllProductwithSearch)
 /* ----------------- Cart Routes ----------------- */
-router.post("/cart/add", protect, addToCart);    
-router.get('/cart',protect,getCart)            // Add to cart
+router.post("/cart/add", protect, addToCart);
+router.get('/cart', protect, getCart)            // Add to cart
 router.delete("/cart/remove", protect, removeFromCart);   // Remove from cart
-router.put('/cart/update-cart',protect,updateCart)
+router.put('/cart/update-cart', protect, updateCart)
 
 /*------------------ Recommendations ----------------*/
-router.get('/cart/recommendations',protect,recommendationsProduct)
-router.get('/cart-count',protect,getCartCount)
+router.get('/cart/recommendations', protect, recommendationsProduct)
+router.get('/cart-count', protect, getCartCount)
 /* ----------------- Wishlist Routes ----------------- */
 router.post("/wishlist/add", protect, addToWishlist);       // Add to wishlist
 router.delete("/wishlist/remove", protect, removeFromWishlist); // Remove from wishlist
-router.post("/wishlist/create", protect, createWishlist); 
-  // Create wishlist
+router.post("/wishlist/create", protect, createWishlist);
+// Create wishlist
 router.get("/wishlists", protect, getWishlists);
 
-router.delete("/wishlists/:wishlistId/items",protect, Emptywishlist)    
-router.put("/wishlists/default/:wishlistId",protect,Setdefaultwishlist) 
+router.delete("/wishlists/:wishlistId/items", protect, Emptywishlist)
+router.put("/wishlists/default/:wishlistId", protect, Setdefaultwishlist)
 
-router.delete("/wishlists/:wishlistId",protect,Deleteentirewishlist)
-router.get("/wishlist-count",protect, getWishlistCount);
-router.get("/wishlists/getAll",protect,getAllwishlist)
+router.delete("/wishlists/:wishlistId", protect, Deleteentirewishlist)
+router.get("/wishlist-count", protect, getWishlistCount);
+router.get("/wishlists/getAll", protect, getAllwishlist)
 
-router.put("/wishlists/:wishlistId/visibility",protect,togglePublicSharing)
-    // Get all wishlists
+router.put("/wishlists/:wishlistId/visibility", protect, togglePublicSharing)
+// Get all wishlists
 
 /* ----------------- Order Routes ----------------- */
-       // Place order
+// Place order
 router.get("/orders/my", protect, getMyOrders);             // My orders
 
-router.post("/restock/:id/subscribe",restockSubscribe)
-router.get("/restock/subscribers",getRestockSubscribers)
-router.delete("/restock/:id/unsubscribe",unsubscribeRestock)
+router.post("/restock/:id/subscribe", restockSubscribe)
+router.get("/restock/subscribers", getRestockSubscribers)
+router.delete("/restock/:id/unsubscribe", unsubscribeRestock)
 // Single product by ID
 
 router.get("/:id", getProductById);
@@ -93,8 +93,8 @@ router.get("/:id/you-may-also-like", YouMayAlsoLike);
 
 router.get('/brand/:brand/watches', getBrandWatches);
 router.get("/brand/:brand/handbags", getBrandBags);
-router.get("/brand/:brand/accessories",getBrandAccessories)
-router.post("/inventory/move",moveToInventory)
+router.get("/brand/:brand/accessories", getBrandAccessories)
+router.post("/inventory/move", moveToInventory)
 
 
 module.exports = router;

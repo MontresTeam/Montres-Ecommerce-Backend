@@ -3,30 +3,124 @@ const axios = require("axios");
 const crypto = require("crypto");
 const Order = require("../models/OrderModel"); // Adjust path to Order model if needed
 const userModel = require('../models/UserModel')
+
+// ✅ Helper to get Tabby history
+const getTabbyHistory = async (userId) => {
+  let buyerHistory = {
+    registered_since: new Date().toISOString(),
+    loyalty_level: 0,
+    wishlist_count: 0,
+    is_social_networks_connected: false,
+    is_phone_number_verified: true,
+    is_email_verified: true
+  };
+
+  let orderHistory = [];
+
+  if (userId && /^[0-9a-fA-F]{24}$/.test(userId)) {
+    const user = await userModel.findById(userId);
+    if (user) {
+      buyerHistory = {
+        registered_since: user.createdAt.toISOString(),
+        loyalty_level: 0,
+        wishlist_count: user.wishlistGroups?.reduce((acc, g) => acc + (g.items?.length || 0), 0) || 0,
+        is_social_networks_connected: !!user.googleId,
+        is_phone_number_verified: true,
+        is_email_verified: true
+      };
+    }
+
+    const pastOrders = await Order.find({ userId: userId, paymentStatus: 'paid' })
+      .limit(10)
+      .sort({ createdAt: -1 });
+
+    orderHistory = pastOrders.map(o => ({
+      purchased_at: o.createdAt.toISOString(),
+      amount: String(o.total.toFixed(2)),
+      currency: o.currency || "AED",
+      status: o.paymentStatus === 'paid' ? 'captured' : (o.paymentStatus || 'new'),
+      payment_method: o.paymentMethod === 'stripe' ? 'card' : 'other'
+    }));
+  }
+
+  return { buyerHistory, orderHistory };
+};
+
+// ✅ Helper to format phone to E.164 (Required by Tabby)
+const formatPhone = (p) => {
+  if (!p) return undefined;
+  let cleaned = p.replace(/\D/g, "");
+  if (cleaned.startsWith("971")) return "+" + cleaned;
+  if (cleaned.startsWith("05")) return "+971" + cleaned.substring(1);
+  if (cleaned.length === 9 && cleaned.startsWith("5")) return "+971" + cleaned;
+  if (cleaned.startsWith("00")) return "+" + cleaned.substring(2);
+  return "+" + cleaned;
+};
+
 // ✅ 1. Pre-Scoring
 const preScoring = async (req, res) => {
   try {
-    const { amount, currency, buyer, shipping_address } = req.body;
+    let { amount, currency, buyer, shipping_address } = req.body;
+
+    // Support wrapped payload if frontend sends it that way
+    if (req.body.payment) {
+      amount = amount || req.body.payment.amount;
+      currency = currency || req.body.payment.currency;
+      buyer = buyer || req.body.payment.buyer;
+      shipping_address = shipping_address || req.body.payment.shipping_address;
+    } else if (req.body.customer) {
+      buyer = buyer || req.body.customer.buyer;
+      shipping_address = shipping_address || req.body.customer.shipping;
+    }
+
+    if (!amount || !currency) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount and currency are required for eligibility check",
+      });
+    }
+
+    const userId = req.user?.userId;
+    const { buyerHistory, orderHistory } = await getTabbyHistory(userId);
+
+    const tabbyPayload = {
+      payment: {
+        amount: String(Number(amount).toFixed(2)),
+        currency: currency,
+        buyer: {
+          ...buyer,
+          id: userId || "guest_" + Date.now(),
+          phone: formatPhone(buyer?.phone),
+        },
+        shipping_address: shipping_address || {
+          city: "N/A",
+          address: "N/A",
+          zip: "00000"
+        },
+        buyer_history: buyerHistory,
+        order_history: orderHistory,
+      },
+      merchant_code: process.env.TABBY_MERCHANT_CODE || "MOWA",
+    };
+
+    console.log("Tabby Pre-Scoring Payload:", JSON.stringify(tabbyPayload, null, 2));
 
     // Call Tabby pre-scoring API
     const response = await axios.post(
       "https://api.tabby.ai/api/v2/pre_scoring",
-      {
-        amount,
-        currency,
-        buyer,
-        shipping_address,
-      },
+      tabbyPayload,
       {
         headers: {
-          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`, // Use SECRET key
+          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
           "Content-Type": "application/json",
         },
       }
     );
 
     res.json({
-      eligible: response.data.status === "approved",
+      success: true,
+      eligible: response.data.status === "approved" || response.data.status === "approved_with_changes",
+      status: response.data.status,
       details: response.data,
     });
   } catch (error) {
@@ -34,19 +128,22 @@ const preScoring = async (req, res) => {
       "Tabby pre-scoring error:",
       error.response?.data || error.message
     );
-    res.status(500).json({
+    res.status(error.response?.status || 500).json({
       success: false,
-      message: "Pre-scoring failed",
+      message: "Eligibility check failed",
+      error: error.response?.data || error.message,
       eligible: false,
     });
   }
 };
+
 
 // ✅ 2. Create Session
 const createSession = async (req, res) => {
   try {
     const { payment, merchant_urls, merchant_code, lang } = req.body;
     const userId = req.user?.userId || req.body.userId; // Get from auth or body
+    const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
 
     if (!payment || !payment.order) {
       return res.status(400).json({
@@ -88,15 +185,41 @@ const createSession = async (req, res) => {
       billingAddress: shippingAddress, // Default to shipping
     });
 
+    // ✅ Fetch User & History for Tabby
+    const { buyerHistory, orderHistory } = await getTabbyHistory(userId);
+
     // ✅ FINAL TABBY PAYLOAD (EXACT STRUCTURE)
     const tabbyPayload = {
       payment: {
         ...payment,
-        amount: payment.amount.toString(), // must be string
+        amount: String(Number(payment.amount).toFixed(2)), // must be string with 2 decimals
+        buyer: {
+          ...payment.buyer,
+          id: userId || order._id.toString(),
+          phone: formatPhone(payment.buyer?.phone),
+        },
+        shipping_address: {
+          city: payment.shipping_address?.city || "Dubai",
+          address: payment.shipping_address?.address || payment.shipping_address?.address1 || "N/A",
+          zip: payment.shipping_address?.zip || payment.shipping_address?.postalCode || "00000",
+        },
+        buyer_history: buyerHistory,
         order: {
           ...payment.order,
           reference_id: order._id.toString(), // Use MongoDB ID for easier lookup in webhook
-        }
+          items: payment.order.items.map(item => ({
+            ...item,
+            unit_price: String(Number(item.unit_price || 0).toFixed(2)),
+            image_url: item.image_url || "",
+            product_url: item.product_url || `${clientUrl}/product/${item.reference_id || item.id || ''}`,
+            brand: item.brand || "Montres",
+            is_refundable: item.is_refundable !== undefined ? item.is_refundable : true,
+            category: item.category || "Watch"
+          })),
+          shipping_amount: String(Number(payment.order?.shipping_amount || 0).toFixed(2)),
+          tax_amount: String(Number(payment.order?.tax_amount || 0).toFixed(2))
+        },
+        order_history: orderHistory
       },
       lang: lang || "en",
       merchant_code: merchant_code || process.env.TABBY_MERCHANT_CODE || "MOWA",
@@ -221,12 +344,12 @@ const handleWebhook = async (req, res) => {
       return;
     }
 
-    const paymentId = payment.id;
-    const referenceId = payment.reference_id;
-    const status = payment.status?.toLowerCase();
+    const paymentId = payment.id || payload.id;
+    const referenceId = payment.order?.reference_id || payment.reference_id || payload.reference_id;
+    const status = (payment.status || payload.status)?.toLowerCase();
 
     console.log("📦 Payment ID:", paymentId);
-    console.log("📦 Reference:", referenceId);
+    console.log("📦 Reference (Reference/Mongo ID):", referenceId);
     console.log("📦 Status:", status);
 
     if (!paymentId || !referenceId || !status) {
@@ -282,7 +405,7 @@ const handleWebhook = async (req, res) => {
               ? verify.data.amount.toFixed(2)
               : verify.data.amount;
 
-            await axios.post(
+            const captureRes = await axios.post(
               `https://api.tabby.ai/api/v2/payments/${paymentId}/captures`,
               { amount: captureAmount.toString() },
               {
@@ -292,7 +415,7 @@ const handleWebhook = async (req, res) => {
               }
             );
 
-            console.log("✅ Capture request sent successfully");
+            console.log("✅ Capture response:", JSON.stringify(captureRes.data, null, 2));
           }
         } catch (err) {
           console.log(
@@ -356,11 +479,31 @@ const handleWebhook = async (req, res) => {
       // =================================
       // CLOSED
       // =================================
-      case "closed":
-        console.log("⚠️ CLOSED without capture");
-        savedOrder.paymentStatus = "closed";
+      case "closed": {
+        console.log("⚠️ CLOSED status received");
+
+        // If there are captures, it's effectively PAID
+        const hasCaptures = payment.captures && payment.captures.length > 0;
+
+        if (hasCaptures) {
+          console.log("🎉 CLOSED with captures → marking order PAID");
+          savedOrder.paymentStatus = "paid";
+          savedOrder.orderStatus = "Processing";
+
+          if (savedOrder.userId) {
+            await userModel.findByIdAndUpdate(savedOrder.userId, {
+              $set: { cart: [] },
+            });
+          }
+        } else {
+          console.log("⚠️ CLOSED without capture");
+          savedOrder.paymentStatus = "closed";
+        }
+
+        savedOrder.tabbySessionId = paymentId;
         await savedOrder.save();
         return;
+      }
 
       default:
         console.log("Ignored status:", status);
