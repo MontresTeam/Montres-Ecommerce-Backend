@@ -236,8 +236,8 @@ const createTabbyOrder = async (req, res) => {
         buyer_history: buyerHistory,
         shipping_address: {
           city: shippingAddress?.city || "Dubai",
-          address: shippingAddress?.address1 || "Downtown",
-          zip: shippingAddress?.postalCode || "00000",
+          address: shippingAddress?.address1 || shippingAddress?.address || "Downtown",
+          zip: shippingAddress?.postalCode || shippingAddress?.zip || "00000",
         },
         order: {
           reference_id: order._id.toString(),
@@ -247,18 +247,29 @@ const createTabbyOrder = async (req, res) => {
         },
         order_history: orderHistory,
       },
-      merchant_code: process.env.TABBY_MERCHANT_CODE || "MTAE",
-      lang: req.body.language || "en",
+      merchant_code: req.body.merchant_code || process.env.TABBY_MERCHANT_CODE || "MTAE",
+      lang: req.body.lang || req.body.language || "en",
       merchant_urls: { success: successUrl, cancel: cancelUrl, failure: failureUrl },
     };
 
+    // --------------------------------------------------
+    // ✅ Call Tabby API
+    // --------------------------------------------------
+    console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
+
     const response = await axios.post("https://api.tabby.ai/api/v2/checkout", tabbyPayload, {
-      headers: { Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+        "Content-Type": "application/json"
+      },
     });
+
+    console.log("🔵 Tabby Response:", JSON.stringify(response.data, null, 2));
 
     const paymentUrl = response.data?.checkout_url || response.data?.web_url || response.data?.configuration?.available_products?.installments?.[0]?.web_url || null;
 
     if (!paymentUrl) {
+      console.log("❌ Tabby checkout_url not found in response");
       return res.status(400).json({ success: false, message: "Tabby checkout unavailable", debug: response.data });
     }
 
@@ -267,8 +278,12 @@ const createTabbyOrder = async (req, res) => {
 
     return res.status(201).json({ success: true, order, checkoutUrl: paymentUrl });
   } catch (error) {
-    console.error("❌ Tabby error:", error.response?.data || error.message);
-    return res.status(500).json({ success: false, message: "Tabby initialization failed" });
+    console.error("❌ Tabby error details:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Tabby initialization failed",
+      error: error.response?.data || error.message
+    });
   }
 };
 
