@@ -31,7 +31,9 @@ exports.getJustForYou = async (req, res) => {
 
     // If USER NOT LOGGED IN -> return TRENDING products
     if (!userId) {
-      const trending = await Product.find()
+      const trending = await Product.find({
+        $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }],
+      })
         .sort({ sold: -1, rating: -1 })
         .limit(12)
         .lean();
@@ -42,7 +44,9 @@ exports.getJustForYou = async (req, res) => {
 
     // If user has no activity -> fallback to trending
     if (!activity) {
-      const trending = await Product.find()
+      const trending = await Product.find({
+        $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }],
+      })
         .sort({ sold: -1, rating: -1 })
         .limit(12)
         .lean();
@@ -55,6 +59,7 @@ exports.getJustForYou = async (req, res) => {
     if (activity.lastViewedCategory) {
       const catProducts = await Product.find({
         category: activity.lastViewedCategory,
+        $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }],
       })
         .sort({ sold: -1, rating: -1 })
         .limit(12)
@@ -78,6 +83,7 @@ exports.getJustForYou = async (req, res) => {
       if (wishlistBrands.length) {
         const byBrand = await Product.find({
           brand: { $in: wishlistBrands },
+          $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }],
         })
           .sort({ sold: -1, rating: -1 })
           .limit(8)
@@ -88,6 +94,7 @@ exports.getJustForYou = async (req, res) => {
       if (wishlistCats.length) {
         const byCat = await Product.find({
           category: { $in: wishlistCats },
+          $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }],
         })
           .sort({ sold: -1, rating: -1 })
           .limit(8)
@@ -111,6 +118,7 @@ exports.getJustForYou = async (req, res) => {
 
       const priceRange = await Product.find({
         regularPrice: { $gte: avgPrice - delta, $lte: avgPrice + delta },
+        $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }],
       })
         .sort({ sold: -1 })
         .limit(12)
@@ -120,7 +128,9 @@ exports.getJustForYou = async (req, res) => {
     }
 
     // 4) Trending Fallback
-    const trending = await Product.find()
+    const trending = await Product.find({
+      $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }],
+    })
       .sort({ sold: -1, rating: -1 })
       .limit(12)
       .lean();

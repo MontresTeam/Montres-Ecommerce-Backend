@@ -328,9 +328,20 @@ const updateTrustedProducts = async (req, res) => {
 const getTrustedProduct = async (req, res) => {
   try {
     const homeProducts = await TrustedProducts.findOne()
-      .populate("newArrivals")
-      .populate("montresTrusted");
-      // console.log(homeProducts, "homeProducts");
+      .populate({
+        path: "newArrivals",
+        match: { $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }] }
+      })
+      .populate({
+        path: "montresTrusted",
+        match: { $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }] }
+      });
+
+    if (homeProducts) {
+      // Filter out null items (where product mismatch occurred due to stock match)
+      homeProducts.newArrivals = homeProducts.newArrivals.filter(p => p !== null);
+      homeProducts.montresTrusted = homeProducts.montresTrusted.filter(p => p !== null);
+    }
 
     if (!homeProducts) {
       return res.status(404).json({ message: "No home products found" }); //

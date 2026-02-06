@@ -3,8 +3,8 @@ const Product = require("../models/product");
 
 const getAllWatches = async (req, res) => {
   try {
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 16,
       sortBy = "newest",
       minPrice,
@@ -29,7 +29,10 @@ const getAllWatches = async (req, res) => {
     } = req.query;
 
     // Base filter: only watches
-    let filter = { category: "Watch" };
+    let filter = {
+      category: "Watch",
+      $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }]
+    };
 
     // Build filter object dynamically
     const filterMappings = {
@@ -133,8 +136,8 @@ const getAllWatches = async (req, res) => {
 
 const getWatchesByStyle = async (req, res) => {
   try {
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 16,
       sortBy = "newest",
       minPrice,
@@ -142,11 +145,14 @@ const getWatchesByStyle = async (req, res) => {
       brand,
       // Add other filter parameters as needed
     } = req.query;
-    
+
     const { style } = req.params;
 
     // Base filter: only watches
-    let filter = { category: "Watch" };
+    let filter = {
+      category: "Watch",
+      $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }]
+    };
 
     // Filter by watchStyle if provided and not "all"
     if (style && style !== "all") {

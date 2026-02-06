@@ -13,6 +13,19 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? stripePkg(process.env.STRIPE_SECRET_KEY)
   : null;
 
+// Helper to validate address
+const validateAddress = (addr) => {
+  if (!addr) return false;
+  return (
+    addr.firstName &&
+    addr.lastName &&
+    addr.phone &&
+    addr.address1 &&
+    addr.city &&
+    addr.country
+  );
+};
+
 const createStripeOrder = async (req, res) => {
   try {
     const { userId } = req.user; // from JWT auth middleware
@@ -163,8 +176,8 @@ const createStripeOrder = async (req, res) => {
         mode: "payment",
         customer_email: finalBillingAddress.email, // links Stripe customer email
         billing_address_collection: "required",   // ensures billing address is collected
-        success_url: `https://www.montres.ae/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
-        cancel_url: `https://www.montres.ae/paymentcancel?orderId=${order._id}`,
+        success_url: `http://localhost:3000/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
+        cancel_url: `http://localhost:3000/paymentcancel?orderId=${order._id}`,
         metadata: {
           orderId: order._id.toString(),
           userId: userId.toString(),
@@ -279,6 +292,7 @@ const createTabbyOrder = async (req, res) => {
     // --------------------------------------------------
     const order = await Order.create({
       userId: req.user?.userId,
+      orderId: `TABBY-${Date.now()}`, // Set a unique orderId for reference
       items: populatedItems,
       subtotal,
       vat: 0,
@@ -297,9 +311,15 @@ const createTabbyOrder = async (req, res) => {
     // --------------------------------------------------
     const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
 
-    const successUrl = frontendSuccessUrl || `${clientUrl}/checkout/success?orderId=${order._id}`;
-    const cancelUrl = frontendCancelUrl || `${clientUrl}/checkout?canceled=true&orderId=${order._id}`;
-    const failureUrl = frontendFailureUrl || `${clientUrl}/checkout?failed=true&orderId=${order._id}`;
+    const appendOrderId = (url) => {
+      if (!url) return url;
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}orderId=${order._id}`;
+    };
+
+    const successUrl = appendOrderId(frontendSuccessUrl || `${clientUrl}/checkout/success`);
+    const cancelUrl = appendOrderId(frontendCancelUrl || `${clientUrl}/checkout?canceled=true`);
+    const failureUrl = appendOrderId(frontendFailureUrl || `${clientUrl}/checkout?failed=true`);
 
     // --------------------------------------------------
     // ✅ Fetch User & History for Tabby
@@ -334,7 +354,7 @@ const createTabbyOrder = async (req, res) => {
 
       orderHistory = pastOrders.map(o => ({
         purchased_at: o.createdAt.toISOString(),
-        amount: String(o.total.toFixed(2)),
+        amount: Number(o.total.toFixed(2)),
         currency: o.currency || "AED",
         status: o.paymentStatus === 'paid' ? 'captured' : (o.paymentStatus || 'new'),
         payment_method: o.paymentMethod === 'stripe' ? 'card' : 'other'
@@ -348,7 +368,7 @@ const createTabbyOrder = async (req, res) => {
       title: item.name,
       description: item.name,
       quantity: item.quantity,
-      unit_price: String(item.price.toFixed(2)),
+      unit_price: Number(item.price.toFixed(2)),
       category: "Watch",
       image_url: item.image || "",
       product_url: `${clientUrl}/product/${item.productId}`,
@@ -372,7 +392,7 @@ const createTabbyOrder = async (req, res) => {
 
     const tabbyPayload = {
       payment: {
-        amount: String(total.toFixed(2)),
+        amount: Number(total.toFixed(2)),
         currency: "AED",
         description: `Order #${order._id}`,
         buyer: {
@@ -390,8 +410,8 @@ const createTabbyOrder = async (req, res) => {
         order: {
           reference_id: order._id.toString(),
           items: tabbyItems,
-          shipping_amount: String(shippingFee.toFixed(2)),
-          tax_amount: "0.00"
+          shipping_amount: Number(shippingFee.toFixed(2)),
+          tax_amount: 0
         },
         order_history: orderHistory,
       },
@@ -410,7 +430,7 @@ const createTabbyOrder = async (req, res) => {
     console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
     const response = await axios.post(
-      "https://api.tabby.ai/api/v2/checkout",
+      "https://api.tabby.ai/api/v2/checkout/sessions",
       tabbyPayload,
       {
         headers: {
@@ -447,6 +467,7 @@ const createTabbyOrder = async (req, res) => {
     return res.status(201).json({
       success: true,
       order,
+      id: data.id,
       checkoutUrl: paymentUrl,
     });
   } catch (error) {
@@ -467,10 +488,7 @@ const TAMARA_API_BASE = process.env.TAMARA_API_BASE;
 const TAMARA_API_URL = `${TAMARA_API_BASE}/checkout`;
 
 // Helper to validate address
-const validateAddress = (addr) => {
-  if (!addr) return false;
-  return addr.firstName && addr.lastName && addr.phone && addr.address1 && addr.city && addr.country;
-};
+
 
 
 // ==================================================
