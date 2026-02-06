@@ -279,6 +279,7 @@ const createTabbyOrder = async (req, res) => {
     // --------------------------------------------------
     const order = await Order.create({
       userId: req.user?.userId,
+      orderId: `TABBY-${Date.now()}`, // Set a unique orderId for reference
       items: populatedItems,
       subtotal,
       vat: 0,
@@ -297,9 +298,15 @@ const createTabbyOrder = async (req, res) => {
     // --------------------------------------------------
     const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
 
-    const successUrl = frontendSuccessUrl || `${clientUrl}/checkout/success?orderId=${order._id}`;
-    const cancelUrl = frontendCancelUrl || `${clientUrl}/checkout?canceled=true&orderId=${order._id}`;
-    const failureUrl = frontendFailureUrl || `${clientUrl}/checkout?failed=true&orderId=${order._id}`;
+    const appendOrderId = (url) => {
+      if (!url) return url;
+      const separator = url.includes('?') ? '&' : '?';
+      return `${url}${separator}orderId=${order._id}`;
+    };
+
+    const successUrl = appendOrderId(frontendSuccessUrl || `${clientUrl}/checkout/success`);
+    const cancelUrl = appendOrderId(frontendCancelUrl || `${clientUrl}/checkout?canceled=true`);
+    const failureUrl = appendOrderId(frontendFailureUrl || `${clientUrl}/checkout?failed=true`);
 
     // --------------------------------------------------
     // ✅ Fetch User & History for Tabby
@@ -372,7 +379,7 @@ const createTabbyOrder = async (req, res) => {
 
     const tabbyPayload = {
       payment: {
-        amount: String(total.toFixed(2)),
+        amount: Number(total.toFixed(2)),
         currency: "AED",
         description: `Order #${order._id}`,
         buyer: {
@@ -390,8 +397,8 @@ const createTabbyOrder = async (req, res) => {
         order: {
           reference_id: order._id.toString(),
           items: tabbyItems,
-          shipping_amount: String(shippingFee.toFixed(2)),
-          tax_amount: "0.00"
+          shipping_amount: Number(shippingFee.toFixed(2)),
+          tax_amount: 0
         },
         order_history: orderHistory,
       },

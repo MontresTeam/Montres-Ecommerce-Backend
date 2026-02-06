@@ -5,8 +5,8 @@ const Product = require("../models/product");
 // Get All Leather Goods
 const getAllLeatherGoods = async (req, res) => {
   try {
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 16,
       sortBy = "newest",
       // Filter parameters
@@ -29,8 +29,11 @@ const getAllLeatherGoods = async (req, res) => {
       search
     } = req.query;
 
-    // ✅ Base filter - only leather goods
-    let filter = { categorisOne: "leather" };
+    // ✅ Base filter - only leather goods and in-stock products
+    let filter = {
+      categorisOne: "leather",
+      $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }]
+    };
 
     // ✅ Category filter (from URL params or query)
     if (req.params.category && req.params.category !== 'All') {
@@ -119,7 +122,7 @@ const getAllLeatherGoods = async (req, res) => {
     // ✅ Availability filter
     if (availability) {
       const availabilityFilter = [];
-      
+
       if (Array.isArray(availability)) {
         availability.forEach(avail => {
           if (avail === 'in_stock') availabilityFilter.push(true);
@@ -129,7 +132,7 @@ const getAllLeatherGoods = async (req, res) => {
         if (availability === 'in_stock') availabilityFilter.push(true);
         if (availability === 'out_of_stock') availabilityFilter.push(false);
       }
-      
+
       if (availabilityFilter.length > 0) {
         filter.inStock = { $in: availabilityFilter };
       }
@@ -179,13 +182,13 @@ const getAllLeatherGoods = async (req, res) => {
         break;
       case 'discount':
         // Calculate discount percentage and sort
-        sortOptions = { 
-          $expr: { 
+        sortOptions = {
+          $expr: {
             $subtract: [
               { $divide: [{ $subtract: ["$regularPrice", "$salePrice"] }, "$regularPrice"] },
               1
             ]
-          } 
+          }
         };
         break;
       default:
@@ -230,7 +233,8 @@ const getProductsByLeatherSubCategory = async (req, res) => {
     // Base filter — leather products in this sub-category
     const filter = {
       leatherMainCategory: "Bag",
-      leatherSubCategory: subCategory
+      leatherSubCategory: subCategory,
+      $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }]
     };
 
     // Pagination
@@ -381,10 +385,10 @@ const addLeathergoods = async (req, res) => {
       // Size
       leatherSize: size
         ? {
-            width: size.width || undefined,
-            height: size.height || undefined,
-            depth: size.depth || undefined,
-          }
+          width: size.width || undefined,
+          height: size.height || undefined,
+          depth: size.depth || undefined,
+        }
         : undefined,
 
       strapLength,
@@ -555,7 +559,7 @@ const updateLeathergoods = async (req, res) => {
     // Auto-generate name if relevant fields are updated
     const nameUpdateFields = ['Brand', 'Model', 'MainCategory', 'SubCategory', 'additionalTitle', 'Color', 'Material'];
     const shouldUpdateName = nameUpdateFields.some(field => req.body[field] !== undefined);
-    
+
     if (shouldUpdateName) {
       // Get current product data to generate new name
       const currentProduct = await Product.findById(leatherId);
@@ -566,11 +570,11 @@ const updateLeathergoods = async (req, res) => {
 
         const generateUpdatedName = () => {
           const nameParts = [];
-          
+
           if (updatedBrand) nameParts.push(updatedBrand);
           if (updatedModel) nameParts.push(updatedModel);
           if (updatedMainCategory) nameParts.push(updatedMainCategory);
-        
+
           return nameParts.join(' ');
         };
 
@@ -592,7 +596,7 @@ const updateLeathergoods = async (req, res) => {
     }
 
     const responseLeather = updatedLeather.toObject();
-    
+
     // Handle unknown year in response
     if (responseLeather.unknownYear === true) {
       responseLeather.productionYear = "unknown";
@@ -636,7 +640,8 @@ const getLeatherBags = async (req, res) => {
 
     // Build filter object
     const filter = {
-      leatherMainCategory: "Bag"
+      leatherMainCategory: "Bag",
+      $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }]
     };
 
     // Price filter
@@ -760,12 +765,12 @@ const getLeatherBags = async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching leather bags:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Server Error",
-      error: error.message 
+      error: error.message
     });
   }
 };
 
-module.exports = { getAllLeatherGoods, addLeathergoods, updateLeathergoods,getLeatherBags ,getProductsByLeatherSubCategory};
+module.exports = { getAllLeatherGoods, addLeathergoods, updateLeathergoods, getLeatherBags, getProductsByLeatherSubCategory };

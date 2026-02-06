@@ -2,7 +2,7 @@ const Product = require("../models/product");
 const RestockSubscription = require("../models/RestockSubscription");
 const WatchService = require("../models/repairserviceModal");
 const mongoose = require("mongoose")
-const  InventoryStock  = require("../models/InventoryStockModel");
+const InventoryStock = require("../models/InventoryStockModel");
 const { brandList } = require("../models/constants");
 
 
@@ -137,8 +137,11 @@ const getProducts = async (req, res) => {
     const pageNum = Math.max(1, parseInt(page, 10));
     const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
 
-    // ✅ Base Filter - only published products
-    const filterQuery = { published: true };
+    // ✅ Base Filter - only published and in-stock products
+    const filterQuery = {
+      published: true,
+      $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }]
+    };
     const andConditions = [];
 
     // 🔹 Helper to normalize comma-separated or array inputs
@@ -495,10 +498,10 @@ const getProducts = async (req, res) => {
     const products = await Product.find(filterQuery)
       .select(
         "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery scopeOfDeliveryWatch " +
-          "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-          "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
-          "condition itemCondition category description visibility published featured inStock " +
-          "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
+        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+        "condition itemCondition category description visibility published featured inStock " +
+        "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -617,12 +620,12 @@ const getProductById = async (req, res) => {
     const product = await Product.findById(id)
       .select(
         "brand model name sku referenceNumber serialNumber watchType watchStyle " +
-          "scopeOfDelivery scopeOfDeliveryWatch productionYear gender movement " +
-          "dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-          "salePrice regularPrice stockQuantity taxStatus strapSize caseSize " +
-          "includedAccessories condition itemCondition category description " +
-          "visibility published featured inStock badges images createdAt updatedAt " +
-          "waterResistance complications crystal limitedEdition"
+        "scopeOfDelivery scopeOfDeliveryWatch productionYear gender movement " +
+        "dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize " +
+        "includedAccessories condition itemCondition category description " +
+        "visibility published featured inStock badges images createdAt updatedAt " +
+        "waterResistance complications crystal limitedEdition"
       )
       .lean();
 
@@ -643,13 +646,13 @@ const getProductById = async (req, res) => {
       available: product.stockQuantity > 0 || product.inStock,
       discount:
         product.regularPrice &&
-        product.salePrice &&
-        product.regularPrice > product.salePrice
+          product.salePrice &&
+          product.regularPrice > product.salePrice
           ? Math.round(
-              ((product.regularPrice - product.salePrice) /
-                product.regularPrice) *
-                100
-            )
+            ((product.regularPrice - product.salePrice) /
+              product.regularPrice) *
+            100
+          )
           : 0,
       isOnSale:
         product.regularPrice &&
@@ -762,6 +765,7 @@ const getBrandWatches = async (req, res) => {
     const products = await Product.find({
       brand: { $regex: new RegExp(`^${brand}$`, "i") }, // case-insensitive
       category: "Watch", // only watches
+      $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }]
     });
 
     if (!products || products.length === 0) {
@@ -794,7 +798,8 @@ const getBrandBags = async (req, res) => {
     // Find all products for the brand (case-insensitive, ignores extra spaces)
     const products = await Product.find({
       brand: { $regex: brandParam, $options: "i" }, // case-insensitive match
-      leatherMainCategory: "Bag" // Only bags
+      leatherMainCategory: "Bag", // Only bags
+      $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }]
     });
 
     if (!products || products.length === 0) {
