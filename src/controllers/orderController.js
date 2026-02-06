@@ -13,6 +13,19 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? stripePkg(process.env.STRIPE_SECRET_KEY)
   : null;
 
+// Helper to validate address
+const validateAddress = (addr) => {
+  if (!addr) return false;
+  return (
+    addr.firstName &&
+    addr.lastName &&
+    addr.phone &&
+    addr.address1 &&
+    addr.city &&
+    addr.country
+  );
+};
+
 const createStripeOrder = async (req, res) => {
   try {
     const { userId } = req.user; // from JWT auth middleware
@@ -163,8 +176,8 @@ const createStripeOrder = async (req, res) => {
         mode: "payment",
         customer_email: finalBillingAddress.email, // links Stripe customer email
         billing_address_collection: "required",   // ensures billing address is collected
-        success_url: `https://www.montres.ae/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
-        cancel_url: `https://www.montres.ae/paymentcancel?orderId=${order._id}`,
+        success_url: `http://localhost:3000/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
+        cancel_url: `http://localhost:3000/paymentcancel?orderId=${order._id}`,
         metadata: {
           orderId: order._id.toString(),
           userId: userId.toString(),
@@ -341,7 +354,7 @@ const createTabbyOrder = async (req, res) => {
 
       orderHistory = pastOrders.map(o => ({
         purchased_at: o.createdAt.toISOString(),
-        amount: String(o.total.toFixed(2)),
+        amount: Number(o.total.toFixed(2)),
         currency: o.currency || "AED",
         status: o.paymentStatus === 'paid' ? 'captured' : (o.paymentStatus || 'new'),
         payment_method: o.paymentMethod === 'stripe' ? 'card' : 'other'
@@ -355,7 +368,7 @@ const createTabbyOrder = async (req, res) => {
       title: item.name,
       description: item.name,
       quantity: item.quantity,
-      unit_price: String(item.price.toFixed(2)),
+      unit_price: Number(item.price.toFixed(2)),
       category: "Watch",
       image_url: item.image || "",
       product_url: `${clientUrl}/product/${item.productId}`,
@@ -417,7 +430,7 @@ const createTabbyOrder = async (req, res) => {
     console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
     const response = await axios.post(
-      "https://api.tabby.ai/api/v2/checkout",
+      "https://api.tabby.ai/api/v2/checkout/sessions",
       tabbyPayload,
       {
         headers: {
@@ -454,6 +467,7 @@ const createTabbyOrder = async (req, res) => {
     return res.status(201).json({
       success: true,
       order,
+      id: data.id,
       checkoutUrl: paymentUrl,
     });
   } catch (error) {
@@ -474,10 +488,7 @@ const TAMARA_API_BASE = process.env.TAMARA_API_BASE;
 const TAMARA_API_URL = `${TAMARA_API_BASE}/checkout`;
 
 // Helper to validate address
-const validateAddress = (addr) => {
-  if (!addr) return false;
-  return addr.firstName && addr.lastName && addr.phone && addr.address1 && addr.city && addr.country;
-};
+
 
 
 // ==================================================

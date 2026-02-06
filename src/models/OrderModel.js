@@ -79,7 +79,12 @@ const orderSchema = new mongoose.Schema(
     stripeSessionId: { type: String, index: true },
     stripePaymentIntentId: { type: String, index: true },
     tabbySessionId: String,
-    tamaraOrderId: String,
+    tamaraOrderId: String, // Tamara's order reference
+
+    // Settlement info (for multi-currency payments like Tamara AED/USD)
+    settlementCurrency: { type: String, default: "AED" },
+    settlementTotal: { type: Number },
+    fxRate: { type: Number },
 
     orderStatus: {
       type: String,

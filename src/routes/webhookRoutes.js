@@ -1,5 +1,5 @@
 const express = require("express");
-const { handleStripeWebhook } = require("../controllers/webhoockController");
+const { handleStripeWebhook, handleTamaraWebhook } = require("../controllers/webhoockController");
 const { handleWebhook: handleTabbyWebhook } = require("../controllers/tabbyController");
 
 const router = express.Router();
@@ -18,6 +18,14 @@ router.post(
     "/tabby/webhook",
     express.raw({ type: "application/json" }),
     handleTabbyWebhook
+);
+
+// Tamara Webhook (Raw body for secure signature)
+// Path: /api/webhook/tamara
+router.post(
+    "/webhook/tamara",
+    express.raw({ type: "application/json" }),
+    handleTamaraWebhook
 );
 
 module.exports = router;
