@@ -19,6 +19,7 @@ const orderRoute = require("./routes/orderRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const filterRouter = require('./routes/filterRouter')
 const tabbyRouter = require('./routes/tabbyRouter')
+const tamaraRouter = require('./routes/tamaraRouter');
 const invontryStock = require('./routes/inventoryRoutes')
 const adminsRoute = require('./routes/adminRoute')
 const seoRoutes = require('./routes/seoPage.routes')
@@ -74,6 +75,7 @@ app.get("/", (req, res) => res.send("Welcome To Montres Store"));
 
 // Specific routes first
 app.use("/api/tabby", tabbyRouter);
+app.use("/api/tamara", tamaraRouter);
 
 
 app.use("/api/contact", contactRoutes);

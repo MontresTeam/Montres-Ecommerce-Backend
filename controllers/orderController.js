@@ -1,0 +1,205 @@
+const Order = require("../models/OrderModel");
+const ShippingAddress = require('../models/ShippingAddress')
+const BillingAddress = require('../models/BillingAddress')
+const Product = require("../models/product");
+const userModel = require("../models/UserModel");
+const { calculateShippingFee } = require("../utils/shippingCalculator");
+const stripePkg = require("stripe");
+const axios = require("axios");
+const sendEmail = require("../utils/sendEmail");
+
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? stripePkg(process.env.STRIPE_SECRET_KEY)
+  : null;
+
+const createStripeOrder = async (req, res) => {
+  try {
+    const { userId } = req.user;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { items, shippingAddress, billingAddress, paymentMethod = "stripe", calculateOnly = false } = req.body;
+
+    if (!items?.length) return res.status(400).json({ message: "Cart items are required" });
+    if (!shippingAddress?.address1 || !shippingAddress?.city) return res.status(400).json({ message: "Valid shipping address is required" });
+
+    const finalBillingAddress = billingAddress?.address1 && billingAddress?.city ? billingAddress : shippingAddress;
+
+    const populatedItems = await Promise.all(
+      items.map(async (it) => {
+        const product = await Product.findById(it.productId).select("name images salePrice").lean();
+        if (!product) throw new Error(`Product not found: ${it.productId}`);
+        return {
+          productId: product._id,
+          name: product.name,
+          image: product.images?.[0]?.url || "",
+          price: product.salePrice || 0,
+          quantity: it.quantity || 1,
+        };
+      })
+    );
+
+    const subtotal = populatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    const { shippingFee, region } = calculateShippingFee({ country: shippingAddress.country, subtotal });
+    const total = subtotal + shippingFee;
+
+    if (calculateOnly) {
+      return res.status(200).json({ success: true, subtotal, shippingFee, total, region, items: populatedItems });
+    }
+
+    const order = await Order.create({
+      userId,
+      items: populatedItems,
+      subtotal,
+      vat: 0,
+      shippingFee,
+      total,
+      region,
+      shippingAddress,
+      billingAddress: finalBillingAddress,
+      paymentMethod,
+      paymentStatus: "pending",
+      currency: "AED",
+    });
+
+    if (paymentMethod === "stripe" && stripe) {
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: populatedItems.map(item => ({
+          price_data: {
+            currency: "aed",
+            product_data: { name: item.name, images: item.image ? [item.image] : [] },
+            unit_amount: Math.round(item.price * 100),
+          },
+          quantity: item.quantity,
+        })),
+        mode: "payment",
+        success_url: `https://www.montres.ae/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
+        cancel_url: `https://www.montres.ae/paymentcancel?orderId=${order._id}`,
+        metadata: { orderId: order._id.toString(), userId: userId.toString() },
+      });
+
+      order.stripeSessionId = session.id;
+      await order.save();
+      return res.status(201).json({ success: true, order, checkoutUrl: session.url });
+    }
+
+    return res.status(201).json({ success: true, order });
+  } catch (error) {
+    console.error("Stripe Create Order Error:", error);
+    return res.status(500).json({ message: error.message || "Server error" });
+  }
+};
+
+const getShippingAddresses = async (req, res) => {
+  try {
+    const addresses = await ShippingAddress.find({ userId: req.user.userId }).sort({ updatedAt: -1 }).lean();
+    return res.json({ success: true, addresses });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const createShippingAddress = async (req, res) => {
+  try {
+    const address = await ShippingAddress.create({ userId: req.user.userId, ...req.body });
+    return res.status(201).json({ success: true, address });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const deleteShippingAddress = async (req, res) => {
+  try {
+    await ShippingAddress.findOneAndDelete({ _id: req.params.id, userId: req.user.userId });
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const updateShippingAddress = async (req, res) => {
+  try {
+    const updated = await ShippingAddress.findOneAndUpdate({ _id: req.params.id, userId: req.user.userId }, { $set: req.body }, { new: true });
+    return res.json({ success: true, data: updated });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const getBillingAddresses = async (req, res) => {
+  try {
+    const addresses = await BillingAddress.find({ userId: req.user.userId }).sort({ updatedAt: -1 }).lean();
+    return res.json({ success: true, addresses });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const createBillingAddress = async (req, res) => {
+  try {
+    const address = await BillingAddress.create({ userId: req.user.userId, ...req.body });
+    return res.status(201).json({ success: true, address });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const deleteBillingAddress = async (req, res) => {
+  try {
+    await BillingAddress.findOneAndDelete({ _id: req.params.id, userId: req.user.userId });
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const updateBillingAddress = async (req, res) => {
+  try {
+    const updated = await BillingAddress.findOneAndUpdate({ _id: req.params.id, userId: req.user.userId }, { $set: req.body }, { new: true });
+    return res.json({ success: true, data: updated });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const getOrderById = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).lean();
+    return res.json({ order });
+  } catch (error) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 });
+    return res.json({ orders });
+  } catch (error) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const getMyOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ userId: req.user.userId }).sort({ createdAt: -1 });
+    return res.json({ orders });
+  } catch (error) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+module.exports = {
+  createStripeOrder,
+  getOrderById,
+  getAllOrders,
+  getMyOrders,
+  getShippingAddresses,
+  createShippingAddress,
+  deleteShippingAddress,
+  getBillingAddresses,
+  createBillingAddress,
+  deleteBillingAddress,
+  updateBillingAddress,
+  updateShippingAddress,
+};

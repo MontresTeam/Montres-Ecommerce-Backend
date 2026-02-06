@@ -108,7 +108,7 @@ const preScoring = async (req, res) => {
 
     // Call Tabby pre-scoring API
     const response = await axios.post(
-      "https://api.tabby.ai/api/v2/pre_scoring",
+      "https://api.tabby.ai/api/v2/pre-scoring",
       tabbyPayload,
       {
         headers: {
@@ -524,8 +524,225 @@ const handleWebhook = async (req, res) => {
 };
 
 
+// ✅ 2. Create Tabby Checkout Order
+const createTabbyOrder = async (req, res) => {
+  try {
+    let { items, shippingAddress, billingAddress, customer, order: frontendOrder, successUrl: frontendSuccessUrl, cancelUrl: frontendCancelUrl, failureUrl: frontendFailureUrl, dummy = false } = req.body || {};
+
+    // --------------------------------------------------
+    // ✅ Support frontend nested payload
+    // --------------------------------------------------
+    if (!items && frontendOrder?.items) items = frontendOrder.items;
+    if (!shippingAddress && customer?.shipping) shippingAddress = customer.shipping;
+    if (!billingAddress) billingAddress = shippingAddress;
+
+    const buyerInfo = customer?.buyer || frontendOrder?.buyer || {};
+    const buyerEmail = buyerInfo.email || shippingAddress?.email || "otp.success@tabby.ai";
+    const buyerPhone = buyerInfo.phone || shippingAddress?.phone || "+971500000001";
+    const buyerName = buyerInfo.name || `${shippingAddress?.firstName || "Test"} ${shippingAddress?.lastName || "User"}`;
+
+    // --------------------------------------------------
+    // ✅ Prepare items
+    // --------------------------------------------------
+    let populatedItems = [];
+
+    const Product = require("../models/product");
+    const { calculateShippingFee } = require("../utils/shippingCalculator");
+
+    if (!dummy && Array.isArray(items) && items.length > 0) {
+      populatedItems = await Promise.all(
+        items.map(async (it) => {
+          const productId = it.productId || it.reference_id || it.id;
+          const product = await Product.findById(productId)
+            .select("name images salePrice sku referenceNumber")
+            .lean();
+
+          if (!product) {
+            // Fallback for dummy or manual items
+            return {
+              productId: productId || null,
+              name: it.name || it.title || "Product",
+              image: it.image || "",
+              price: Number(it.price || it.unit_price || 0),
+              quantity: Number(it.quantity || 1),
+              sku: it.sku || it.reference_id || "N/A"
+            };
+          }
+
+          return {
+            productId: product._id,
+            name: product.name,
+            image: product.images?.[0]?.url || product.images?.[0] || "",
+            price: product.salePrice || 0,
+            quantity: it.quantity || 1,
+            sku: product.sku || product.referenceNumber || product._id.toString()
+          };
+        })
+      );
+    } else {
+      populatedItems = [
+        {
+          productId: null,
+          name: "Dummy Watch",
+          image: "",
+          price: 100,
+          quantity: 1,
+          sku: "DUMMY-001"
+        },
+      ];
+    }
+
+    // --------------------------------------------------
+    // ✅ Totals
+    // --------------------------------------------------
+    const subtotal = populatedItems.reduce(
+      (acc, item) => acc + item.price * item.quantity,
+      0
+    );
+
+    const { shippingFee, region } = calculateShippingFee({
+      country: shippingAddress?.country || "AE",
+      subtotal,
+    });
+
+    const total = subtotal + shippingFee;
+
+    // --------------------------------------------------
+    // ✅ Create Order (Pending)
+    // --------------------------------------------------
+    const order = await Order.create({
+      userId: req.user?.userId,
+      items: populatedItems,
+      subtotal,
+      vat: 0,
+      shippingFee,
+      total,
+      region,
+      shippingAddress,
+      billingAddress,
+      paymentMethod: "tabby",
+      paymentStatus: "pending",
+      currency: "AED",
+    });
+
+    // --------------------------------------------------
+    // ✅ URLs
+    // --------------------------------------------------
+    const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
+
+    const successUrl = frontendSuccessUrl || `${clientUrl}/checkout/success?orderId=${order._id}`;
+    const cancelUrl = frontendCancelUrl || `${clientUrl}/checkout?canceled=true&orderId=${order._id}`;
+    const failureUrl = frontendFailureUrl || `${clientUrl}/checkout?failed=true&orderId=${order._id}`;
+
+    // --------------------------------------------------
+    // ✅ Fetch User & History for Tabby
+    // --------------------------------------------------
+    const { buyerHistory, orderHistory } = await getTabbyHistory(req.user?.userId);
+
+    // --------------------------------------------------
+    // ✅ Tabby items
+    // --------------------------------------------------
+    const tabbyItems = populatedItems.map((item) => ({
+      title: item.name,
+      description: item.name,
+      quantity: item.quantity,
+      unit_price: String(item.price.toFixed(2)),
+      category: "Watch",
+      image_url: item.image || "",
+      product_url: `${clientUrl}/product/${item.productId}`,
+      brand: "Montres",
+      reference_id: item.sku || item.productId?.toString() || "N/A",
+      is_refundable: true
+    }));
+
+    const tabbyPayload = {
+      payment: {
+        amount: String(total.toFixed(2)),
+        currency: "AED",
+        description: `Order #${order._id}`,
+        buyer: {
+          id: req.user?.userId || order._id.toString(),
+          email: buyerEmail,
+          name: buyerName,
+          phone: formatPhone(buyerPhone),
+        },
+        buyer_history: buyerHistory,
+        shipping_address: {
+          city: shippingAddress?.city || "Dubai",
+          address: shippingAddress?.address1 || "Downtown",
+          zip: shippingAddress?.postalCode || "00000",
+        },
+        order: {
+          reference_id: order._id.toString(),
+          items: tabbyItems,
+          shipping_amount: String(shippingFee.toFixed(2)),
+          tax_amount: "0.00"
+        },
+        order_history: orderHistory,
+      },
+      merchant_code: process.env.TABBY_MERCHANT_CODE || "MTAE",
+      lang: req.body.language || "en",
+      merchant_urls: {
+        success: successUrl,
+        cancel: cancelUrl,
+        failure: failureUrl,
+      },
+    };
+
+    // --------------------------------------------------
+    // ✅ Call Tabby API
+    // --------------------------------------------------
+    console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
+
+    const response = await axios.post(
+      "https://api.tabby.ai/api/v2/checkout",
+      tabbyPayload,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const data = response.data;
+    console.log("🔵 Tabby Response:", JSON.stringify(data, null, 2));
+
+    const paymentUrl =
+      data?.checkout_url ||
+      data?.web_url ||
+      data?.configuration?.available_products?.installments?.[0]?.web_url ||
+      data?.configuration?.products?.installments?.[0]?.web_url ||
+      null;
+
+    if (!paymentUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "Tabby checkout unavailable",
+        debug: data,
+      });
+    }
+
+    order.tabbySessionId = data?.id || null;
+    await order.save();
+
+    return res.status(201).json({
+      success: true,
+      order,
+      checkoutUrl: paymentUrl,
+    });
+  } catch (error) {
+    console.error("❌ Tabby error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Tabby initialization failed",
+    });
+  }
+};
+
 module.exports = {
   preScoring,
   createSession,
+  createTabbyOrder,
   handleWebhook,
 };
