@@ -430,7 +430,7 @@ const createTabbyOrder = async (req, res) => {
     console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
     const response = await axios.post(
-      "https://api.tabby.ai/api/v2/checkout/sessions",
+      "https://api.tabby.ai/api/v2/checkout",
       tabbyPayload,
       {
         headers: {

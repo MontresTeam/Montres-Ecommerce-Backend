@@ -59,6 +59,20 @@ const formatPhone = (p) => {
   return "+" + cleaned;
 };
 
+// ✅ Helper to normalize country to ISO-2
+const normalizeCountry = (c) => {
+  if (!c) return "AE";
+  const upper = c.toString().toUpperCase().trim();
+  if (upper === "UNITED ARAB EMIRATES" || upper === "UAE" || upper === "AE" || upper.includes("EMIRATES")) return "AE";
+  if (upper === "SAUDI ARABIA" || upper === "SAUDI" || upper === "KSA" || upper === "SA") return "SA";
+  if (upper === "BAHRAIN" || upper === "BH") return "BH";
+  if (upper === "KUWAIT" || upper === "KW") return "KW";
+  if (upper === "QATAR" || upper === "QA") return "QA";
+  if (upper === "OMAN" || upper === "OM") return "OM";
+  if (upper.length === 2) return upper;
+  return "AE"; // Default fallback
+};
+
 // ✅ 1. Pre-Scoring
 const preScoring = async (req, res) => {
   try {
@@ -95,15 +109,16 @@ const preScoring = async (req, res) => {
           phone: formatPhone(buyer?.phone),
           id: userId || "guest_" + Date.now(),
         },
-        shipping_address: shipping_address || {
-          city: "Dubai",
-          address: "N/A",
-          zip: "00000"
+        shipping_address: {
+          city: shipping_address?.city || "Dubai",
+          address: shipping_address?.address || shipping_address?.address1 || "N/A",
+          zip: shipping_address?.zip || shipping_address?.postalCode || "00000",
+          country: normalizeCountry(shipping_address?.country)
         },
         buyer_history: buyerHistory,
         order_history: orderHistory,
       },
-      merchant_code: process.env.TABBY_MERCHANT_CODE || "MTAE",
+      merchant_code: req.body.merchant_code || process.env.TABBY_MERCHANT_CODE || "MTAE",
     };
 
     console.log("Tabby Pre-Scoring Payload:", JSON.stringify(tabbyPayload, null, 2));
@@ -178,6 +193,7 @@ const createSession = async (req, res) => {
           city: payment.shipping_address?.city || "Dubai",
           address: payment.shipping_address?.address || payment.shipping_address?.address1 || "N/A",
           zip: payment.shipping_address?.zip || payment.shipping_address?.postalCode || "00000",
+          country: normalizeCountry(payment.shipping_address?.country)
         },
         buyer_history: buyerHistory,
         order: {
@@ -217,7 +233,7 @@ const createSession = async (req, res) => {
     console.log("Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
     const response = await axios.post(
-      "https://api.tabby.ai/api/v2/checkout/sessions",
+      "https://api.tabby.ai/api/v2/checkout",
       tabbyPayload,
       {
         headers: {
@@ -606,7 +622,18 @@ const handleWebhook = async (req, res) => {
 // ✅ 2. Create Tabby Checkout Order
 const createTabbyOrder = async (req, res) => {
   try {
-    let { items, shippingAddress, billingAddress, customer, order: frontendOrder, successUrl: frontendSuccessUrl, cancelUrl: frontendCancelUrl, failureUrl: frontendFailureUrl, dummy = false } = req.body || {};
+    let {
+      items,
+      shippingAddress,
+      billingAddress,
+      customer,
+      order: frontendOrder,
+      merchant_code: bodyMerchantCode,
+      successUrl: frontendSuccessUrl,
+      cancelUrl: frontendCancelUrl,
+      failureUrl: frontendFailureUrl,
+      dummy = false
+    } = req.body || {};
 
     // --------------------------------------------------
     // ✅ Support frontend nested payload
@@ -626,7 +653,6 @@ const createTabbyOrder = async (req, res) => {
     let populatedItems = [];
 
     const Product = require("../models/product");
-    const { calculateShippingFee } = require("../utils/shippingCalculator");
 
     if (!dummy && Array.isArray(items) && items.length > 0) {
       populatedItems = await Promise.all(
@@ -672,7 +698,7 @@ const createTabbyOrder = async (req, res) => {
     }
 
     // --------------------------------------------------
-    // ✅ Totals
+    // ✅ Totals & Safe Inputs
     // --------------------------------------------------
     const subtotal = populatedItems.reduce(
       (acc, item) => acc + item.price * item.quantity,
@@ -680,11 +706,14 @@ const createTabbyOrder = async (req, res) => {
     );
 
     const { shippingFee, region } = calculateShippingFee({
-      country: shippingAddress?.country || "AE",
+      country: normalizeCountry(shippingAddress?.country),
       subtotal,
     });
 
-    const total = subtotal + shippingFee;
+    const calculatedTotal = subtotal + shippingFee;
+    const finalAmount = Number(req.body.amount || calculatedTotal);
+    const finalCurrency = req.body.currency || "AED";
+    const finalLang = req.body.lang || req.body.language || "en";
 
     // --------------------------------------------------
     // ✅ Create Order (Pending)
@@ -695,13 +724,13 @@ const createTabbyOrder = async (req, res) => {
       subtotal,
       vat: 0,
       shippingFee,
-      total,
+      total: finalAmount,
       region,
       shippingAddress,
       billingAddress,
       paymentMethod: "tabby",
       paymentStatus: "pending",
-      currency: "AED",
+      currency: finalCurrency,
     });
 
     // --------------------------------------------------
@@ -719,7 +748,7 @@ const createTabbyOrder = async (req, res) => {
     const { buyerHistory, orderHistory } = await getTabbyHistory(req.user?.userId);
 
     // --------------------------------------------------
-    // ✅ Tabby items
+    // ✅ Tabby items & Payload
     // --------------------------------------------------
     const tabbyItems = populatedItems.map((item) => ({
       title: item.name,
@@ -736,8 +765,8 @@ const createTabbyOrder = async (req, res) => {
 
     const tabbyPayload = {
       payment: {
-        amount: Number(total.toFixed(2)),
-        currency: "AED",
+        amount: Number(finalAmount.toFixed(2)),
+        currency: finalCurrency,
         description: `Order #${order._id}`,
         buyer: {
           id: req.user?.userId || order._id.toString(),
@@ -748,8 +777,9 @@ const createTabbyOrder = async (req, res) => {
         buyer_history: buyerHistory,
         shipping_address: {
           city: shippingAddress?.city || "Dubai",
-          address: shippingAddress?.address1 || "Downtown",
+          address: shippingAddress?.address1 || shippingAddress?.street || "Downtown",
           zip: shippingAddress?.postalCode || "00000",
+          country: normalizeCountry(shippingAddress?.country)
         },
         order: {
           reference_id: order._id.toString(),
@@ -759,8 +789,8 @@ const createTabbyOrder = async (req, res) => {
         },
         order_history: orderHistory,
       },
-      merchant_code: process.env.TABBY_MERCHANT_CODE || "MTAE",
-      lang: req.body.language || "en",
+      merchant_code: bodyMerchantCode || req.body.merchant_code || process.env.TABBY_MERCHANT_CODE || "MTAE",
+      lang: finalLang,
       merchant_urls: {
         success: successUrl,
         cancel: cancelUrl,
@@ -768,13 +798,10 @@ const createTabbyOrder = async (req, res) => {
       },
     };
 
-    // --------------------------------------------------
-    // ✅ Call Tabby API
-    // --------------------------------------------------
     console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
     const response = await axios.post(
-      "https://api.tabby.ai/api/v2/checkout/sessions",
+      "https://api.tabby.ai/api/v2/checkout",
       tabbyPayload,
       {
         headers: {
@@ -812,10 +839,12 @@ const createTabbyOrder = async (req, res) => {
       checkoutUrl: paymentUrl,
     });
   } catch (error) {
-    console.error("❌ Tabby error:", error.response?.data || error.message);
+    const errorData = error.response?.data || error.message;
+    console.error("❌ Tabby error:", JSON.stringify(errorData, null, 2));
     return res.status(500).json({
       success: false,
       message: "Tabby initialization failed",
+      error: errorData
     });
   }
 };
