@@ -106,56 +106,12 @@ const createStripeOrder = async (req, res) => {
     }
 
     // ------------------------------
-    // 6️⃣ CREATE ORDER
+    // 6️⃣ GENERATE REFERENCE ID (No DB Creation Yet)
     // ------------------------------
-    const orderData = {
-      userId,
-      items: populatedItems.map((item) => ({
-        productId: item.productId,
-        name: item.name,
-        image: item.image,
-        price: item.price,
-        quantity: item.quantity,
-      })),
-      subtotal,
-      vat: 0,
-      shippingFee,
-      total,
-      region,
-      shippingAddress,
-      billingAddress: finalBillingAddress,
-      paymentMethod,
-      paymentStatus: "pending",
-      currency: "AED",
-    };
-
-    const order = await Order.create(orderData);
+    const referenceId = `stripe_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
     // ------------------------------
-    // 7️⃣ SEND EMAIL NOTIFICATIONS (To Admin/Sales)
-    // ------------------------------
-    // ⚠️ For Stripe, we wait until payment is CONFIRMED via Webhook before sending emails.
-    if (paymentMethod !== "stripe") {
-      const emailHTML = generateProfessionalOrderEmail({
-        order,
-        statusTitle: "New Order Received",
-        message: `A new order has been placed on the website and is currently <strong>${order.paymentStatus}</strong>.`,
-      });
-
-      await sendEmail(process.env.ADMIN_EMAIL, `New Order Notification: ${order._id}`, emailHTML);
-      await sendEmail(process.env.SALES_EMAIL, `New Order Notification: ${order._id}`, emailHTML);
-    }
-
-    // ------------------------------
-    // 8️⃣ CLEAR USER CART
-    // ------------------------------
-    // ⚠️ For Stripe, we wait until payment is CONFIRMED via Webhook before clearing the cart.
-    if (paymentMethod !== "stripe") {
-      await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
-    }
-
-    // ------------------------------
-    // 9️⃣ CREATE STRIPE CHECKOUT SESSION
+    // 7️⃣ CREATE STRIPE CHECKOUT SESSION
     // ------------------------------
     if (paymentMethod === "stripe" && stripe) {
       const lineItems = populatedItems.map((item) => ({
@@ -164,37 +120,49 @@ const createStripeOrder = async (req, res) => {
           product_data: {
             name: item.name,
             images: item.image ? [item.image] : [],
+            metadata: {
+              productId: item.productId.toString()
+            }
           },
           unit_amount: Math.round(item.price * 100),
         },
         quantity: item.quantity || 1,
       }));
 
+      const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         line_items: lineItems,
         mode: "payment",
-        customer_email: finalBillingAddress.email, // links Stripe customer email
-        billing_address_collection: "required",   // ensures billing address is collected
-        success_url: `http://localhost:3000/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
-        cancel_url: `http://localhost:3000/paymentcancel?orderId=${order._id}`,
+        customer_email: finalBillingAddress.email,
+        shipping_address_collection: {
+          allowed_countries: ["AE", "SA", "QA", "KW", "BH", "OM"],
+        },
+        success_url: `${clientUrl}/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${referenceId}`,
+        cancel_url: `${clientUrl}/paymentcancel?orderId=${referenceId}`,
         metadata: {
-          orderId: order._id.toString(),
+          orderId: referenceId, // Using referenceId as orderId in metadata
           userId: userId.toString(),
+          shippingInfo: JSON.stringify({
+            firstName: shippingAddress.firstName,
+            lastName: shippingAddress.lastName,
+            phone: shippingAddress.phone,
+            address1: shippingAddress.address1,
+            city: shippingAddress.city,
+            country: shippingAddress.country
+          })
         },
       });
 
-      order.stripeSessionId = session.id;
-      await order.save();
-
       return res.status(201).json({
         success: true,
-        order: order.toObject(),
+        referenceId,
         checkoutUrl: session.url,
       });
     }
 
-    return res.status(201).json({ success: true, order: order.toObject() });
+    return res.status(400).json({ success: false, message: "Stripe integration error" });
   } catch (error) {
     console.error("Stripe Create Order Error:", error);
     return res.status(500).json({ message: error.message || "Server error" });
@@ -208,276 +176,8 @@ const createStripeOrder = async (req, res) => {
 
 
 
-const createTabbyOrder = async (req, res) => {
-  try {
-    let { items, shippingAddress, billingAddress, customer, order: frontendOrder, successUrl: frontendSuccessUrl, cancelUrl: frontendCancelUrl, failureUrl: frontendFailureUrl, dummy = false } = req.body || {};
 
-    // --------------------------------------------------
-    // ✅ Support frontend nested payload
-    // --------------------------------------------------
-    if (!items && frontendOrder?.items) items = frontendOrder.items;
-    if (!shippingAddress && customer?.shipping) shippingAddress = customer.shipping;
-    if (!billingAddress) billingAddress = shippingAddress;
-
-    const buyerInfo = customer?.buyer || frontendOrder?.buyer || {};
-    const buyerEmail = buyerInfo.email || shippingAddress?.email || "otp.success@tabby.ai";
-    const buyerPhone = buyerInfo.phone || shippingAddress?.phone || "+971500000001";
-    const buyerName = buyerInfo.name || `${shippingAddress?.firstName || "Test"} ${shippingAddress?.lastName || "User"}`;
-
-    // --------------------------------------------------
-    // ✅ Prepare items
-    // --------------------------------------------------
-    let populatedItems = [];
-
-    if (!dummy && Array.isArray(items) && items.length > 0) {
-      populatedItems = await Promise.all(
-        items.map(async (it) => {
-          const productId = it.productId || it.reference_id || it.id;
-          const product = await Product.findById(productId)
-            .select("name images salePrice sku referenceNumber")
-            .lean();
-
-          if (!product) {
-            // Fallback for dummy or manual items
-            return {
-              productId: productId || null,
-              name: it.name || it.title || "Product",
-              image: it.image || "",
-              price: Number(it.price || it.unit_price || 0),
-              quantity: Number(it.quantity || 1),
-              sku: it.sku || it.reference_id || "N/A"
-            };
-          }
-
-          return {
-            productId: product._id,
-            name: product.name,
-            image: product.images?.[0]?.url || product.images?.[0] || "",
-            price: product.salePrice || 0,
-            quantity: it.quantity || 1,
-            sku: product.sku || product.referenceNumber || product._id.toString()
-          };
-        })
-      );
-    } else {
-      populatedItems = [
-        {
-          productId: null,
-          name: "Dummy Watch",
-          image: "",
-          price: 100,
-          quantity: 1,
-          sku: "DUMMY-001"
-        },
-      ];
-    }
-
-    // --------------------------------------------------
-    // ✅ Totals
-    // --------------------------------------------------
-    const subtotal = populatedItems.reduce(
-      (acc, item) => acc + item.price * item.quantity,
-      0
-    );
-
-    const { shippingFee, region } = calculateShippingFee({
-      country: shippingAddress?.country || "AE",
-      subtotal,
-    });
-
-    const total = subtotal + shippingFee;
-
-    // --------------------------------------------------
-    // ✅ Create Order (Pending)
-    // --------------------------------------------------
-    const order = await Order.create({
-      userId: req.user?.userId,
-      orderId: `TABBY-${Date.now()}`, // Set a unique orderId for reference
-      items: populatedItems,
-      subtotal,
-      vat: 0,
-      shippingFee,
-      total,
-      region,
-      shippingAddress,
-      billingAddress,
-      paymentMethod: "tabby",
-      paymentStatus: "pending",
-      currency: "AED",
-    });
-
-    // --------------------------------------------------
-    // ✅ URLs
-    // --------------------------------------------------
-    const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
-
-    const appendOrderId = (url) => {
-      if (!url) return url;
-      const separator = url.includes('?') ? '&' : '?';
-      return `${url}${separator}orderId=${order._id}`;
-    };
-
-    const successUrl = appendOrderId(frontendSuccessUrl || `${clientUrl}/checkout/success`);
-    const cancelUrl = appendOrderId(frontendCancelUrl || `${clientUrl}/checkout?canceled=true`);
-    const failureUrl = appendOrderId(frontendFailureUrl || `${clientUrl}/checkout?failed=true`);
-
-    // --------------------------------------------------
-    // ✅ Fetch User & History for Tabby
-    // --------------------------------------------------
-    let buyerHistory = {
-      registered_since: new Date().toISOString(),
-      loyalty_level: 0,
-      wishlist_count: 0,
-      is_social_networks_connected: false,
-      is_phone_number_verified: true,
-      is_email_verified: true
-    };
-
-    let orderHistory = [];
-
-    if (req.user?.userId) {
-      const user = await userModel.findById(req.user.userId);
-      if (user) {
-        buyerHistory = {
-          registered_since: user.createdAt.toISOString(),
-          loyalty_level: 0,
-          wishlist_count: user.wishlistGroups?.reduce((acc, g) => acc + (g.items?.length || 0), 0) || 0,
-          is_social_networks_connected: !!user.googleId,
-          is_phone_number_verified: true,
-          is_email_verified: true
-        };
-      }
-
-      const pastOrders = await Order.find({ userId: req.user.userId, paymentStatus: 'paid' })
-        .limit(10)
-        .sort({ createdAt: -1 });
-
-      orderHistory = pastOrders.map(o => ({
-        purchased_at: o.createdAt.toISOString(),
-        amount: Number(o.total.toFixed(2)),
-        currency: o.currency || "AED",
-        status: o.paymentStatus === 'paid' ? 'captured' : (o.paymentStatus || 'new'),
-        payment_method: o.paymentMethod === 'stripe' ? 'card' : 'other'
-      }));
-    }
-
-    // --------------------------------------------------
-    // ✅ Tabby items
-    // --------------------------------------------------
-    const tabbyItems = populatedItems.map((item) => ({
-      title: item.name,
-      description: item.name,
-      quantity: item.quantity,
-      unit_price: Number(item.price.toFixed(2)),
-      category: "Watch",
-      image_url: item.image || "",
-      product_url: `${clientUrl}/product/${item.productId}`,
-      brand: "Montres",
-      reference_id: item.sku || item.productId?.toString() || "N/A",
-      is_refundable: true
-    }));
-
-    // --------------------------------------------------
-    // ✅ Tabby Payload Preparation
-    // --------------------------------------------------
-    // Helper to format phone to E.164
-    const formatPhone = (p) => {
-      if (!p) return "+971500000001";
-      let cleaned = p.replace(/\D/g, '');
-      if (cleaned.startsWith("971")) return "+" + cleaned;
-      if (cleaned.startsWith("05")) return "+971" + cleaned.substring(1);
-      if (cleaned.length === 9 && cleaned.startsWith("5")) return "+971" + cleaned;
-      return "+" + cleaned;
-    };
-
-    const tabbyPayload = {
-      payment: {
-        amount: Number(total.toFixed(2)),
-        currency: "AED",
-        description: `Order #${order._id}`,
-        buyer: {
-          id: req.user?.userId || order._id.toString(),
-          email: buyerEmail,
-          name: buyerName,
-          phone: formatPhone(buyerPhone),
-        },
-        buyer_history: buyerHistory,
-        shipping_address: {
-          city: shippingAddress?.city || "Dubai",
-          address: shippingAddress?.address1 || "Downtown",
-          zip: shippingAddress?.postalCode || "00000",
-        },
-        order: {
-          reference_id: order._id.toString(),
-          items: tabbyItems,
-          shipping_amount: Number(shippingFee.toFixed(2)),
-          tax_amount: 0
-        },
-        order_history: orderHistory,
-      },
-      merchant_code: process.env.TABBY_MERCHANT_CODE || "MTAE",
-      lang: req.body.language || "en",
-      merchant_urls: {
-        success: successUrl,
-        cancel: cancelUrl,
-        failure: failureUrl,
-      },
-    };
-
-    // --------------------------------------------------
-    // ✅ Call Tabby API
-    // --------------------------------------------------
-    console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
-
-    const response = await axios.post(
-      "https://api.tabby.ai/api/v2/checkout",
-      tabbyPayload,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    const data = response.data;
-    console.log("🔵 Tabby Response:", JSON.stringify(data, null, 2));
-
-    // --------------------------------------------------
-    // ✅ Extract Checkout URL
-    // --------------------------------------------------
-    const paymentUrl =
-      data?.checkout_url ||
-      data?.web_url ||
-      data?.configuration?.available_products?.installments?.[0]?.web_url ||
-      data?.configuration?.products?.installments?.[0]?.web_url ||
-      null;
-
-    if (!paymentUrl) {
-      return res.status(400).json({
-        success: false,
-        message: "Tabby checkout unavailable",
-        debug: data,
-      });
-    }
-
-    order.tabbySessionId = data?.id || null;
-    await order.save();
-
-    return res.status(201).json({
-      success: true,
-      order,
-      id: data.id,
-      checkoutUrl: paymentUrl,
-    });
-  } catch (error) {
-    console.error("❌ Tabby error:", error.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Tabby initialization failed",
-    });
-  }
-};
+// (createTabbyOrder removed, handled in tabbyController.js)
 
 
 
@@ -925,11 +625,30 @@ const deleteBillingAddress = async (req, res) => {
 const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
-    const order = await Order.findById(id).lean();
-    if (!order) return res.status(404).json({ message: "Order not found" });
+    let order;
+
+    // First try by MongoDB _id if it's a valid ObjectId
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      order = await Order.findById(id).lean();
+    }
+
+    // If not found or not a valid ObjectId, try by the custom orderId field
+    if (!order) {
+      order = await Order.findOne({
+        $or: [
+          { orderId: id },
+          { tabbySessionId: id }
+        ]
+      }).lean();
+    }
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
     return res.json({ order });
   } catch (error) {
-    console.error("getOrderById Error:", error);
+    console.error("Get Order Error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };

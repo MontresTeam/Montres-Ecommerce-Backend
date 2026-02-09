@@ -148,37 +148,19 @@ const createTamaraOrder = async (req, res) => {
         // Recalculate total in AED to match items sum (prevent rounding gaps)
         const tamaraTotal = tamaraItems.reduce((sum, item) => sum + item.total_amount.amount, 0) + toAED(shippingFee);
 
-        // Create order with Multi-Currency support
-        const order = await Order.create({
-            userId,
-            items: populatedItems,
-            subtotal,
-            shippingFee,
-            total,
-            vat: 0,
-            region,
-            currency: "USD",
-
-            // Settlement info (what is actually charged)
-            settlementCurrency: "AED",
-            settlementTotal: Number(tamaraTotal.toFixed(2)),
-            fxRate: RATE,
-
-            shippingAddress,
-            billingAddress: finalBillingAddress,
-            paymentMethod: "tamara",
-            paymentStatus: "pending",
-        });
+        // ------------------------------
+        // 5️⃣ GENERATE REFERENCE ID (No DB Creation Yet)
+        // ------------------------------
+        const referenceId = `${userId || 'guest'}_tamara_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
         // Build merchant URLs
-        const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL;
+        const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || "http://localhost:3000";
         const backendUrl = process.env.BACKEND_URL || 'https://available-bunny-mousey.ngrok-free.dev';
-        const orderId = order._id.toString();
 
         const merchantUrls = {
-            success: `${baseUrl}/tamaraPayment/paymentsuccess?orderId=${orderId}`,
-            cancel: `${baseUrl}/tamaraPayment/paymentcancel?orderId=${orderId}`,
-            failure: `${baseUrl}/tamaraPayment/paymentfailed?orderId=${orderId}`,
+            success: `${baseUrl}/paymentsuccess?orderId=${referenceId}`,
+            cancel: `${baseUrl}/paymentcancel?orderId=${referenceId}`,
+            failure: `${baseUrl}/paymentfailure?orderId=${referenceId}`,
             notification: `${backendUrl}/api/webhook/tamara`,
         };
 
@@ -186,9 +168,9 @@ const createTamaraOrder = async (req, res) => {
 
         // Tamara payload (Mapping camelCase to snake_case for API)
         const tamaraPayload = {
-            order_reference_id: orderId,
-            order_number: orderId,
-            description: `Order ${orderId} – Montres Ecommerce`,
+            order_reference_id: referenceId,
+            order_number: referenceId,
+            description: `Order ${referenceId} – Montres Ecommerce`,
             total_amount: { amount: Number(tamaraTotal.toFixed(2)), currency: "AED" },
             shipping_amount: { amount: toAED(shippingFee), currency: "AED" },
             tax_amount: { amount: 0, currency: "AED" },
@@ -233,7 +215,7 @@ const createTamaraOrder = async (req, res) => {
             },
         };
 
-        console.log("📦 Sending Tamara Payload:", JSON.stringify(tamaraPayload, null, 2));
+        console.log("📦 Sending Tamara Payload (No order created yet):", JSON.stringify(tamaraPayload, null, 2));
 
         // Call Tamara API directly using axios
         const tamaraResponse = await axios.post(`${process.env.TAMARA_API_BASE}/checkout`, tamaraPayload, {
@@ -246,13 +228,10 @@ const createTamaraOrder = async (req, res) => {
         const checkoutUrl = tamaraResponse.data?._links?.checkout?.href || tamaraResponse.data?.checkout_url;
         if (!checkoutUrl) throw new Error("Tamara checkout URL not returned");
 
-        order.tamaraOrderId = tamaraResponse.data.order_id;
-        await order.save();
-
         // Response
         return res.status(201).json({
             success: true,
-            orderId: order._id,
+            referenceId,
             checkoutUrl,
         });
     } catch (error) {

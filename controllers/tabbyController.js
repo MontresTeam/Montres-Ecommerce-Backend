@@ -59,6 +59,9 @@ const formatPhone = (p) => {
   return "+" + cleaned;
 };
 
+const mongoose = require("mongoose");
+const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
+
 // ✅ 1. Pre-Scoring
 const preScoring = async (req, res) => {
   try {
@@ -102,7 +105,7 @@ const preScoring = async (req, res) => {
         buyer_history: buyerHistory,
         order_history: orderHistory,
       },
-      merchant_code: process.env.TABBY_MERCHANT_CODE || "MOWA",
+      merchant_code: process.env.TABBY_MERCHANT_CODE || "MTAE",
     };
 
     console.log("Tabby Pre-Scoring Payload:", JSON.stringify(tabbyPayload, null, 2));
@@ -135,7 +138,7 @@ const preScoring = async (req, res) => {
   }
 };
 
-// ✅ 2. Create Tabby Checkout Order
+// ✅ 2. Create Tabby Checkout Order (Session only)
 const createTabbyOrder = async (req, res) => {
   try {
     let { items, shippingAddress, billingAddress, customer, order: frontendOrder, successUrl: frontendSuccessUrl, cancelUrl: frontendCancelUrl, failureUrl: frontendFailureUrl, dummy = false } = req.body || {};
@@ -152,7 +155,7 @@ const createTabbyOrder = async (req, res) => {
     let populatedItems = [];
     if (!dummy && Array.isArray(items) && items.length > 0) {
       populatedItems = await Promise.all(
-        items.map(async (it) => {
+        items.map(async (it) => { // Use 'it' as the iterator variable
           const productId = it.productId || it.reference_id || it.id;
           const product = await Product.findById(productId)
             .select("name images salePrice sku referenceNumber")
@@ -160,8 +163,8 @@ const createTabbyOrder = async (req, res) => {
 
           if (!product) {
             return {
-              productId: productId || null,
-              name: it.name || it.title || "Product",
+              productId: productId && mongoose.Types.ObjectId.isValid(productId) ? productId : null,
+              name: it.name || it.title || "Product", // Use 'it' here
               image: it.image || "",
               price: Number(it.price || it.unit_price || 0),
               quantity: Number(it.quantity || 1),
@@ -180,32 +183,27 @@ const createTabbyOrder = async (req, res) => {
         })
       );
     } else {
-      populatedItems = [{ productId: null, name: "Dummy Watch", image: "", price: 100, quantity: 1, sku: "DUMMY-001" }];
+      populatedItems = [{ productId: null, name: "Dummy Watch", image: "https://www.montres.ae/logo.png", price: 100, quantity: 1, sku: "DUMMY-001" }];
     }
 
     const subtotal = populatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
     const { shippingFee, region } = calculateShippingFee({ country: shippingAddress?.country || "AE", subtotal });
-    const total = subtotal + shippingFee;
+    const total = Number((subtotal + shippingFee).toFixed(2));
 
-    const order = await Order.create({
-      userId: req.user?.userId,
-      items: populatedItems,
-      subtotal,
-      vat: 0,
-      shippingFee,
-      total,
-      region,
-      shippingAddress,
-      billingAddress,
-      paymentMethod: "tabby",
-      paymentStatus: "pending",
-      currency: "AED",
-    });
+    // Generate a reference ID for tracking before order creation
+    const referenceId = `tabby_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
     const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
-    const successUrl = frontendSuccessUrl || `${clientUrl}/checkout/success?orderId=${order._id}`;
-    const cancelUrl = frontendCancelUrl || `${clientUrl}/checkout?canceled=true&orderId=${order._id}`;
-    const failureUrl = frontendFailureUrl || `${clientUrl}/checkout?failed=true&orderId=${order._id}`;
+    // NOTE: successUrl uses referenceId as orderId for the frontend until the order is actually created
+    const successUrl = frontendSuccessUrl
+      ? `${frontendSuccessUrl}${frontendSuccessUrl.includes('?') ? '&' : '?'}orderId=${referenceId}`
+      : `${clientUrl}/checkout/success?orderId=${referenceId}`;
+    const cancelUrl = frontendCancelUrl
+      ? `${frontendCancelUrl}${frontendCancelUrl.includes('?') ? '&' : '?'}orderId=${referenceId}`
+      : `${clientUrl}/checkout?canceled=true&orderId=${referenceId}`;
+    const failureUrl = frontendFailureUrl
+      ? `${frontendFailureUrl}${frontendFailureUrl.includes('?') ? '&' : '?'}orderId=${referenceId}`
+      : `${clientUrl}/checkout?failed=true&orderId=${referenceId}`;
 
     const { buyerHistory, orderHistory } = await getTabbyHistory(req.user?.userId);
 
@@ -213,48 +211,50 @@ const createTabbyOrder = async (req, res) => {
       title: item.name,
       description: item.name,
       quantity: item.quantity,
-      unit_price: String(item.price.toFixed(2)),
+      unit_price: String(item.price.toFixed(2)), // ✅ Fixed: Must be String
       category: "Watch",
-      image_url: item.image || "",
-      product_url: `${clientUrl}/product/${item.productId}`,
+      image_url: item.image || "https://www.montres.ae/logo.png",
+      product_url: item.productId ? `${clientUrl}/product/${item.productId}` : clientUrl,
       brand: "Montres",
-      reference_id: item.sku || item.productId?.toString() || "N/A",
+      reference_id: item.productId?.toString() || item.sku || "N/A",
       is_refundable: true
     }));
 
+    // ✅ FIXED PAYLOAD STRUCTURE - STRICT TYPES
     const tabbyPayload = {
       payment: {
-        amount: String(total.toFixed(2)),
+        amount: String(total), // ✅ Fixed: Must be String
         currency: "AED",
-        description: `Order #${order._id}`,
+        description: `Order via Tabby`,
         buyer: {
-          id: req.user?.userId || order._id.toString(),
-          email: buyerEmail,
+          id: req.user?.userId || "guest_" + Date.now(),
           name: buyerName,
+          email: buyerEmail,
           phone: formatPhone(buyerPhone),
         },
-        buyer_history: buyerHistory,
         shipping_address: {
           city: shippingAddress?.city || "Dubai",
           address: shippingAddress?.address1 || shippingAddress?.address || "Downtown",
           zip: shippingAddress?.postalCode || shippingAddress?.zip || "00000",
         },
         order: {
-          reference_id: order._id.toString(),
+          reference_id: referenceId,
           items: tabbyItems,
-          shipping_amount: String(shippingFee.toFixed(2)),
-          tax_amount: "0.00"
+          shipping_amount: String(shippingFee.toFixed(2)), // ✅ Fixed: Must be String
+          tax_amount: "0" // ✅ Fixed: Must be String
         },
+        buyer_history: buyerHistory,
         order_history: orderHistory,
       },
       merchant_code: req.body.merchant_code || process.env.TABBY_MERCHANT_CODE || "MTAE",
       lang: req.body.lang || req.body.language || "en",
-      merchant_urls: { success: successUrl, cancel: cancelUrl, failure: failureUrl },
+      merchant_urls: {
+        success: successUrl,
+        cancel: cancelUrl,
+        failure: failureUrl
+      },
     };
 
-    // --------------------------------------------------
-    // ✅ Call Tabby API
-    // --------------------------------------------------
     console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
     const response = await axios.post("https://api.tabby.ai/api/v2/checkout", tabbyPayload, {
@@ -264,19 +264,57 @@ const createTabbyOrder = async (req, res) => {
       },
     });
 
-    console.log("🔵 Tabby Response:", JSON.stringify(response.data, null, 2));
-
     const paymentUrl = response.data?.checkout_url || response.data?.web_url || response.data?.configuration?.available_products?.installments?.[0]?.web_url || null;
+    const tabbyPaymentId = response.data?.id || response.data?.payment?.id;
 
     if (!paymentUrl) {
-      console.log("❌ Tabby checkout_url not found in response");
-      return res.status(400).json({ success: false, message: "Tabby checkout unavailable", debug: response.data });
+      return res.status(400).json({
+        success: false,
+        message: response.data.status === "rejected" ? "Tabby has rejected this order" : "Tabby checkout unavailable",
+        status: response.data.status,
+        debug: response.data
+      });
     }
 
-    order.tabbySessionId = response.data.id || null;
-    await order.save();
+    // ✅ Create the order in "pending" status before redirecting
+    try {
+      await Order.create({
+        userId: req.user?.userId,
+        orderId: referenceId,
+        tabbySessionId: tabbyPaymentId,
+        items: populatedItems,
+        subtotal: subtotal,
+        shippingFee: shippingFee,
+        total: total,
+        paymentMethod: "tabby",
+        paymentStatus: "pending",
+        orderStatus: "Pending",
+        currency: "AED",
+        shippingAddress: {
+          firstName: shippingAddress?.firstName || "Customer",
+          lastName: shippingAddress?.lastName || "",
+          email: buyerEmail,
+          phone: buyerPhone,
+          city: shippingAddress?.city || "Dubai",
+          street: shippingAddress?.address1 || shippingAddress?.address || "Downtown",
+          postalCode: shippingAddress?.postalCode || shippingAddress?.zip || "00000"
+        },
+        billingAddress: {
+          firstName: billingAddress?.firstName || shippingAddress?.firstName || "Customer",
+          lastName: billingAddress?.lastName || shippingAddress?.lastName || "",
+          email: buyerEmail,
+          phone: buyerPhone,
+          city: billingAddress?.city || shippingAddress?.city || "Dubai",
+          street: billingAddress?.address1 || shippingAddress?.address1 || "Downtown",
+          postalCode: billingAddress?.postalCode || shippingAddress?.postalCode || "00000"
+        }
+      });
+      console.log(`📝 Order record created (Pending): ${referenceId} (Tabby ID: ${tabbyPaymentId})`);
+    } catch (dbError) {
+      console.error("⚠️ Failed to create pending order record:", dbError.message);
+    }
 
-    return res.status(201).json({ success: true, order, checkoutUrl: paymentUrl });
+    return res.status(201).json({ success: true, referenceId, checkoutUrl: paymentUrl });
   } catch (error) {
     console.error("❌ Tabby error details:", error.response?.data || error.message);
     return res.status(500).json({
@@ -287,36 +325,160 @@ const createTabbyOrder = async (req, res) => {
   }
 };
 
-// ✅ Webhook Handler
+// ✅ Webhook Handler - Tabby's recommended way to capture orders
+// This endpoint receives updates from Tabby (authorized, captured, etc.)
 const handleWebhook = async (req, res) => {
   try {
-    const signature = req.headers["x-webhook-signature"] || req.headers["x-tabby-signature"];
-    let payload = req.body;
-    if (Buffer.isBuffer(req.body)) payload = JSON.parse(req.body.toString("utf8"));
+    // 1. Immediately acknowledge the webhook to avoid timeouts
+    res.status(200).send("ok");
 
+    // 2. Parse the payload (Express raw body or JSON)
+    let payload = req.body;
+    if (Buffer.isBuffer(req.body)) {
+      try {
+        payload = JSON.parse(req.body.toString("utf8"));
+      } catch (e) {
+        console.error("❌ Failed to parse Tabby Webhook Buffer:", e.message);
+        return;
+      }
+    }
+
+    // 3. Extract key identifiers
     const payment = payload.payment || payload;
     const paymentId = payment.id || payload.id;
     const referenceId = payment.order?.reference_id || payment.reference_id || payload.reference_id;
-    const status = (payment.status || payload.status)?.toLowerCase();
+    const status = (payment.status || payload.status || "unknown").toLowerCase();
 
-    res.sendStatus(200);
+    console.log(`🔔 Tabby Webhook Triggered: Ref: ${referenceId} | ID: ${paymentId} | Status: ${status}`);
 
-    let order = await Order.findById(referenceId);
-    if (!order) order = await Order.findOne({ orderId: referenceId });
-    if (!order) return;
+    if (!referenceId) {
+      console.error("❌ Tabby Webhook Error: Missing reference_id in payload", JSON.stringify(payload, null, 2));
+      return;
+    }
 
-    if (status === "authorized") {
-      // Logic for capture...
-    } else if (status === "captured") {
-      order.paymentStatus = "paid";
-      order.orderStatus = "Processing";
-      await order.save();
-      await userModel.findByIdAndUpdate(order.userId, { $set: { cart: [] } });
+    // 4. Handle Authorized or Captured status
+    if (status === "authorized" || status === "captured") {
+      console.log(`✅ Tabby Payment Validated. Processing Order: ${referenceId}`);
+
+      // Try to find if we already have this order (created in createTabbyOrder)
+      let order = await Order.findOne({
+        $or: [
+          { orderId: referenceId },
+          { tabbySessionId: paymentId }
+        ]
+      });
+
+      // Map Tabby status to our Order model enum
+      // Enum: ["pending", "authorized", "paid", "failed", "refunded", "closed"]
+      const targetPaymentStatus = status === "captured" ? "paid" : "authorized";
+
+      if (!order) {
+        console.log(`📝 Edge Case: Order ${referenceId} not in DB yet. Creating now from Webhook data...`);
+
+        // Reconstruct items from Tabby payload
+        const rawItems = payment.order?.items || [];
+        const reconstructedItems = rawItems.map(item => ({
+          productId: mongoose.Types.ObjectId.isValid(item.reference_id) ? item.reference_id : null,
+          name: item.title || "Product",
+          price: Number(item.unit_price || 0),
+          quantity: Number(item.quantity || 1),
+          image: item.image_url || ""
+        }));
+
+        const shippingAmount = Number(payment.order?.shipping_amount || 0);
+        const totalAmount = Number(payment.amount || 0);
+        const subtotal = totalAmount - shippingAmount;
+
+        const buyer = payment.buyer || {};
+        const shipping = payment.shipping_address || {};
+
+        // Associate with user if email matches
+        let userId = null;
+        if (buyer.email) {
+          const user = await userModel.findOne({ email: buyer.email });
+          if (user) userId = user._id;
+        }
+
+        // Create the order from scratch using Webhook data
+        order = await Order.create({
+          userId: userId,
+          orderId: referenceId,
+          tabbySessionId: paymentId,
+          items: reconstructedItems,
+          subtotal: subtotal,
+          shippingFee: shippingAmount,
+          total: totalAmount,
+          currency: payment.currency || "AED",
+          paymentMethod: "tabby",
+          paymentStatus: targetPaymentStatus,
+          orderStatus: "Processing",
+          shippingAddress: {
+            firstName: buyer.name?.split(" ")[0] || "Customer",
+            lastName: buyer.name?.split(" ").slice(1).join(" ") || "",
+            email: buyer.email,
+            phone: buyer.phone,
+            city: shipping.city || "Dubai",
+            street: shipping.address || "N/A",
+            postalCode: shipping.zip || "00000",
+            country: payment.shipping_address?.country || "AE"
+          },
+          billingAddress: {
+            firstName: buyer.name?.split(" ")[0] || "Customer",
+            lastName: buyer.name?.split(" ").slice(1).join(" ") || "",
+            email: buyer.email,
+            phone: buyer.phone,
+            city: shipping.city || "Dubai",
+            street: shipping.address || "N/A",
+            postalCode: shipping.zip || "00000",
+            country: payment.shipping_address?.country || "AE"
+          }
+        });
+
+        console.log(`🎉 New Order Created & Captured via Webhook: ${order._id}`);
+
+        // Clear cart if we found a user
+        if (userId) {
+          await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
+        }
+
+        // Send confirmation emails
+        await sendOrderConfirmation(order._id).catch(e => console.error("📧 Email Error:", e.message));
+
+      } else {
+        // Order exists (standard flow), just update status if not already paid
+        const alreadyPaid = order.paymentStatus === "paid";
+
+        if (!alreadyPaid) {
+          console.log(`🔄 Updating Order ${order.orderId}: status -> ${targetPaymentStatus}`);
+          order.paymentStatus = targetPaymentStatus;
+          order.orderStatus = "Processing";
+          order.tabbySessionId = paymentId;
+          await order.save();
+
+          // Clear cart
+          if (order.userId) {
+            await userModel.findByIdAndUpdate(order.userId, { $set: { cart: [] } });
+          }
+
+          // Sync emails
+          console.log(`📧 Sending confirmation emails for Order: ${order._id}`);
+          await sendOrderConfirmation(order._id).catch(e => console.error("📧 Email Error:", e.message));
+        } else {
+          console.log(`ℹ️ Order ${order._id} is already marked as PAID. Ignoring.`);
+        }
+      }
+    } else if (status === "expired" || status === "rejected" || status === "failed") {
+      console.log(`⚠️ Tabby Payment Failed/Expired: ${referenceId} (Status: ${status})`);
+      await Order.findOneAndUpdate(
+        { $or: [{ orderId: referenceId }, { tabbySessionId: paymentId }] },
+        { paymentStatus: "failed", orderStatus: "Cancelled" }
+      );
     }
   } catch (error) {
-    console.log("❌ Webhook error:", error.message);
+    console.error("❌ Tabby Webhook Critical Failure:", error.message);
   }
 };
+
 
 module.exports = {
   preScoring,

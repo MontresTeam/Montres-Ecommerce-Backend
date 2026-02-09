@@ -3,82 +3,13 @@ const User = require("../models/UserModel");
 const sendEmail = require("../utils/sendEmail");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const crypto = require("crypto");
+const axios = require("axios");
 
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const TAMARA_WEBHOOK_SECRET = process.env.TAMARA_NOTIFICATION_KEY || process.env.TAMARA_WEBHOOK_SECRET;
 
 
-const sendOrderConfirmation = async (orderId) => {
-    try {
-        const order = await Order.findById(orderId).populate("items.productId");
-        if (!order) return;
-
-        const displayCurrency = order.settlementCurrency || order.currency || "AED";
-        const displayTotal = order.settlementTotal || order.total;
-
-        const paymentMethodName = order.paymentMethod ? order.paymentMethod.charAt(0).toUpperCase() + order.paymentMethod.slice(1) : "Stripe";
-
-        // -----------------------------
-        // 1. CUSTOMER EMAIL (Receipt)
-        // -----------------------------
-        const customerEmailHTML = `
-      <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
-        <h2 style="color: #4CAF50;">Payment Successful!</h2>
-        <p>Hi ${order.billingAddress?.firstName || "there"},</p>
-        <p>Thank you for your purchase via ${paymentMethodName}. Your payment has been successfully verified.</p>
-        
-        <div style="background: #f9f9f9; padding: 15px; margin: 15px 0;">
-            <p style="margin: 5px 0;"><strong>Order ID:</strong> ${order._id}</p>
-            <p style="margin: 5px 0;"><strong>Total Paid:</strong> ${displayCurrency} ${displayTotal}</p>
-            <p style="margin: 5px 0;"><strong>Transaction Ref:</strong> ${order.stripePaymentIntentId || order.tamaraOrderId || "N/A"}</p>
-        </div>
-
-
-        <p>We are now processing your order and will notify you once it ships.</p>
-        <br/>
-        <p>Best regards,</p>
-        <p><strong>The Montres Team</strong></p>
-      </div>
-    `;
-
-        // Send to Customer
-        const userEmail = order.billingAddress?.email || order.shippingAddress?.email;
-        if (userEmail) {
-            await sendEmail(userEmail, "Payment Confirmation - Order #" + order._id, customerEmailHTML);
-            console.log(`📧 Customer confirmation sent to ${userEmail}`);
-        }
-
-        // -----------------------------
-        // 2. ADMIN EMAIL (Notification)
-        // -----------------------------
-        const adminEmailHTML = `
-      <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #333; border-radius: 8px;">
-        <h2 style="color: #2196F3;">💰 Payment Received (${paymentMethodName})</h2>
-        <p><strong>Order ID:</strong> ${order._id}</p>
-        <p><strong>Customer:</strong> ${order.billingAddress?.firstName} ${order.billingAddress?.lastName}</p>
-        <p><strong>Email:</strong> ${userEmail}</p>
-        <p><strong>Amount:</strong> ${displayCurrency} ${displayTotal}</p>
-
-
-        <br/>
-        <p>The payment status has been updated to <strong>PAID</strong>.</p>
-        <p style="color: red;">Please proceed with fulfillment.</p>
-      </div>
-    `;
-
-        // Send to Admin & Sales
-        if (process.env.ADMIN_EMAIL) {
-            await sendEmail(process.env.ADMIN_EMAIL, `💰 Payment Received: Order #${order._id}`, adminEmailHTML);
-        }
-        if (process.env.SALES_EMAIL) {
-            await sendEmail(process.env.SALES_EMAIL, `💰 Payment Received: Order #${order._id}`, adminEmailHTML);
-        }
-        console.log("📧 Admin notification sent.");
-
-    } catch (error) {
-        console.error("Error sending order confirmation:", error);
-    }
-};
+const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
 
 const handleStripeWebhook = async (req, res) => {
     const sig = req.headers["stripe-signature"];
@@ -120,55 +51,102 @@ const handleStripeWebhook = async (req, res) => {
     try {
         if (event.type === "checkout.session.completed") {
             const session = event.data.object;
-            const orderId = session.metadata?.orderId;
+            const referenceId = session.metadata?.orderId;
+            const userId = session.metadata?.userId;
+            const shippingInfoRaw = session.metadata?.shippingInfo;
 
-            console.log(`🔄 Processing session for Order: ${orderId}`);
+            console.log(`🔄 Processing session for Reference ID: ${referenceId}`);
 
-            if (orderId) {
-                // Check if order exists before updating
-                const existingOrder = await Order.findById(orderId);
-                if (!existingOrder) {
-                    console.error(`❌ ERROR: Order ${orderId} found in metadata but NOT in database!`);
-                    return res.status(404).send("Order not found");
-                }
+            if (referenceId) {
+                // Check if order exists (by MongoDB id or our custom reference orderId field)
+                let order = await Order.findOne({ $or: [{ orderId: referenceId }, { stripeSessionId: session.id }] });
 
-                if (existingOrder.paymentStatus === "paid") {
-                    console.log(`ℹ️ Order ${orderId} is already marked as PAID.`);
-                }
+                if (!order) {
+                    console.log(`📝 Reconstructing order for Stripe Reference: ${referenceId}`);
 
-                // IDEMPOTENCY: Atomic update
-                // This ensures we only run logic if status was NOT 'paid'
-                const order = await Order.findOneAndUpdate(
-                    { _id: orderId, paymentStatus: { $ne: "paid" } },
-                    {
-                        $set: {
-                            paymentStatus: "paid",
-                            stripePaymentIntentId: session.payment_intent,
-                            orderStatus: "Processing",
-                            paidAt: new Date()
+                    // Fetch line items from Stripe to get product info with expanded product details
+                    const lineItems = await stripe.checkout.sessions.listLineItems(session.id, {
+                        expand: ['data.price.product'],
+                    });
+
+                    const reconstructedItems = lineItems.data.map(item => {
+                        const product = item.price.product;
+                        return {
+                            productId: product.metadata?.productId || null,
+                            name: item.description,
+                            price: item.amount_total / 100 / (item.quantity || 1),
+                            quantity: item.quantity,
+                            image: product.images?.[0] || ""
+                        };
+                    });
+
+                    const shippingDetails = session.shipping_details || {};
+                    const buyerEmail = session.customer_details?.email;
+                    const buyerName = session.customer_details?.name || "Customer";
+
+                    let shippingAddr = {};
+                    if (shippingInfoRaw) {
+                        try {
+                            shippingAddr = JSON.parse(shippingInfoRaw);
+                        } catch (e) {
+                            console.error("Failed to parse shipping info from metadata", e);
                         }
-                    },
-                    { new: true }
-                );
-
-                // We use existingOrder as fallback if order is null (meaning it was already paid)
-                const targetOrder = order || existingOrder;
-
-                if (targetOrder) {
-                    // Update user: Clear cart and add order to orders array
-                    if (targetOrder.userId) {
-                        await User.findByIdAndUpdate(targetOrder.userId, {
-                            $set: { cart: [] },
-                            $addToSet: { orders: targetOrder._id }
-                        });
-                        console.log(`🛒 Cart sync'd for user: ${targetOrder.userId}`);
                     }
 
-                    // Send email only if we just marked it as paid (order is not null)
-                    if (order) {
-                        await sendOrderConfirmation(order._id);
-                    }
+                    order = await Order.create({
+                        userId: (userId && userId !== "null") ? userId : null,
+                        orderId: referenceId,
+                        items: reconstructedItems,
+                        subtotal: (session.amount_subtotal / 100),
+                        shippingFee: (session.total_details?.amount_shipping / 100 || 0),
+                        total: (session.amount_total / 100),
+                        paymentMethod: "stripe",
+                        paymentStatus: "paid",
+                        orderStatus: "Processing",
+                        currency: session.currency?.toUpperCase() || "AED",
+                        stripeSessionId: session.id,
+                        stripePaymentIntentId: session.payment_intent,
+                        shippingAddress: {
+                            firstName: shippingAddr.firstName || buyerName.split(" ")[0] || "Customer",
+                            lastName: shippingAddr.lastName || buyerName.split(" ").slice(1).join(" ") || "",
+                            email: buyerEmail,
+                            phone: shippingAddr.phone || session.customer_details?.phone || "",
+                            city: shippingDetails.address?.city || shippingAddr.city || "N/A",
+                            street: shippingDetails.address?.line1 || shippingAddr.address1 || "N/A",
+                            country: shippingDetails.address?.country || shippingAddr.country || "AE",
+                            postalCode: shippingDetails.address?.postal_code || shippingAddr.postalCode || ""
+                        },
+                        billingAddress: {
+                            firstName: buyerName.split(" ")[0] || "Customer",
+                            lastName: buyerName.split(" ").slice(1).join(" ") || "",
+                            email: buyerEmail,
+                            phone: session.customer_details?.phone || "",
+                            city: session.customer_details?.address?.city || "N/A",
+                            street: session.customer_details?.address?.line1 || "N/A",
+                            country: session.customer_details?.address?.country || "AE",
+                            postalCode: session.customer_details?.address?.postal_code || ""
+                        }
+                    });
+
+                    console.log(`✅ Order created successfully: ${order._id}`);
+                } else if (order.paymentStatus !== "paid") {
+                    order.paymentStatus = "paid";
+                    order.orderStatus = "Processing";
+                    order.stripePaymentIntentId = session.payment_intent;
+                    order.paidAt = new Date();
+                    await order.save();
+                    console.log(`✅ Existing order ${order._id} marked as PAID.`);
                 }
+
+                // Finalize: Clear cart and send email
+                if (order.userId) {
+                    await User.findByIdAndUpdate(order.userId, {
+                        $set: { cart: [] },
+                        $addToSet: { orders: order._id }
+                    });
+                }
+
+                await sendOrderConfirmation(order._id);
             } else {
                 console.error("❌ ERROR: orderId missing from Stripe session metadata!");
             }
@@ -234,37 +212,94 @@ const handleTamaraWebhook = async (req, res) => {
         const notification = JSON.parse(req.body.toString());
         console.log("📦 Tamara Notification:", JSON.stringify(notification, null, 2));
 
-        const orderId = notification.order_reference_id;
+        const referenceId = notification.order_reference_id;
+        const tamaraOrderId = notification.order_id;
         const status = notification.event_type || notification.order_status;
 
         // ✅ APPROVED / AUTHORIZED
         if (status === "approved" || status === "order_authorized") {
-            const order = await Order.findOneAndUpdate(
-                { _id: orderId, paymentStatus: { $ne: "paid" } },
-                {
+            let order = await Order.findOne({ $or: [{ orderId: referenceId }, { tamaraOrderId: tamaraOrderId }] });
+
+            if (!order) {
+                console.log(`📝 Reconstructing order for Tamara Reference: ${referenceId}`);
+
+                // Fetch full order details from Tamara
+                const tamaraResponse = await axios.get(`${process.env.TAMARA_API_BASE}/orders/${tamaraOrderId}`, {
+                    headers: {
+                        Authorization: `Bearer ${process.env.TAMARA_SECRET_KEY}`,
+                    },
+                });
+
+                const tamaraOrder = tamaraResponse.data;
+
+                const reconstructedItems = tamaraOrder.items.map(item => ({
+                    productId: item.reference_id && item.reference_id.match(/^[0-9a-fA-F]{24}$/) ? item.reference_id : null,
+                    name: item.name,
+                    price: item.unit_price.amount,
+                    quantity: item.quantity,
+                    image: "" // Tamara doesn't always provide image URLs in the order object
+                }));
+
+                const consumer = tamaraOrder.consumer || {};
+                const shipping = tamaraOrder.shipping_address || {};
+                const billing = tamaraOrder.billing_address || shipping;
+
+                const userIdFromRef = referenceId.includes('_tamara_') ? referenceId.split('_tamara_')[0] : null;
+
+                order = await Order.create({
+                    userId: (userIdFromRef && userIdFromRef !== 'guest') ? userIdFromRef : null,
+                    orderId: referenceId,
+                    items: reconstructedItems,
+                    subtotal: tamaraOrder.total_amount.amount - tamaraOrder.shipping_amount.amount - tamaraOrder.tax_amount.amount,
+                    shippingFee: tamaraOrder.shipping_amount.amount,
+                    total: tamaraOrder.total_amount.amount,
+                    paymentMethod: "tamara",
                     paymentStatus: "paid",
                     orderStatus: "Processing",
-                    paidAt: new Date(),
-                    tamaraOrderId: notification.order_id,
-                },
-                { new: true }
-            );
-
-            const currentOrder = order || await Order.findById(orderId);
-
-            if (currentOrder?.userId) {
-                // Sync user cart and orders list
-                await User.findByIdAndUpdate(currentOrder.userId, {
-                    $set: { cart: [] },
-                    $addToSet: { orders: currentOrder._id },
+                    currency: tamaraOrder.total_amount.currency || "AED",
+                    tamaraOrderId: tamaraOrderId,
+                    shippingAddress: {
+                        firstName: shipping.first_name || consumer.first_name || "Customer",
+                        lastName: shipping.last_name || consumer.last_name || "",
+                        email: consumer.email,
+                        phone: shipping.phone_number || consumer.phone_number,
+                        city: shipping.city || "N/A",
+                        street: shipping.line1 || "N/A",
+                        country: shipping.country_code || "AE",
+                        postalCode: shipping.postal_code || ""
+                    },
+                    billingAddress: {
+                        firstName: billing.first_name || consumer.first_name || "Customer",
+                        lastName: billing.last_name || consumer.last_name || "",
+                        email: consumer.email,
+                        phone: billing.phone_number || consumer.phone_number,
+                        city: billing.city || "N/A",
+                        street: billing.line1 || "N/A",
+                        country: billing.country_code || "AE",
+                        postalCode: billing.postal_code || ""
+                    }
                 });
-                console.log(`🛒 Cart cleared for user: ${currentOrder.userId}`);
 
-                if (order) {
-                    await sendOrderConfirmation(order._id);
-                    console.log(`✅ Order ${orderId} marked PAID via Tamara`);
-                }
+                console.log(`✅ Order created successfully: ${order._id}`);
+            } else if (order.paymentStatus !== "paid") {
+                order.paymentStatus = "paid";
+                order.orderStatus = "Processing";
+                order.tamaraOrderId = tamaraOrderId;
+                order.paidAt = new Date();
+                await order.save();
+                console.log(`✅ Existing order ${order._id} marked as PAID via Tamara`);
             }
+
+            // Finalize
+            if (order.userId) {
+                await User.findByIdAndUpdate(order.userId, {
+                    $set: { cart: [] },
+                    $addToSet: { orders: order._id },
+                });
+            }
+
+            await sendOrderConfirmation(order._id);
+
         }
         // ❌ FAILED / CANCELLED
         else if (
@@ -275,14 +310,14 @@ const handleTamaraWebhook = async (req, res) => {
             status === "cancelled"
         ) {
             await Order.findOneAndUpdate(
-                { _id: orderId, paymentStatus: { $ne: "paid" } },
+                { orderId: referenceId, paymentStatus: { $ne: "paid" } },
                 {
                     paymentStatus: "failed",
                     orderStatus: "Cancelled",
                 }
             );
 
-            console.log(`❌ Order ${orderId} marked FAILED/CANCELLED via Tamara`);
+            console.log(`❌ Order ${referenceId} marked FAILED/CANCELLED via Tamara`);
         }
 
         console.log("--------------------------------------------------");

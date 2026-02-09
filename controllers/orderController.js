@@ -164,9 +164,31 @@ const updateBillingAddress = async (req, res) => {
 
 const getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id).lean();
+    const { id } = req.params;
+    let order;
+
+    // First try by MongoDB _id if it's a valid ObjectId
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      order = await Order.findById(id).lean();
+    }
+
+    // If not found or not a valid ObjectId, try by the custom orderId field
+    if (!order) {
+      order = await Order.findOne({
+        $or: [
+          { orderId: id },
+          { tabbySessionId: id }
+        ]
+      }).lean();
+    }
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
     return res.json({ order });
   } catch (error) {
+    console.error("Get Order Error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 };

@@ -2,7 +2,7 @@ const Product = require("../models/product");
 const RestockSubscription = require("../models/RestockSubscription");
 const WatchService = require("../models/repairserviceModal");
 const mongoose = require("mongoose")
-const  InventoryStock  = require("../models/InventoryStockModel");
+const InventoryStock = require("../models/InventoryStockModel");
 const { brandList } = require("../models/constants");
 
 
@@ -495,10 +495,10 @@ const getProducts = async (req, res) => {
     const products = await Product.find(filterQuery)
       .select(
         "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery scopeOfDeliveryWatch " +
-          "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-          "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
-          "condition itemCondition category description visibility published featured inStock " +
-          "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
+        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+        "condition itemCondition category description visibility published featured inStock " +
+        "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -549,13 +549,36 @@ const getProducts = async (req, res) => {
 
 const getAllBrands = async (req, res) => {
   try {
+    const { category } = req.query;
+
+    // Build match condition based on category
+    let matchCondition = {
+      published: true,
+      brand: { $exists: true, $ne: "" },
+    };
+
+    // Apply category-specific filters
+    if (category) {
+      const categoryLower = category.toLowerCase();
+
+      if (categoryLower === 'watches' || categoryLower === 'watch') {
+        matchCondition.category = "Watch";
+      } else if (categoryLower === 'bags' || categoryLower === 'handbags' || categoryLower === 'leather-bags') {
+        matchCondition.$or = [
+          { category: "Leather Bags" },
+          { category: "Leather Goods", leatherMainCategory: "Bag" }
+        ];
+      } else if (categoryLower === 'accessories') {
+        matchCondition.category = "Accessories";
+      } else {
+        // If specific category provided, use it
+        matchCondition.category = { $regex: new RegExp(`^${category}$`, 'i') };
+      }
+    }
+
     const brands = await Product.aggregate([
       {
-        $match: {
-          published: true,
-          category: { $regex: /^Leather Bags$/i },
-          brand: { $exists: true, $ne: "" },
-        },
+        $match: matchCondition,
       },
 
       // Normalize brand
@@ -593,6 +616,7 @@ const getAllBrands = async (req, res) => {
     res.json({
       totalBrands: formattedBrands.length,
       brands: formattedBrands.map((b) => b.name),
+      category: category || 'all'
     });
   } catch (error) {
     console.error("❌ Error fetching brands:", error);
@@ -617,12 +641,12 @@ const getProductById = async (req, res) => {
     const product = await Product.findById(id)
       .select(
         "brand model name sku referenceNumber serialNumber watchType watchStyle " +
-          "scopeOfDelivery scopeOfDeliveryWatch productionYear gender movement " +
-          "dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-          "salePrice regularPrice stockQuantity taxStatus strapSize caseSize " +
-          "includedAccessories condition itemCondition category description " +
-          "visibility published featured inStock badges images createdAt updatedAt " +
-          "waterResistance complications crystal limitedEdition"
+        "scopeOfDelivery scopeOfDeliveryWatch productionYear gender movement " +
+        "dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize " +
+        "includedAccessories condition itemCondition category description " +
+        "visibility published featured inStock badges images createdAt updatedAt " +
+        "waterResistance complications crystal limitedEdition"
       )
       .lean();
 
@@ -643,13 +667,13 @@ const getProductById = async (req, res) => {
       available: product.stockQuantity > 0 || product.inStock,
       discount:
         product.regularPrice &&
-        product.salePrice &&
-        product.regularPrice > product.salePrice
+          product.salePrice &&
+          product.regularPrice > product.salePrice
           ? Math.round(
-              ((product.regularPrice - product.salePrice) /
-                product.regularPrice) *
-                100
-            )
+            ((product.regularPrice - product.salePrice) /
+              product.regularPrice) *
+            100
+          )
           : 0,
       isOnSale:
         product.regularPrice &&

@@ -437,7 +437,7 @@ const removeFromCart = async (req, res) => {
 
     // Remove the product from cart
     user.cart = user.cart.filter(
-      (item) => item.productId._id.toString() !== productId
+      (item) => item.productId && item.productId._id.toString() !== productId
     );
 
     await user.save();
@@ -469,6 +469,9 @@ const updateCart = async (req, res) => {
 
     // Update quantities
     user.cart = user.cart.map((cartItem) => {
+      // ✅ Safety check for deleted products
+      if (!cartItem.productId) return cartItem;
+
       const updated = items.find(
         (i) => i.productId.toString() === cartItem.productId._id.toString()
       );
@@ -489,10 +492,12 @@ const updateCart = async (req, res) => {
     }, 0);
 
     // Prepare cart items for frontend
-    const cartItems = user.cart.map((item) => ({
-      productId: item.productId._id,
-      quantity: item.quantity,
-    }));
+    const cartItems = user.cart
+      .filter((item) => item.productId) // ✅ Filter out deleted products
+      .map((item) => ({
+        productId: item.productId._id,
+        quantity: item.quantity,
+      }));
 
     const recommended = await getRecommendations(cartItems);
 
