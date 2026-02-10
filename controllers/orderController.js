@@ -73,8 +73,8 @@ const createStripeOrder = async (req, res) => {
           quantity: item.quantity,
         })),
         mode: "payment",
-        success_url: `https://www.montres.ae/paymentsuccess?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}`,
-        cancel_url: `https://www.montres.ae/paymentcancel?orderId=${order._id}`,
+        success_url: `${process.env.CLIENT_URL || "https://www.montres.ae"}/checkout/success?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}&payment=stripe`,
+        cancel_url: `${process.env.CLIENT_URL || "https://www.montres.ae"}/checkout/cancel?orderId=${order._id}&payment=stripe`,
         metadata: { orderId: order._id.toString(), userId: userId.toString() },
       });
 

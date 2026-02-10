@@ -3,8 +3,8 @@ const Product = require("../models/product");
 
 const getAllWatches = async (req, res) => {
   try {
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 16,
       sortBy = "newest",
       minPrice,
@@ -89,10 +89,13 @@ const getAllWatches = async (req, res) => {
     // Sort options
     const sortOptions = {
       newest: { createdAt: -1 },
-      price_low_high: { price: 1 },
-      price_high_low: { price: -1 },
+      oldest: { createdAt: 1 },
+      price_low_high: { salePrice: 1 },
+      price_high_low: { salePrice: -1 },
       name_asc: { name: 1 },
       name_desc: { name: -1 },
+      featured: { featured: -1, createdAt: -1 },
+      'best-seller': { sold: -1, createdAt: -1 },
       rating: { rating: -1 },
       discount: { discountPercentage: -1 }
     };
@@ -133,8 +136,8 @@ const getAllWatches = async (req, res) => {
 
 const getWatchesByStyle = async (req, res) => {
   try {
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 16,
       sortBy = "newest",
       minPrice,
@@ -142,7 +145,7 @@ const getWatchesByStyle = async (req, res) => {
       brand,
       // Add other filter parameters as needed
     } = req.query;
-    
+
     const { style } = req.params;
 
     // Base filter: only watches
@@ -159,10 +162,13 @@ const getWatchesByStyle = async (req, res) => {
     // Sort options (same as above)
     const sortOptions = {
       newest: { createdAt: -1 },
-      price_low_high: { price: 1 },
-      price_high_low: { price: -1 },
+      oldest: { createdAt: 1 },
+      price_low_high: { salePrice: 1 },
+      price_high_low: { salePrice: -1 },
       name_asc: { name: 1 },
       name_desc: { name: -1 },
+      featured: { featured: -1, createdAt: -1 },
+      'best-seller': { sold: -1, createdAt: -1 },
       rating: { rating: -1 },
       discount: { discountPercentage: -1 }
     };

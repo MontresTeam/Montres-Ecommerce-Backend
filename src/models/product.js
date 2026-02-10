@@ -30,13 +30,13 @@ const LEATHER_MAIN_CATEGORIES = [
 
 const LEATHER_SUB_CATEGORIES = [
   "Tote Bag",
-  "Crossbody Bag", 
+  "Crossbody Bag",
   "Card Holder",
   "Shoulder/Crossbody Bag",
-  "Shoulder Bag", 
+  "Shoulder Bag",
   "Clutch",
   "Backpack",
-  "Hand Bag", 
+  "Hand Bag",
   "Coin Purse",
   "Key Holder",
   "Travel Bag",
@@ -460,9 +460,8 @@ const productSchema = new mongoose.Schema(
       enum: LEATHER_MAIN_CATEGORIES,
       index: true,
     },
-    leatherSubCategory: {
-      type: String,
-      enum: LEATHER_SUB_CATEGORIES,
+    subcategory: {
+      type: mongoose.Schema.Types.Mixed,
       index: true,
     },
     modelCode: { type: String },
@@ -672,7 +671,7 @@ productSchema.methods._removeWatchFields = function (ret) {
 productSchema.methods._removeLeatherGoodsFields = function (ret) {
   const leatherFields = [
     "leatherMainCategory",
-    "leatherSubCategory",
+    "subcategory",
     "modelCode",
     "leatherMaterial",
     "interiorMaterial",
@@ -833,7 +832,7 @@ productSchema.methods.getCategoryData = function () {
       return {
         ...baseData,
         leatherMainCategory: this.leatherMainCategory,
-        leatherSubCategory: this.leatherSubCategory,
+        subcategory: this.subcategory,
         leatherMaterial: this.leatherMaterial,
         color: this.color,
         hardwareColor: this.hardwareColor,
@@ -887,7 +886,7 @@ productSchema.index({
 });
 productSchema.index({
   category: 1,
-  leatherSubCategory: 1,
+  subcategory: 1,
   published: 1,
 });
 

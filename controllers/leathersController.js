@@ -5,8 +5,8 @@ const Product = require("../models/product");
 // Get All Leather Goods
 const getAllLeatherGoods = async (req, res) => {
   try {
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 16,
       sortBy = "newest",
       // Filter parameters
@@ -47,9 +47,9 @@ const getAllLeatherGoods = async (req, res) => {
     // ✅ Subcategory filter
     if (subCategory) {
       if (Array.isArray(subCategory)) {
-        filter.leatherSubCategory = { $in: subCategory };
+        filter.subcategory = { $in: subCategory };
       } else {
-        filter.leatherSubCategory = subCategory;
+        filter.subcategory = subCategory;
       }
     }
 
@@ -119,7 +119,7 @@ const getAllLeatherGoods = async (req, res) => {
     // ✅ Availability filter
     if (availability) {
       const availabilityFilter = [];
-      
+
       if (Array.isArray(availability)) {
         availability.forEach(avail => {
           if (avail === 'in_stock') availabilityFilter.push(true);
@@ -129,7 +129,7 @@ const getAllLeatherGoods = async (req, res) => {
         if (availability === 'in_stock') availabilityFilter.push(true);
         if (availability === 'out_of_stock') availabilityFilter.push(false);
       }
-      
+
       if (availabilityFilter.length > 0) {
         filter.inStock = { $in: availabilityFilter };
       }
@@ -179,13 +179,13 @@ const getAllLeatherGoods = async (req, res) => {
         break;
       case 'discount':
         // Calculate discount percentage and sort
-        sortOptions = { 
-          $expr: { 
+        sortOptions = {
+          $expr: {
             $subtract: [
               { $divide: [{ $subtract: ["$regularPrice", "$salePrice"] }, "$regularPrice"] },
               1
             ]
-          } 
+          }
         };
         break;
       default:
@@ -220,31 +220,32 @@ const getAllLeatherGoods = async (req, res) => {
 
 const getProductsByLeatherSubCategory = async (req, res) => {
   try {
-    const { subCategory } = req.params;
+    const { leatherSubCategory } = req.params;
     const { page = 1, limit = 16, sortBy = "newest" } = req.query;
 
-    if (!subCategory) {
+    if (!leatherSubCategory) {
       return res.status(400).json({ success: false, message: "Sub-category is required" });
     }
 
-    // Base filter — leather products in this sub-category
+    // Filter for "Leather Bags" category and subcategory match
     const filter = {
-      leatherMainCategory: "Bag",
-      leatherSubCategory: subCategory
+         category: { $regex: "Leather", $options: "i" }, // matches Leather Goods or Leather Bags
+      $or: [
+        { leatherSubCategory: { $regex: leatherSubCategory, $options: "i" } },
+        { leatherSubCategory: { $in: [new RegExp(leatherSubCategory, "i")] } }
+      ]
     };
 
-    // Pagination
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
 
-    // Sorting
     let sortOptions = {};
     switch (sortBy) {
       case "price_low_high":
-        sortOptions = { salePrice: 1 };
+        sortOptions = { sellingPrice: 1 };
         break;
       case "price_high_low":
-        sortOptions = { salePrice: -1 };
+        sortOptions = { sellingPrice: -1 };
         break;
       case "rating":
         sortOptions = { rating: -1 };
@@ -253,7 +254,6 @@ const getProductsByLeatherSubCategory = async (req, res) => {
         sortOptions = { createdAt: -1 };
     }
 
-    // Count and fetch
     const totalProducts = await Product.countDocuments(filter);
 
     const products = await Product.find(filter)
@@ -271,14 +271,15 @@ const getProductsByLeatherSubCategory = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Error fetching products by sub-category:", err);
+    console.error("Error fetching products:", err);
     res.status(500).json({
       success: false,
-      message: "Error fetching products by sub-category",
+      message: "Error fetching products",
       error: err.message
     });
   }
 };
+
 
 
 const addLeathergoods = async (req, res) => {
@@ -355,7 +356,7 @@ const addLeathergoods = async (req, res) => {
 
       // Leather goods specific fields
       leatherMainCategory: MainCategory,
-      leatherSubCategory: SubCategory,
+      subcategory: SubCategory,
       modelCode,
       additionalTitle,
       serialNumber,
@@ -381,10 +382,10 @@ const addLeathergoods = async (req, res) => {
       // Size
       leatherSize: size
         ? {
-            width: size.width || undefined,
-            height: size.height || undefined,
-            depth: size.depth || undefined,
-          }
+          width: size.width || undefined,
+          height: size.height || undefined,
+          depth: size.depth || undefined,
+        }
         : undefined,
 
       strapLength,
@@ -509,7 +510,7 @@ const updateLeathergoods = async (req, res) => {
         if (field === "Brand") updateData.brand = req.body[field];
         else if (field === "Model") updateData.model = req.body[field];
         else if (field === "MainCategory") updateData.leatherMainCategory = req.body[field];
-        else if (field === "SubCategory") updateData.leatherSubCategory = req.body[field];
+        else if (field === "SubCategory") updateData.subcategory = req.body[field];
         else if (field === "Material") updateData.leatherMaterial = req.body[field];
         else if (field === "Color") updateData.dialColor = req.body[field];
         else if (field === "accessoriesAndDelivery") updateData.leatherAccessories = req.body[field];
@@ -555,7 +556,7 @@ const updateLeathergoods = async (req, res) => {
     // Auto-generate name if relevant fields are updated
     const nameUpdateFields = ['Brand', 'Model', 'MainCategory', 'SubCategory', 'additionalTitle', 'Color', 'Material'];
     const shouldUpdateName = nameUpdateFields.some(field => req.body[field] !== undefined);
-    
+
     if (shouldUpdateName) {
       // Get current product data to generate new name
       const currentProduct = await Product.findById(leatherId);
@@ -566,11 +567,11 @@ const updateLeathergoods = async (req, res) => {
 
         const generateUpdatedName = () => {
           const nameParts = [];
-          
+
           if (updatedBrand) nameParts.push(updatedBrand);
           if (updatedModel) nameParts.push(updatedModel);
           if (updatedMainCategory) nameParts.push(updatedMainCategory);
-        
+
           return nameParts.join(' ');
         };
 
@@ -592,7 +593,7 @@ const updateLeathergoods = async (req, res) => {
     }
 
     const responseLeather = updatedLeather.toObject();
-    
+
     // Handle unknown year in response
     if (responseLeather.unknownYear === true) {
       responseLeather.productionYear = "unknown";
@@ -639,11 +640,11 @@ const getLeatherBags = async (req, res) => {
       leatherMainCategory: "Bag"
     };
 
-    // Price filter
+    // Price filter (using salePrice)
     if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = parseFloat(minPrice);
-      if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
+      filter.salePrice = {};
+      if (minPrice) filter.salePrice.$gte = parseFloat(minPrice);
+      if (maxPrice) filter.salePrice.$lte = parseFloat(maxPrice);
     }
 
     // Array filters (brand, color, material, etc.)
@@ -652,11 +653,11 @@ const getLeatherBags = async (req, res) => {
     }
 
     if (color) {
-      filter.color = Array.isArray(color) ? { $in: color } : color;
+      filter.dialColor = Array.isArray(color) ? { $in: color } : color;
     }
 
     if (material) {
-      filter.material = Array.isArray(material) ? { $in: material } : material;
+      filter.leatherMaterial = Array.isArray(material) ? { $in: material } : material;
     }
 
     if (leatherType) {
@@ -668,7 +669,7 @@ const getLeatherBags = async (req, res) => {
     }
 
     if (subCategory) {
-      filter.subCategory = Array.isArray(subCategory) ? { $in: subCategory } : subCategory;
+      filter.subcategory = Array.isArray(subCategory) ? { $in: subCategory } : subCategory;
     }
 
     if (condition) {
@@ -760,12 +761,33 @@ const getLeatherBags = async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching leather bags:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Server Error",
-      error: error.message 
+      error: error.message
     });
   }
 };
 
-module.exports = { getAllLeatherGoods, addLeathergoods, updateLeathergoods,getLeatherBags ,getProductsByLeatherSubCategory};
+const getLeatherSubcategories = async (req, res) => {
+  try {
+    const subCategories = await Product.distinct("subcategory", {
+      $or: [
+        { category: "Leather Bags" },
+        { category: "Leather Goods" },
+        { categorisOne: "leather" }
+      ],
+      published: true
+    });
+
+    res.json({
+      success: true,
+      subcategories: subCategories.filter(Boolean).sort()
+    });
+  } catch (err) {
+    console.error("Error fetching leather subcategories:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+module.exports = { getAllLeatherGoods, addLeathergoods, updateLeathergoods, getLeatherBags, getProductsByLeatherSubCategory, getLeatherSubcategories };

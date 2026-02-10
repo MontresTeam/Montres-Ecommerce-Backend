@@ -469,6 +469,7 @@ const getProducts = async (req, res) => {
       name_asc: { name: 1 },
       name_desc: { name: -1 },
       featured: { featured: -1, createdAt: -1 },
+      'best-seller': { sold: -1, createdAt: -1 },
       rating: { rating: -1 },
       discount: { discountPercentage: -1 },
     };

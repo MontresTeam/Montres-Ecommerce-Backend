@@ -83,7 +83,7 @@ router.get("/orders/my", protect, getMyOrders);             // My orders
 router.post("/restock/:id/subscribe", restockSubscribe)
 router.get("/restock/subscribers", getRestockSubscribers)
 router.delete("/restock/:id/unsubscribe", unsubscribeRestock)
-// Single product by ID
+// Single product by 
 
 router.get("/:id", getProductById);
 

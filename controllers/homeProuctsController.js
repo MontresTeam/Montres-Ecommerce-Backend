@@ -98,7 +98,7 @@ const getHomeProductsGrid = async (req, res) => {
       { title: "Watch", styleField: "watchStyle" },
       { title: "Accessories", styleField: "accessoryCategory" },
       { title: "Leather Goods", styleField: "leatherMainCategory", excludeBags: true },
-      { title: "Leather Bags", styleField: "leatherSubCategory", includeBags: true },
+      { title: "Leather Bags", styleField: "subcategory", includeBags: true },
     ];
 
     const homeProducts = await Promise.all(
@@ -125,12 +125,15 @@ const getHomeProductsGrid = async (req, res) => {
 
         // Get unique style/subcategory values
         const styles = [
-          ...new Set(productsInCategory.map(p => p[cat.styleField]).filter(Boolean))
+          ...new Set(productsInCategory.flatMap(p => p[cat.styleField]).filter(Boolean))
         ];
 
         // Pick products per style
         const groupedProducts = styles.map(style => {
-          let matchedProducts = productsInCategory.filter(p => p[cat.styleField] === style);
+          let matchedProducts = productsInCategory.filter(p => {
+            const val = p[cat.styleField];
+            return Array.isArray(val) ? val.includes(style) : val === style;
+          });
 
           // Logic: Watches = 1 product per style, Accessories = up to 3 products, Leather = 1 per style
           let productsToReturn = [];
@@ -330,7 +333,7 @@ const getTrustedProduct = async (req, res) => {
     const homeProducts = await TrustedProducts.findOne()
       .populate("newArrivals")
       .populate("montresTrusted");
-      // console.log(homeProducts, "homeProducts");
+    // console.log(homeProducts, "homeProducts");
 
     if (!homeProducts) {
       return res.status(404).json({ message: "No home products found" }); //

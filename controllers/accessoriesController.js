@@ -28,14 +28,38 @@ const getAccessoriesProducts = async (req, res) => {
     } = req.query;
 
     // Base filter
-    let filter = { category: "Accessories" };
-
-    // Published products (default = true)
-    filter.published = published === "true";
+    let filter = { published: published === "true" };
 
     // Category filters
-    if (category) filter.accessoryCategory = category;
-    if (subcategory) filter.accessorySubCategory = subcategory;
+    if (category) {
+      filter.$or = filter.$or || [];
+      filter.$or.push({
+        $or: [
+          { category: "Accessories", accessoryCategory: category },
+          { categorisOne: category },
+          { subcategory: category }
+        ]
+      });
+    } else if (subcategory) {
+      filter.$or = filter.$or || [];
+      filter.$or.push({
+        $or: [
+          { category: "Accessories", accessoryCategory: subcategory },
+          { category: "Accessories", accessorySubCategory: subcategory },
+          { categorisOne: subcategory },
+          { subcategory: subcategory }
+        ]
+      });
+    } else {
+      // Default to Accessories if no specific category filter
+      filter.category = "Accessories";
+    }
+
+    // Also check for categorisOne in query
+    if (req.query.categorisOne) {
+      if (!filter.$or) filter.$or = [];
+      filter.$or.push({ categorisOne: req.query.categorisOne });
+    }
 
     // Brand filter
     if (brand) {
@@ -204,11 +228,26 @@ const getProductsByAccessoriesCategory = async (req, res) => {
     // Normalize URL value (replace dashes with spaces, decode URI, trim)
     const normalized = decodeURIComponent(subcategory).replace(/-/g, " ").trim();
 
-    // Filter only by accessoryCategory
+    // Base filter: match Accessories category OR the specific categorisOne/subcategory
     const filter = {
-      category: "Accessories",
-      accessoryCategory: new RegExp(`^${normalized}$`, "i"), // case-insensitive
+      $or: [
+        {
+          category: "Accessories",
+          accessoryCategory: new RegExp(normalized, "i")
+        },
+        {
+          categorisOne: new RegExp(normalized, "i")
+        },
+        {
+          subcategory: new RegExp(normalized, "i")
+        }
+      ]
     };
+
+    // If categorisOne is explicitly provided in query, add it as an option
+    if (req.query.categorisOne) {
+      filter.$or.push({ categorisOne: new RegExp(req.query.categorisOne, "i") });
+    }
 
     // Pagination
     const pageNum = parseInt(page, 10);
@@ -321,15 +360,15 @@ const createAccessory = async (req, res) => {
   try {
     // Extract data from FormData - handle both formats
     let data;
-    
+
     // If data comes from FormData as a JSON string in "data" field
     if (req.body.data) {
       console.log("Data received in 'data' field:", req.body.data);
-      
+
       try {
         // Parse the JSON string from FormData
-        data = typeof req.body.data === 'string' 
-          ? JSON.parse(req.body.data) 
+        data = typeof req.body.data === 'string'
+          ? JSON.parse(req.body.data)
           : req.body.data;
       } catch (parseError) {
         console.error("Error parsing JSON data:", parseError);
@@ -342,9 +381,9 @@ const createAccessory = async (req, res) => {
       // If data comes directly (not using FormData)
       data = req.body;
     }
-    
+
     console.log("Parsed data:", JSON.stringify(data, null, 2));
-    
+
     // -----------------------------
     // Helpers
     // -----------------------------
@@ -362,13 +401,13 @@ const createAccessory = async (req, res) => {
       const num = parseFloat(v);
       return isNaN(num) ? 0 : num;
     };
-    
+
     const parseIntNum = (v) => {
       if (v === "" || v === null || v === undefined) return 0;
       const num = parseInt(v);
       return isNaN(num) ? 0 : num;
     };
-    
+
     const parseBoolean = (v) => {
       if (v === "true" || v === true || v === 1) return true;
       if (v === "false" || v === false || v === 0) return false;
@@ -392,7 +431,7 @@ const createAccessory = async (req, res) => {
     };
 
 
-    
+
     if (!data.brand || data.brand.trim() === "") {
       return res.status(400).json({
         success: false,
@@ -427,7 +466,7 @@ const createAccessory = async (req, res) => {
     // -----------------------------
     // 3. PRODUCT NAME
     // -----------------------------
-    const productName = data.name?.trim() 
+    const productName = data.name?.trim()
       ? data.name.trim()
       : `${data.brand.trim()} ${data.model.trim()}`.trim();
 
@@ -528,7 +567,7 @@ const createAccessory = async (req, res) => {
     });
 
     const savedAccessory = await newAccessory.save();
-    
+
     console.log("Accessory created successfully:", savedAccessory._id);
 
     res.status(201).json({
@@ -579,7 +618,7 @@ const updateAccessory = async (req, res) => {
 
     // Handle FormData or JSON body
     let updateData = {};
-    
+
     // Check if it's FormData (has 'data' field with JSON string)
     if (req.body.data) {
       try {
@@ -602,7 +641,7 @@ const updateAccessory = async (req, res) => {
     // ============================================
     if (req.files) {
       console.log("Files received:", req.files);
-      
+
       // Handle main image
       if (req.files.main && req.files.main[0]) {
         const mainFile = req.files.main[0];
@@ -634,7 +673,7 @@ const updateAccessory = async (req, res) => {
             };
           })
         );
-        
+
         // Merge with existing images if needed
         updateData.images = [...(existingProduct.images || []), ...coverUploads];
       }
@@ -643,13 +682,13 @@ const updateAccessory = async (req, res) => {
     // ============================================
     // FIELD VALIDATION AND CLEANUP
     // ============================================
-    
+
     // Convert string arrays if needed
     const arrayFields = [
       'accessoryMaterial', 'accessoryColor', 'accessoryDelivery',
       'accessoryScopeOfDelivery', 'badges', 'seoKeywords'
     ];
-    
+
     arrayFields.forEach(field => {
       if (updateData[field] && typeof updateData[field] === 'string') {
         if (field === 'seoKeywords') {
@@ -667,11 +706,11 @@ const updateAccessory = async (req, res) => {
     if (updateData.regularPrice) {
       updateData.regularPrice = parseFloat(updateData.regularPrice);
     }
-    
+
     if (updateData.salePrice) {
       updateData.salePrice = parseFloat(updateData.salePrice);
     }
-    
+
     if (updateData.stockQuantity) {
       updateData.stockQuantity = parseInt(updateData.stockQuantity);
     }
@@ -699,7 +738,7 @@ const updateAccessory = async (req, res) => {
       const model = updateData.model || existingProduct.model || "";
       updateData.name = `${brand} ${model}`.trim();
     }
-    
+
     // Sync accessoryName with name
     if (updateData.name) {
       updateData.accessoryName = updateData.name;
@@ -734,15 +773,14 @@ const updateAccessory = async (req, res) => {
     // AUTO SEO
     // ============================================
     const finalName = updateData.name || existingProduct.name;
-    
+
     if (!updateData.seoTitle && finalName) {
       updateData.seoTitle = `${finalName} | Luxury Accessories`;
     }
-    
+
     if (!updateData.seoDescription && finalName) {
-      updateData.seoDescription = `Buy ${finalName} - Premium ${
-        updateData.accessoryCategory || existingProduct.accessoryCategory || 'Accessory'
-      }`;
+      updateData.seoDescription = `Buy ${finalName} - Premium ${updateData.accessoryCategory || existingProduct.accessoryCategory || 'Accessory'
+        }`;
     }
 
     // ============================================
@@ -890,15 +928,12 @@ const getAllAccessories = async (req, res) => {
     limit = parseInt(limit);
 
     // Base filter
-    const filter = { category: "Accessories" };
-
-    // Published filter
-    if (published !== "false") {
-      filter.published = true;
+    const filter = {};
+    if (req.query.categorisOne) {
+      filter.categorisOne = req.query.categorisOne;
+    } else {
+      filter.category = "Accessories";
     }
-
-    // Optional filters
-    if (subcategory) filter.subcategory = subcategory;
     if (brand) filter.brand = brand;
     if (gender) filter.gender = gender;
     if (material) filter.material = material;
@@ -951,11 +986,11 @@ const getAllAccessories = async (req, res) => {
 
 
 module.exports = {
-  getAccessoriesProducts, 
-  getAccessoryById, 
-  createAccessory, 
-  updateAccessory, 
-  deleteAccessory, 
+  getAccessoriesProducts,
+  getAccessoryById,
+  createAccessory,
+  updateAccessory,
+  deleteAccessory,
   getAllAccessories,
   getProductsByAccessoriesCategory
 };

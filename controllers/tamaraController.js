@@ -176,9 +176,9 @@ const createTamaraOrder = async (req, res) => {
         const orderId = order._id.toString();
 
         const merchantUrls = {
-            success: `${baseUrl}/paymentsuccess?orderId=${orderId}`,
-            cancel: `${baseUrl}/paymentcancel?orderId=${orderId}`,
-            failure: `${baseUrl}/paymentfailed?orderId=${orderId}`,
+            success: `${baseUrl}/checkout/success?orderId=${orderId}&payment=tamara`,
+            cancel: `${baseUrl}/checkout/cancel?orderId=${orderId}&payment=tamara`,
+            failure: `${baseUrl}/checkout/failure?orderId=${orderId}&payment=tamara`,
             notification: `${backendUrl}/api/webhook/tamara`,
         };
 

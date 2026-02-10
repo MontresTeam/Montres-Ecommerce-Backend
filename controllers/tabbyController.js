@@ -196,14 +196,14 @@ const createTabbyOrder = async (req, res) => {
     const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
     // NOTE: successUrl uses referenceId as orderId for the frontend until the order is actually created
     const successUrl = frontendSuccessUrl
-      ? `${frontendSuccessUrl}${frontendSuccessUrl.includes('?') ? '&' : '?'}orderId=${referenceId}`
-      : `${clientUrl}/checkout/success?orderId=${referenceId}`;
+      ? `${frontendSuccessUrl}${frontendSuccessUrl.includes('?') ? '&' : '?'}orderId=${referenceId}&payment=tabby`
+      : `${clientUrl}/checkout/success?orderId=${referenceId}&payment=tabby`;
     const cancelUrl = frontendCancelUrl
-      ? `${frontendCancelUrl}${frontendCancelUrl.includes('?') ? '&' : '?'}orderId=${referenceId}`
-      : `${clientUrl}/checkout?canceled=true&orderId=${referenceId}`;
+      ? `${frontendCancelUrl}${frontendCancelUrl.includes('?') ? '&' : '?'}orderId=${referenceId}&payment=tabby`
+      : `${clientUrl}/checkout/cancel?orderId=${referenceId}&payment=tabby`;
     const failureUrl = frontendFailureUrl
-      ? `${frontendFailureUrl}${frontendFailureUrl.includes('?') ? '&' : '?'}orderId=${referenceId}`
-      : `${clientUrl}/checkout?failed=true&orderId=${referenceId}`;
+      ? `${frontendFailureUrl}${frontendFailureUrl.includes('?') ? '&' : '?'}orderId=${referenceId}&payment=tabby`
+      : `${clientUrl}/checkout/failure?orderId=${referenceId}&payment=tabby`;
 
     const { buyerHistory, orderHistory } = await getTabbyHistory(req.user?.userId);
 
