@@ -1,4 +1,5 @@
 const Product = require("../models/product");
+const mongoose = require("mongoose");
 
 
 
@@ -229,7 +230,7 @@ const getProductsByLeatherSubCategory = async (req, res) => {
 
     // Filter for "Leather Bags" category and subcategory match
     const filter = {
-         category: { $regex: "Leather", $options: "i" }, // matches Leather Goods or Leather Bags
+      category: { $regex: "Leather", $options: "i" }, // matches Leather Goods or Leather Bags
       $or: [
         { leatherSubCategory: { $regex: leatherSubCategory, $options: "i" } },
         { leatherSubCategory: { $in: [new RegExp(leatherSubCategory, "i")] } }
@@ -465,6 +466,14 @@ const addLeathergoods = async (req, res) => {
 const updateLeathergoods = async (req, res) => {
   try {
     const leatherId = req.params.id;
+
+    // ✅ Validate ID
+    if (!mongoose.Types.ObjectId.isValid(leatherId)) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Invalid leather product ID format",
+      });
+    }
 
     const allowedUpdates = [
       "MainCategory",

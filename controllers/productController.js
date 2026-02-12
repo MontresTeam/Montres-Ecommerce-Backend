@@ -126,6 +126,12 @@ const getProducts = async (req, res) => {
 
     // ✅ Single Product by ID
     if (id) {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          message: "❌ Invalid product ID",
+        });
+      }
+
       const product = await Product.findById(id);
       if (!product) {
         return res.status(404).json({ message: "❌ Product not found" });
@@ -953,6 +959,14 @@ const restockSubscribe = async (req, res) => {
   }
 
   try {
+    // ✅ Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Invalid product ID",
+      });
+    }
+
     // Get product info
     const product = await Product.findById(id)
       .select("name category sku");
@@ -1062,6 +1076,14 @@ const unsubscribeRestock = async (req, res) => {
   }
 
   try {
+    // ✅ Validate ID before query
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Invalid product ID",
+      });
+    }
+
     // Find and delete the subscription
     const result = await RestockSubscription.findOneAndDelete({
       productId: id, // ✅ use id from params
@@ -1182,6 +1204,15 @@ const getAllProductwithSearch = async (req, res) => {
 const SimilarProduct = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // ✅ Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Invalid product ID",
+      });
+    }
+
     const product = await Product.findById(id);
 
     if (!product) return res.status(404).json({ message: "Product not found" });
@@ -1208,6 +1239,15 @@ const SimilarProduct = async (req, res) => {
 const YouMayAlsoLike = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // ✅ Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Invalid product ID",
+      });
+    }
+
     const product = await Product.findById(id);
 
     if (!product) return res.status(404).json({ message: "Product not found" });

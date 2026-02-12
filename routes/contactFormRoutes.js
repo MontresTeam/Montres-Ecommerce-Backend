@@ -8,13 +8,15 @@ const {
 const imageUpload = require("../config/multerConfig");
 
 
-// 📩 Submit contact form (with Cloudinary upload)
+const { adminProtect } = require("../middlewares/authMiddleware");
+
+// 📩 Submit contact form (with Cloudinary upload) - Public
 router.post("/submit", imageUpload, submitContactForm);
 
-// 📜 Get all contact submissions
-router.get("/", getAllContacts);
+// 📜 Get all contact submissions - Admin only
+router.get("/", adminProtect, getAllContacts);
 
-// 🗑 Delete contact
-router.delete("/:id", deleteContact);
+// 🗑 Delete contact - Admin only
+router.delete("/:id", adminProtect, deleteContact);
 
 module.exports = router;

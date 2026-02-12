@@ -1,39 +1,45 @@
-require('dotenv').config(); // Load environment variables
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+require("dotenv").config();
 
+// Initialize admins from environment variables
+const getAdmins = () => {
+  const adminData = [
+    {
+      id: 1,
+      username: process.env.ADMIN_CEO_USERNAME,
+      password: process.env.ADMIN_CEO_PASSWORD,
+      role: "ceo",
+    },
+    {
+      id: 2,
+      username: process.env.ADMIN_SALES_USERNAME,
+      password: process.env.ADMIN_SALES_PASSWORD,
+      role: "sales",
+    },
+    {
+      id: 3,
+      username: process.env.ADMIN_DEV_USERNAME,
+      password: process.env.ADMIN_DEV_PASSWORD,
+      role: "developer",
+    },
+    {
+      id: 4,
+      username: process.env.ADMIN_MARKETING_USERNAME,
+      password: process.env.ADMIN_MARKETING_PASSWORD,
+      role: "marketing",
+    },
+  ];
 
-const admins = [
-  {
-    id: 1,
-    username: process.env.ADMIN_CEO_USERNAME,
-    password: bcrypt.hashSync(process.env.ADMIN_CEO_PASSWORD, 12),
-    role: "ceo",
+  return adminData.map(admin => ({
+    ...admin,
+    // Hash password only if it exists, otherwise use a placeholder to avoid crash
+    password: admin.password ? bcrypt.hashSync(admin.password, 12) : null,
     profile: null,
-  },
-  {
-    id: 2,
-    username: process.env.ADMIN_SALES_USERNAME,
-    password: bcrypt.hashSync(process.env.ADMIN_SALES_PASSWORD, 12),
-    role: "sales",
-    profile: null,
-  },
-  {
-    id: 3,
-    username: process.env.ADMIN_DEV_USERNAME,
-    password: bcrypt.hashSync(process.env.ADMIN_DEV_PASSWORD, 12),
-    role: "developer",
-    profile: null,
-  },
-  {
-    id: 4,
-    username: process.env.ADMIN_MARKETING_USERNAME,
-    password: bcrypt.hashSync(process.env.ADMIN_MARKETING_PASSWORD, 12),
-    role: "marketing",
-    profile: null,
-  },
-];
+  }));
+};
 
+let admins = getAdmins();
 
 // Admin login controller
 const adminlogin = async (req, res) => {
@@ -45,19 +51,28 @@ const adminlogin = async (req, res) => {
     }
 
     const admin = admins.find((a) => a.username === username);
-    if (!admin) return res.status(400).json({ message: "Invalid username" });
+    if (!admin || !admin.password) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
     const isValid = await bcrypt.compare(password, admin.password);
-    if (!isValid) return res.status(400).json({ message: "Invalid password" });
+    if (!isValid) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
-    // ✅ If Cloudinary profile URL exists, update admin profile
+    // Update profile URL if provided (in-memory persistence until server restart)
     if (profileUrl) {
       admin.profile = profileUrl;
     }
 
-    // Generate JWT
+    // Generate JWT specific for Admin
     const token = jwt.sign(
-      { id: admin.id, username: admin.username, role: admin.role },
+      {
+        id: admin.id,
+        username: admin.username,
+        role: admin.role,
+        isAdmin: true
+      },
       process.env.ADMIN_JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -65,7 +80,12 @@ const adminlogin = async (req, res) => {
     res.json({
       message: "Login successful",
       token,
-      profile: admin.profile || null,
+      admin: {
+        id: admin.id,
+        username: admin.username,
+        role: admin.role,
+        profile: admin.profile
+      },
     });
   } catch (error) {
     console.error("Admin login error:", error);

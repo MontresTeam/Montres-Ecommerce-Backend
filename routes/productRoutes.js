@@ -38,14 +38,14 @@ const {
   getCartCount
 } = require("../controllers/userController");
 const ImageUpload = require("../config/multerConfig");
-const { protect } = require("../middlewares/authMiddleware");
+const { protect, adminProtect } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
 /* ----------------- Product Routes ----------------- */
 router.get("/products", getProducts);
 router.get("/getAllBrands", getAllBrands)                      // Fetch all products
-router.post("/products", ImageUpload, addProduct);          // Add a new product
+router.post("/products", adminProtect, ImageUpload, addProduct);          // Add a new product (Admin Only)
 router.post("/createBooking", protect, ImageUpload, addServiceForm); // Create service form
 router.get("/getBooking", getBookingService)
 router.get("/products/home", productHome);                 // Products for homepage
@@ -81,7 +81,7 @@ router.put("/wishlists/:wishlistId/visibility", protect, togglePublicSharing)
 router.get("/orders/my", protect, getMyOrders);             // My orders
 
 router.post("/restock/:id/subscribe", restockSubscribe)
-router.get("/restock/subscribers", getRestockSubscribers)
+router.get("/restock/subscribers", adminProtect, getRestockSubscribers) // Admin Only
 router.delete("/restock/:id/unsubscribe", unsubscribeRestock)
 // Single product by 
 
@@ -94,7 +94,7 @@ router.get("/:id/you-may-also-like", YouMayAlsoLike);
 router.get('/brand/:brand/watches', getBrandWatches);
 router.get("/brand/:brand/handbags", getBrandBags);
 router.get("/brand/:brand/accessories", getBrandAccessories)
-router.post("/inventory/move", moveToInventory)
+router.post("/inventory/move", adminProtect, moveToInventory) // Admin Only
 
 
 module.exports = router;

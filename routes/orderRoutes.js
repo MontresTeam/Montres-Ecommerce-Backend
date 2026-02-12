@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { protect } = require("../middlewares/authMiddleware");
+const { protect, adminProtect } = require("../middlewares/authMiddleware");
 
 const {
   createStripeOrder,
@@ -35,7 +35,7 @@ router.post("/billing", protect, createBillingAddress);
 router.delete("/billing/:id", protect, deleteBillingAddress);
 router.put("/billing-address/:id", protect, updateBillingAddress)
 
-router.get("/", getAllOrders);
+router.get("/", adminProtect, getAllOrders);
 
 // Dynamic route LAST
 router.get("/:id", getOrderById);

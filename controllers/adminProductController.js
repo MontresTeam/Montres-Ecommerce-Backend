@@ -1,9 +1,18 @@
 const Product = require("../models/product");
 const notifyRestock = require("../utils/notifyRestock"); // Restock notification utility
+const mongoose = require("mongoose");
 
 const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // ✅ Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Invalid product ID format",
+      });
+    }
 
     // Check if product exists
     const product = await Product.findById(id);
@@ -174,11 +183,11 @@ const addProduct = async (req, res) => {
     const savedProduct = await newProduct.save();
 
     const response = await Product.findById(savedProduct._id).select(
-         "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDeliveryWatch " +
-        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-        "salePrice regularPrice stockQuantity taxStatus limitedEdition strapSize caseSize includedAccessories " +
-        "condition itemCondition category description visibility published featured inStock " +
-        "badges images createdAt updatedAt"
+      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDeliveryWatch " +
+      "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+      "salePrice regularPrice stockQuantity taxStatus limitedEdition strapSize caseSize includedAccessories " +
+      "condition itemCondition category description visibility published featured inStock " +
+      "badges images createdAt updatedAt"
     );
 
     res.status(201).json({
@@ -199,6 +208,14 @@ const addProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // ✅ Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Invalid product ID format",
+      });
+    }
 
     const product = await Product.findById(id);
     if (!product) {
@@ -231,8 +248,8 @@ const updateProduct = async (req, res) => {
       req.body.stockQuantity !== undefined
         ? stockQuantity > 0
         : req.body.inStock !== undefined
-        ? parseBoolean(req.body.inStock)
-        : product.inStock;
+          ? parseBoolean(req.body.inStock)
+          : product.inStock;
 
     // Build updated fields safely
     const updatedFields = {
@@ -310,10 +327,10 @@ const updateProduct = async (req, res) => {
       runValidators: true,
     });
 
-    
-if (oldStockQuantity === 0 && updatedProduct.stockQuantity > 0) {
-  await notifyRestock(updatedProduct._id);
-}
+
+    if (oldStockQuantity === 0 && updatedProduct.stockQuantity > 0) {
+      await notifyRestock(updatedProduct._id);
+    }
 
 
     res.status(200).json({
@@ -356,11 +373,64 @@ const getLimitedEditionProducts = async (req, res) => {
     });
   }
 };
-;
+
+const getLowStockProducts = async (req, res) => {
+  try {
+    // Luxury items are often low quantity by nature, but 5 is a safe threshold for "low"
+    const products = await Product.find({
+      $or: [
+        { stockQuantity: { $lte: 5 } },
+        { inStock: false }
+      ]
+    }).select(
+      "brand model name sku stockQuantity category inStock images updatedAt"
+    ).sort({ stockQuantity: 1 });
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
+  } catch (error) {
+    console.log("Low stock fetch error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch low stock products",
+    });
+  }
+};
+
+const getDeadStockProducts = async (req, res) => {
+  try {
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+    const products = await Product.find({
+      stockQuantity: { $gt: 0 },
+      updatedAt: { $lte: ninetyDaysAgo }
+    }).select(
+      "brand model name sku stockQuantity salePrice regularPrice category inStock images updatedAt createdAt"
+    ).sort({ updatedAt: 1 });
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
+  } catch (error) {
+    console.log("Dead stock fetch error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch dead stock products",
+    });
+  }
+};
 
 module.exports = {
   addProduct,
   deleteProduct,
   updateProduct,
-  getLimitedEditionProducts
+  getLimitedEditionProducts,
+  getLowStockProducts,
+  getDeadStockProducts
 };

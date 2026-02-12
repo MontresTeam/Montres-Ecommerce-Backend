@@ -24,6 +24,8 @@ const invontryStock = require('./routes/inventoryRoutes')
 const adminsRoute = require('./routes/adminRoute')
 const seoRoutes = require('./routes/seoPage.routes')
 const webhookRoute = require("./routes/webhookRoutes");
+const brandRoutes = require('./routes/brandRoutes');
+const purchaseRoutes = require('./routes/purchaseRoutes');
 
 
 const PORT = process.env.PORT || 9000;
@@ -100,6 +102,8 @@ app.use('/api/recommend', recommendRoutes);
 app.use('/api/invontry', invontryStock)
 app.use('/api/admin', adminsRoute)
 app.use("/api/seo-pages", seoRoutes);
+app.use("/api/brands", brandRoutes);
+app.use("/api/purchase", purchaseRoutes);
 
 // ✅ Catch-all generic /api route MUST be last
 app.use("/api", productRoutes);
