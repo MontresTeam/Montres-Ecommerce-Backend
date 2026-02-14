@@ -2,11 +2,9 @@ const Order = require("../models/OrderModel");
 const ShippingAddress = require('../models/ShippingAddress')
 const BillingAddress = require('../models/BillingAddress')
 const Product = require("../models/product");
-const userModel = require("../models/UserModel");
 const { calculateShippingFee } = require("../utils/shippingCalculator");
 const stripePkg = require("stripe");
-const axios = require("axios");
-const sendEmail = require("../utils/sendEmail");
+
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? stripePkg(process.env.STRIPE_SECRET_KEY)
