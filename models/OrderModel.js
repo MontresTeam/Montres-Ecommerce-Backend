@@ -79,6 +79,7 @@ const orderSchema = new mongoose.Schema(
     stripeSessionId: { type: String, index: true },
     stripePaymentIntentId: { type: String, index: true },
     tabbySessionId: String,
+    tabbyCaptureId: String,
     tamaraOrderId: String,
 
     orderStatus: {

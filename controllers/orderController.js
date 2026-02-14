@@ -71,7 +71,7 @@ const createStripeOrder = async (req, res) => {
           quantity: item.quantity,
         })),
         mode: "payment",
-        success_url: `${process.env.CLIENT_URL || "https://www.montres.ae"}/checkout/success?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}&payment=stripe`,
+        success_url: `${process.env.CLIENT_URL || "https://www.montres.ae"}/checkout/verify?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}&payment=stripe`,
         cancel_url: `${process.env.CLIENT_URL || "https://www.montres.ae"}/checkout/cancel?orderId=${order._id}&payment=stripe`,
         metadata: { orderId: order._id.toString(), userId: userId.toString() },
       });
@@ -93,7 +93,8 @@ const getShippingAddresses = async (req, res) => {
     const addresses = await ShippingAddress.find({ userId: req.user.userId }).sort({ updatedAt: -1 }).lean();
     return res.json({ success: true, addresses });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    console.error("Error in getShippingAddresses:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -102,7 +103,8 @@ const createShippingAddress = async (req, res) => {
     const address = await ShippingAddress.create({ userId: req.user.userId, ...req.body });
     return res.status(201).json({ success: true, address });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    console.error("Error in createShippingAddress:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -111,16 +113,18 @@ const deleteShippingAddress = async (req, res) => {
     await ShippingAddress.findOneAndDelete({ _id: req.params.id, userId: req.user.userId });
     return res.json({ success: true });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    console.error("Error in deleteShippingAddress:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
 const updateShippingAddress = async (req, res) => {
   try {
     const updated = await ShippingAddress.findOneAndUpdate({ _id: req.params.id, userId: req.user.userId }, { $set: req.body }, { new: true });
-    return res.json({ success: true, data: updated });
+    return res.json({ success: true, address: updated });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    console.error("Error in updateShippingAddress:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -129,7 +133,8 @@ const getBillingAddresses = async (req, res) => {
     const addresses = await BillingAddress.find({ userId: req.user.userId }).sort({ updatedAt: -1 }).lean();
     return res.json({ success: true, addresses });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    console.error("Error in getBillingAddresses:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -138,7 +143,8 @@ const createBillingAddress = async (req, res) => {
     const address = await BillingAddress.create({ userId: req.user.userId, ...req.body });
     return res.status(201).json({ success: true, address });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    console.error("Error in createBillingAddress:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -147,16 +153,18 @@ const deleteBillingAddress = async (req, res) => {
     await BillingAddress.findOneAndDelete({ _id: req.params.id, userId: req.user.userId });
     return res.json({ success: true });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    console.error("Error in deleteBillingAddress:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
 const updateBillingAddress = async (req, res) => {
   try {
     const updated = await BillingAddress.findOneAndUpdate({ _id: req.params.id, userId: req.user.userId }, { $set: req.body }, { new: true });
-    return res.json({ success: true, data: updated });
+    return res.json({ success: true, address: updated });
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    console.error("Error in updateBillingAddress:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -175,7 +183,9 @@ const getOrderById = async (req, res) => {
       order = await Order.findOne({
         $or: [
           { orderId: id },
-          { tabbySessionId: id }
+          { tabbySessionId: id },
+          { stripeSessionId: id },
+          { tamaraOrderId: id }
         ]
       }).lean();
     }

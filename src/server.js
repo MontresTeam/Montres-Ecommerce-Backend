@@ -41,21 +41,27 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.ADMIN_URL,
   process.env.LOCAL_URL,
+  "https://www.montres.ae",
+  "https://montres.ae",
+  "http://localhost:3000",
+  "http://localhost:3001",
 ];
 
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow Postman / server requests
+      if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error("Not allowed by CORS"));
+        callback(null, false);
       }
     },
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
     credentials: true,
+    optionsSuccessStatus: 200
   })
 );
 

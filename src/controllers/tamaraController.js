@@ -1,5 +1,6 @@
 const Order = require("../models/OrderModel");
 const Product = require("../models/product");
+const User = require("../models/UserModel");
 const { calculateShippingFee } = require("../utils/shippingCalculator");
 const axios = require("axios");
 
@@ -19,12 +20,14 @@ const normalizeCountryCode = (value) => {
 };
 
 // ==================================================
-// CREATE TAMARA ORDER
+// CREATE TAMARA ORDER (FIXED - AED DIRECT)
 // ==================================================
 const createTamaraOrder = async (req, res) => {
     try {
-        const userId = req.user.userId; // matches this project's auth
-        if (!userId) return res.status(401).json({ message: "Unauthorized" });
+        const userId = req.user.userId;
+        if (!userId) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
 
         const {
             items = [],
@@ -33,73 +36,44 @@ const createTamaraOrder = async (req, res) => {
             instalments = 3,
         } = req.body || {};
 
-        // ========================================
-        // VALIDATION PHASE (BEFORE DB WRITES)
-        // ========================================
+        // ===============================
+        // VALIDATION
+        // ===============================
 
-        // 1️⃣ Validate UAE phone number (BEFORE creating order)
         if (!shippingAddress?.phone?.startsWith("+971")) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid UAE phone number for Tamara. Phone must start with +971"
+                message: "Tamara UAE requires phone starting with +971",
             });
         }
 
-        // 2️⃣ Normalize country code ONCE and reuse
-        const countryCode = normalizeCountryCode("AE");
-
-        // Debug: Log country normalization
-        console.log("🌍 Country Debug:", {
-            received: shippingAddress.country,
-            normalized: countryCode
-        });
-
-        // 3️⃣ Enforce UAE-only flow (consistency check)
-        if (countryCode !== "AE") {
-            return res.status(400).json({
-                success: false,
-                message: "Tamara UAE flow only supports AE country",
-                debug: {
-                    receivedCountry: shippingAddress.country,
-                    normalizedTo: countryCode
-                }
-            });
-        }
-
-        // 4️⃣ Validate instalments
+        const countryCode = "AE";
         const ALLOWED_INSTALLMENTS = [3, 4, 6];
-        if (!ALLOWED_INSTALLMENTS.includes(instalments)) {
+
+        if (!ALLOWED_INSTALLMENTS.includes(Number(instalments))) {
             return res.status(400).json({
                 success: false,
-                message: `Invalid instalment plan for Tamara UAE. Allowed: ${ALLOWED_INSTALLMENTS.join(", ")}`
+                message: "Allowed instalments: 3, 4, 6",
             });
         }
 
-        // ========================================
-        // PROCESSING PHASE
-        // ========================================
-
-        // Determine billing address
         const finalBillingAddress =
             billingAddress?.address1 && billingAddress?.city
                 ? billingAddress
                 : shippingAddress;
 
-        // Populate items from DB
+        // ===============================
+        // FETCH PRODUCTS
+        // ===============================
+
         const populatedItems = await Promise.all(
             items.map(async (it) => {
                 const product = await Product.findById(it.productId)
                     .select("name images salePrice regularPrice stockQuantity published")
                     .lean();
 
-                if (!product) {
-                    throw new Error(`Product not found: ${it.productId}`);
-                }
-
-                // --- LOGICAL VALIDATIONS (Adapted for Project Fields) ---
-                if (!product.published) {
-                    throw new Error(`Product "${product.name}" is currently unavailable.`);
-                }
+                if (!product) throw new Error("Product not found");
+                if (!product.published) throw new Error("Product unavailable");
 
                 const price = product.salePrice || product.regularPrice || 0;
 
@@ -107,33 +81,27 @@ const createTamaraOrder = async (req, res) => {
                     productId: product._id,
                     name: product.name,
                     image: product.images?.[0]?.url || "",
-                    price: price,
-                    quantity: it.quantity || 1,
+                    price: Number(price),
+                    quantity: Number(it.quantity) || 1,
                 };
             })
         );
 
-        // Calculate totals
+        // ===============================
+        // CALCULATIONS (NO FX CONVERSION)
+        // ===============================
+
         const subtotal = populatedItems.reduce(
             (acc, item) => acc + item.price * item.quantity,
             0
         );
 
-        // In user's code, they set shippingFee = 0 explicitly for Tamara AE flow
-        const { region } = calculateShippingFee({
-            country: countryCode,
-            subtotal,
-        });
-        const shippingFee = 0;
-
+        const shippingFee = 0; // If needed, set real value
         const total = subtotal + shippingFee;
 
-        // Tamara requires AED for AE orders. 
-        // We convert USD to AED (Approx 1 USD = 3.6725 AED)
-        const RATE = 3.6725;
-
-        // Helper to convert and round to 2 decimals
-        const toAED = (amount) => Number((amount * RATE).toFixed(2));
+        // ===============================
+        // TAMARA ITEMS
+        // ===============================
 
         const tamaraItems = populatedItems.map((item) => ({
             name: item.name,
@@ -141,44 +109,73 @@ const createTamaraOrder = async (req, res) => {
             reference_id: item.productId.toString(),
             sku: item.productId.toString(),
             quantity: item.quantity,
-            unit_price: { amount: toAED(item.price), currency: "AED" },
-            total_amount: { amount: toAED(item.price * item.quantity), currency: "AED" },
+            unit_price: {
+                amount: Number(item.price.toFixed(2)),
+                currency: "AED",
+            },
+            total_amount: {
+                amount: Number((item.price * item.quantity).toFixed(2)),
+                currency: "AED",
+            },
         }));
 
-        // Recalculate total in AED to match items sum (prevent rounding gaps)
-        const tamaraTotal = tamaraItems.reduce((sum, item) => sum + item.total_amount.amount, 0) + toAED(shippingFee);
+        const tamaraTotal = Number(total.toFixed(2));
 
-        // ------------------------------
-        // 5️⃣ GENERATE REFERENCE ID (No DB Creation Yet)
-        // ------------------------------
-        const referenceId = `${userId || 'guest'}_tamara_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        // ===============================
+        // CREATE ORDER IN DB
+        // ===============================
 
-        // Build merchant URLs
-        const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || "http://localhost:3000";
-        const backendUrl = process.env.BACKEND_URL || 'https://available-bunny-mousey.ngrok-free.dev';
+        const order = await Order.create({
+            userId,
+            orderId: "", // Will update after or use temporary ID if needed
+            items: populatedItems,
+            subtotal,
+            shippingFee,
+            total,
+            vat: 0,
+            currency: "AED",
+            settlementCurrency: "AED",
+            fxRate: 1,
+            shippingAddress,
+            billingAddress: finalBillingAddress,
+            paymentMethod: "tamara",
+            paymentStatus: "pending",
+        });
 
-        const merchantUrls = {
-            success: `${baseUrl}/paymentsuccess?orderId=${referenceId}`,
-            cancel: `${baseUrl}/paymentcancel?orderId=${referenceId}`,
-            failure: `${baseUrl}/paymentfailure?orderId=${referenceId}`,
-            notification: `${backendUrl}/api/webhook/tamara`,
-        };
+        const orderId = order._id.toString();
+        order.orderId = orderId;
+        await order.save();
 
-        console.log("🔗 Merchant URLs:", merchantUrls);
+        const baseUrl =
+            process.env.FRONTEND_URL ||
+            process.env.CLIENT_URL ||
+            "https://www.montres.ae";
 
-        // Tamara payload (Mapping camelCase to snake_case for API)
+        const backendUrl =
+            process.env.BACKEND_URL ||
+            "https://yourbackend.com";
+
         const tamaraPayload = {
-            order_reference_id: referenceId,
-            order_number: referenceId,
-            description: `Order ${referenceId} – Montres Ecommerce`,
-            total_amount: { amount: Number(tamaraTotal.toFixed(2)), currency: "AED" },
-            shipping_amount: { amount: toAED(shippingFee), currency: "AED" },
-            tax_amount: { amount: 0, currency: "AED" },
+            order_reference_id: orderId,
+            order_number: orderId,
+            description: `Order ${orderId} - Montres`,
+            total_amount: {
+                amount: tamaraTotal,
+                currency: "AED",
+            },
+            shipping_amount: {
+                amount: Number(shippingFee.toFixed(2)),
+                currency: "AED",
+            },
+            tax_amount: {
+                amount: 0,
+                currency: "AED",
+            },
             items: tamaraItems,
             consumer: {
                 first_name: shippingAddress.firstName,
                 last_name: shippingAddress.lastName,
-                email: shippingAddress.email || req.user.email || "",
+                email: shippingAddress.email || req.user.email,
                 phone_number: shippingAddress.phone,
             },
             billing_address: {
@@ -202,40 +199,50 @@ const createTamaraOrder = async (req, res) => {
                 phone_number: shippingAddress.phone,
             },
             payment_type: "PAY_BY_INSTALMENTS",
-            instalments,
+            instalments: Number(instalments),
             country_code: countryCode,
             locale: "en_AE",
-            is_mobile: false,
-            platform: "Montres Ecommerce",
             merchant_url: {
-                success: merchantUrls.success,
-                cancel: merchantUrls.cancel,
-                failure: merchantUrls.failure,
-                notification: merchantUrls.notification,
+                success: `${baseUrl}/checkout/verify?orderId=${orderId}&payment=tamara`,
+                cancel: `${baseUrl}/checkout/cancel?orderId=${orderId}&payment=tamara`,
+                failure: `${baseUrl}/checkout/failure?orderId=${orderId}&payment=tamara`,
+                notification: `${backendUrl}/api/webhook/tamara`,
             },
         };
 
-        console.log("📦 Sending Tamara Payload (No order created yet):", JSON.stringify(tamaraPayload, null, 2));
+        console.log("Tamara Payload:", tamaraPayload);
 
-        // Call Tamara API directly using axios
-        const tamaraResponse = await axios.post(`${process.env.TAMARA_API_BASE}/checkout`, tamaraPayload, {
-            headers: {
-                Authorization: `Bearer ${process.env.TAMARA_SECRET_KEY}`,
-                "Content-Type": "application/json",
-            },
-        });
+        const tamaraResponse = await axios.post(
+            `${process.env.TAMARA_API_BASE}/checkout`,
+            tamaraPayload,
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.TAMARA_SECRET_KEY}`,
+                    "Content-Type": "application/json",
+                },
+            }
+        );
 
-        const checkoutUrl = tamaraResponse.data?._links?.checkout?.href || tamaraResponse.data?.checkout_url;
-        if (!checkoutUrl) throw new Error("Tamara checkout URL not returned");
+        const checkoutUrl =
+            tamaraResponse.data?._links?.checkout?.href ||
+            tamaraResponse.data?.checkout_url;
 
-        // Response
+        if (!checkoutUrl) {
+            throw new Error("Tamara checkout URL not returned");
+        }
+
+        order.tamaraOrderId = tamaraResponse.data.order_id;
+        await order.save();
+
         return res.status(201).json({
             success: true,
-            referenceId,
+            orderId: order._id,
             checkoutUrl,
         });
+
     } catch (error) {
         console.error("TAMARA ERROR:", error?.response?.data || error.message);
+
         return res.status(500).json({
             success: false,
             message: "Tamara payment initialization failed",

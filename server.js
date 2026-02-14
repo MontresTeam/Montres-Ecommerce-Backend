@@ -29,7 +29,7 @@ const purchaseRoutes = require('./routes/purchaseRoutes');
 
 
 
-const PORT = process.env.PORT || 9000;
+const PORT = process.env.PORT;
 
 
 
@@ -44,21 +44,29 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.ADMIN_URL,
   process.env.LOCAL_URL,
+  "https://www.montres.ae",
+  "https://montres.ae",
+  "http://localhost:3000",
+  "http://localhost:3001",
 ];
-
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow Postman / server requests
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error("Not allowed by CORS"));
+        console.warn(`CORS blocked for origin: ${origin}`);
+        callback(null, false);
       }
     },
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
     credentials: true,
+    optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
   })
 );
 

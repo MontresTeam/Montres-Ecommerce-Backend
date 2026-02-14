@@ -5,7 +5,7 @@ const mongoose = require("mongoose");
 const Order = require("../models/OrderModel");
 const userModel = require('../models/UserModel');
 const Product = require("../models/product");
-const { calculateShippingFee } = require("../utils/shippingCalculator");
+const shippingCalculator = require("../utils/shippingCalculator");
 const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
 
 // ✅ Helper to get Tabby history
@@ -42,8 +42,18 @@ const getTabbyHistory = async (userId) => {
       purchased_at: o.createdAt.toISOString(),
       amount: Number(parseFloat(o.total).toFixed(2)),
       currency: o.currency || "AED",
-      status: o.paymentStatus === 'paid' ? 'captured' : (o.paymentStatus || 'new'),
-      payment_method: o.paymentMethod === 'stripe' ? 'card' : 'other'
+      status: 'complete', // Tabby expects 'complete' for history
+      payment_method: o.paymentMethod === 'stripe' ? 'card' : 'other',
+      buyer: {
+        phone: formatPhone(o.shippingAddress?.phone),
+        email: o.shippingAddress?.email,
+        name: `${o.shippingAddress?.firstName || ''} ${o.shippingAddress?.lastName || ''}`.trim() || 'Customer'
+      },
+      shipping_address: {
+        city: o.shippingAddress?.city || "Dubai",
+        address: o.shippingAddress?.street || "N/A",
+        zip: o.shippingAddress?.postalCode || "00000"
+      }
     }));
   }
 
@@ -122,29 +132,66 @@ const preScoring = async (req, res) => {
       merchant_code: req.body.merchant_code || process.env.TABBY_MERCHANT_CODE || "MTAE",
     };
 
-    const response = await axios.post(
-      "https://api.tabby.ai/api/v2/pre-scoring",
-      tabbyPayload,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
+    let response;
+    try {
+      response = await axios.post(
+        "https://api.tabby.ai/api/v2/pre-scoring",
+        tabbyPayload,
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 10000
+        }
+      );
+    } catch (preError) {
+      if (preError.response?.status === 404 || preError.response?.status === 405) {
+        console.warn(`⚠️ Tabby pre-scoring endpoint returned ${preError.response?.status}. Falling back to checkout endpoint for eligibility.`);
+
+        const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
+        const fallbackPayload = {
+          ...tabbyPayload,
+          merchant_urls: {
+            success: `${clientUrl}/checkout/success`,
+            cancel: `${clientUrl}/checkout/cancel`,
+            failure: `${clientUrl}/checkout/failure`
+          },
+          lang: req.body.lang || "en"
+        };
+
+        response = await axios.post(
+          "https://api.tabby.ai/api/v2/checkout",
+          fallbackPayload,
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+              "Content-Type": "application/json",
+            },
+            timeout: 10000
+          }
+        );
+      } else {
+        throw preError;
       }
-    );
+    }
+
+    const eligible = ["approved", "approved_with_changes", "created"].includes(response.data.status?.toLowerCase()) ||
+      (response.data.configuration?.available_products?.installments?.length > 0);
 
     res.json({
       success: true,
-      eligible: response.data.status === "approved" || response.data.status === "approved_with_changes",
+      eligible: eligible,
       status: response.data.status,
       details: response.data,
     });
   } catch (error) {
-    console.error("Tabby pre-scoring error:", error.response?.data || error.message);
+    const errorData = error.response?.data || error.message;
+    console.error("Tabby pre-scoring error:", JSON.stringify(errorData, null, 2));
     res.status(error.response?.status || 500).json({
       success: false,
       message: "Eligibility check failed",
-      error: error.response?.data || error.message,
+      error: errorData,
       eligible: false,
     });
   }
@@ -287,10 +334,36 @@ const createTabbyOrder = async (req, res) => {
     }
 
     const subtotal = populatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
-    const { shippingFee, region } = calculateShippingFee({ country: shippingAddress?.country || "AE", subtotal });
+    const { shippingFee, region } = shippingCalculator.calculateShippingFee({ country: shippingAddress?.country || "AE", subtotal });
     const total = Number((subtotal + shippingFee).toFixed(2));
 
     const referenceId = `tabby_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+    // ✅ NEW: Create order in database first
+    const newOrder = await Order.create({
+      userId: req.user?.userId || null,
+      orderId: referenceId,
+      items: populatedItems,
+      subtotal: subtotal,
+      shippingFee: shippingFee,
+      total: total,
+      paymentMethod: "tabby",
+      paymentStatus: "pending",
+      orderStatus: "Pending",
+      currency: "AED",
+      shippingAddress: {
+        firstName: shippingAddress?.firstName || "Customer",
+        lastName: shippingAddress?.lastName || "User",
+        email: buyerEmail,
+        phone: buyerPhone,
+        city: shippingAddress?.city || "Dubai",
+        street: shippingAddress?.address1 || shippingAddress?.street || "N/A",
+        country: normalizeCountry(shippingAddress?.country),
+        postalCode: shippingAddress?.postalCode || ""
+      }
+    });
+
+    console.log(`📝 Pending Tabby order created: ${newOrder._id} (ID: ${referenceId})`);
 
     const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
     const successUrl = frontendSuccessUrl
@@ -349,18 +422,21 @@ const createTabbyOrder = async (req, res) => {
       merchant_urls: { success: successUrl, cancel: cancelUrl, failure: failureUrl },
     };
 
-    console.log("🟠 Sending Tabby Payload (No order created yet):", JSON.stringify(tabbyPayload, null, 2));
+    console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
     const response = await axios.post("https://api.tabby.ai/api/v2/checkout", tabbyPayload, {
       headers: {
         Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
         "Content-Type": "application/json"
       },
+      timeout: 10000
     });
 
     const paymentUrl = response.data?.checkout_url || response.data?.web_url || response.data?.configuration?.available_products?.installments?.[0]?.web_url || null;
 
     if (!paymentUrl) {
+      // Cleanup if failed
+      await Order.findByIdAndDelete(newOrder._id);
       return res.status(400).json({
         success: false,
         message: response.data.status === "rejected" ? "Tabby has rejected this order" : "Tabby checkout unavailable",
@@ -369,9 +445,13 @@ const createTabbyOrder = async (req, res) => {
       });
     }
 
+    // Save session ID to order
+    newOrder.tabbySessionId = response.data.id;
+    await newOrder.save();
+
     return res.status(201).json({ success: true, referenceId, checkoutUrl: paymentUrl });
   } catch (error) {
-    console.error("❌ Tabby error details:", error.response?.data || error.message);
+    console.error("❌ Tabby error details:", JSON.stringify(error.response?.data || error.message, null, 2));
     return res.status(500).json({
       success: false,
       message: "Tabby initialization failed",

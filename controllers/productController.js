@@ -1273,6 +1273,29 @@ const YouMayAlsoLike = async (req, res) => {
   }
 };
 
+const getLimitedEditionProducts = async (req, res) => {
+  try {
+    const products = await Product.find({
+      limitedEdition: true,
+      published: true,
+    }).select(
+      "brand model name regularPrice salePrice images limitedEdition category inStock createdAt"
+    );
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      products,
+    });
+  } catch (error) {
+    console.log("Limited edition fetch error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch limited edition products",
+    });
+  }
+};
+
 module.exports = {
   getProducts,
   addProduct,
@@ -1291,5 +1314,6 @@ module.exports = {
   getRestockSubscribers,
   unsubscribeRestock,
   getBrandAccessories,
-  getAllBrands
+  getAllBrands,
+  getLimitedEditionProducts
 };
