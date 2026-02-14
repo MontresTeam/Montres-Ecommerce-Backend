@@ -1,6 +1,7 @@
 const express = require("express");
-const { handleStripeWebhook, handleTamaraWebhook } = require("../controllers/webhoockController");
+const { handleStripeWebhook } = require("../controllers/webhoockController");
 const { handleWebhook: handleTabbyWebhook } = require("../controllers/tabbyController");
+const { handleTamaraWebhook } = require("../controllers/tamaraController");
 
 const router = express.Router();
 

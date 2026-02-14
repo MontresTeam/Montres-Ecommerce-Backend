@@ -26,7 +26,7 @@ const seoRoutes = require('./routes/seoPage.routes')
 const webhookRoute = require("./routes/webhookRoutes");
 
 
-const PORT = process.env.PORT || 9000;
+const PORT = process.env.PORT;
 
 
 

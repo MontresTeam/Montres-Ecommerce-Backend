@@ -325,157 +325,202 @@ const createTabbyOrder = async (req, res) => {
   }
 };
 
-// ✅ Webhook Handler - Tabby's recommended way to capture orders
-// This endpoint receives updates from Tabby (authorized, captured, etc.)
+
+// -----------------------------------------------------
+// 🔐 VERIFY TABBY SIGNATURE
+// -----------------------------------------------------
+const verifyTabbySignature = (req) => {
+  // Sandbox/Development → skip check if not production
+  if (process.env.NODE_ENV !== "production") {
+    console.log("⚠️ Tabby sandbox mode – skipping signature verification");
+    return true;
+  }
+
+  const signature = req.headers["x-tabby-signature"] || req.headers["tabby-signature"];
+  const secret = process.env.TABBY_WEBHOOK_SECRET;
+
+  if (!signature) {
+    console.error("❌ Tabby signature header missing");
+    return false;
+  }
+
+  if (!secret) {
+    console.warn("⚠️ TABBY_WEBHOOK_SECRET not set, allowing for now...");
+    return true;
+  }
+
+  // Use raw body if available, otherwise req.body
+  const body = req.rawBody || req.body;
+  const payload = Buffer.isBuffer(body) ? body : JSON.stringify(body);
+
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(payload)
+    .digest("hex");
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expectedSignature),
+      Buffer.from(signature)
+    );
+  } catch {
+    return expectedSignature === signature;
+  }
+};
+
+// -----------------------------------------------------
+// 🚀 HANDLE TABBY WEBHOOK
+// -----------------------------------------------------
 const handleWebhook = async (req, res) => {
   try {
-    // 1. Immediately acknowledge the webhook to avoid timeouts
+
+    // �️ 1. Verify Signature
+    if (!verifyTabbySignature(req)) {
+      console.error("❌ Invalid Tabby signature attempt");
+      return res.status(401).json({ message: "Invalid signature" });
+    }
+
+    // ✅ 2. Immediately acknowledge
     res.status(200).send("ok");
 
-    // 2. Parse the payload (Express raw body or JSON)
+    // 📦 3. Parse payload safely
     let payload = req.body;
     if (Buffer.isBuffer(req.body)) {
       try {
         payload = JSON.parse(req.body.toString("utf8"));
-      } catch (e) {
-        console.error("❌ Failed to parse Tabby Webhook Buffer:", e.message);
+      } catch (err) {
+        console.error("❌ Failed to parse webhook payload:", err.message);
         return;
       }
     }
 
-    // 3. Extract key identifiers
     const payment = payload.payment || payload;
-    const paymentId = payment.id || payload.id;
-    const referenceId = payment.order?.reference_id || payment.reference_id || payload.reference_id;
-    const status = (payment.status || payload.status || "unknown").toLowerCase();
-
-    console.log(`🔔 Tabby Webhook Triggered: Ref: ${referenceId} | ID: ${paymentId} | Status: ${status}`);
+    const paymentId = payment.id;
+    const referenceId = payment.order?.reference_id || payment.reference_id;
+    const status = (payment.status || "").toLowerCase();
 
     if (!referenceId) {
-      console.error("❌ Tabby Webhook Error: Missing reference_id in payload", JSON.stringify(payload, null, 2));
+      console.error("❌ Missing reference_id in webhook");
       return;
     }
 
-    // 4. Handle Authorized or Captured status
-    if (status === "authorized" || status === "captured") {
-      console.log(`✅ Tabby Payment Validated. Processing Order: ${referenceId}`);
+    console.log(`🔔 Tabby Webhook | Ref: ${referenceId} | Status: ${status} | PaymentID: ${paymentId}`);
 
-      // Try to find if we already have this order (created in createTabbyOrder)
-      let order = await Order.findOne({
-        $or: [
-          { orderId: referenceId },
-          { tabbySessionId: paymentId }
-        ]
-      });
+    // 4. Find Order
+    const order = await Order.findOne({
+      $or: [
+        { orderId: referenceId },
+        { tabbySessionId: paymentId }
+      ]
+    });
 
-      // Map Tabby status to our Order model enum
-      // Enum: ["pending", "authorized", "paid", "failed", "refunded", "closed"]
-      const targetPaymentStatus = status === "captured" ? "paid" : "authorized";
+    if (!order) {
+      console.error(`❌ Order not found in DB for reference: ${referenceId}`);
+      return;
+    }
 
-      if (!order) {
-        console.log(`📝 Edge Case: Order ${referenceId} not in DB yet. Creating now from Webhook data...`);
+    // -------------------------------------------------
+    // 🟢 SUCCESS FLOW (Authorized -> Capture)
+    // -------------------------------------------------
 
-        // Reconstruct items from Tabby payload
-        const rawItems = payment.order?.items || [];
-        const reconstructedItems = rawItems.map(item => ({
-          productId: mongoose.Types.ObjectId.isValid(item.reference_id) ? item.reference_id : null,
-          name: item.title || "Product",
-          price: Number(item.unit_price || 0),
-          quantity: Number(item.quantity || 1),
-          image: item.image_url || ""
-        }));
+    if (status === "authorized") {
+      console.log(`⚡ Payment ${paymentId} AUTHORIZED. Starting Verify & Capture...`);
 
-        const shippingAmount = Number(payment.order?.shipping_amount || 0);
-        const totalAmount = Number(payment.amount || 0);
-        const subtotal = totalAmount - shippingAmount;
-
-        const buyer = payment.buyer || {};
-        const shipping = payment.shipping_address || {};
-
-        // Associate with user if email matches
-        let userId = null;
-        if (buyer.email) {
-          const user = await userModel.findOne({ email: buyer.email });
-          if (user) userId = user._id;
-        }
-
-        // Create the order from scratch using Webhook data
-        order = await Order.create({
-          userId: userId,
-          orderId: referenceId,
-          tabbySessionId: paymentId,
-          items: reconstructedItems,
-          subtotal: subtotal,
-          shippingFee: shippingAmount,
-          total: totalAmount,
-          currency: payment.currency || "AED",
-          paymentMethod: "tabby",
-          paymentStatus: targetPaymentStatus,
-          orderStatus: "Processing",
-          shippingAddress: {
-            firstName: buyer.name?.split(" ")[0] || "Customer",
-            lastName: buyer.name?.split(" ").slice(1).join(" ") || "",
-            email: buyer.email,
-            phone: buyer.phone,
-            city: shipping.city || "Dubai",
-            street: shipping.address || "N/A",
-            postalCode: shipping.zip || "00000",
-            country: payment.shipping_address?.country || "AE"
-          },
-          billingAddress: {
-            firstName: buyer.name?.split(" ")[0] || "Customer",
-            lastName: buyer.name?.split(" ").slice(1).join(" ") || "",
-            email: buyer.email,
-            phone: buyer.phone,
-            city: shipping.city || "Dubai",
-            street: shipping.address || "N/A",
-            postalCode: shipping.zip || "00000",
-            country: payment.shipping_address?.country || "AE"
-          }
+      try {
+        // A. Verify status with Tabby API
+        const verifyResponse = await axios.get(`https://api.tabby.ai/api/v2/payments/${paymentId}`, {
+          headers: { Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}` }
         });
 
-        console.log(`🎉 New Order Created & Captured via Webhook: ${order._id}`);
+        if (verifyResponse.data.status === "AUTHORIZED") {
+          const capAmount = verifyResponse.data.amount;
 
-        // Clear cart if we found a user
-        if (userId) {
-          await userModel.findByIdAndUpdate(userId, { $set: { cart: [] } });
-        }
+          // B. Capture the payment
+          const captureResponse = await axios.post(
+            `https://api.tabby.ai/api/v2/payments/${paymentId}/captures`,
+            { amount: String(capAmount) },
+            {
+              headers: {
+                Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+                "Content-Type": "application/json"
+              }
+            }
+          );
+    
+          console.log("💳 Capture Success:", captureResponse.data.status);
 
-        // Send confirmation emails
-        await sendOrderConfirmation(order._id).catch(e => console.error("📧 Email Error:", e.message));
+          // C. Update Order
+          if (order.paymentStatus !== "paid") {
+            order.paymentStatus = "paid";
+            order.orderStatus = "Processing";
+            order.tabbySessionId = paymentId;
+            await order.save();
+       
+            // Clear Cart
+            if (order.userId) {
+              await userModel.findByIdAndUpdate(order.userId, {
+                $set: { cart: [] }
+              });
+            }
+            
+            // Send Confirmation
+            await sendOrderConfirmation(order._id).catch(e =>
+              console.error("📧 Email Error:", e.message)
+            );
 
-      } else {
-        // Order exists (standard flow), just update status if not already paid
-        const alreadyPaid = order.paymentStatus === "paid";
-
-        if (!alreadyPaid) {
-          console.log(`🔄 Updating Order ${order.orderId}: status -> ${targetPaymentStatus}`);
-          order.paymentStatus = targetPaymentStatus;
-          order.orderStatus = "Processing";
-          order.tabbySessionId = paymentId;
-          await order.save();
-
-          // Clear cart
-          if (order.userId) {
-            await userModel.findByIdAndUpdate(order.userId, { $set: { cart: [] } });
+            console.log(`🎉 Order ${order.orderId} confirmed and marked PAID`);
           }
-
-          // Sync emails
-          console.log(`📧 Sending confirmation emails for Order: ${order._id}`);
-          await sendOrderConfirmation(order._id).catch(e => console.error("📧 Email Error:", e.message));
-        } else {
-          console.log(`ℹ️ Order ${order._id} is already marked as PAID. Ignoring.`);
         }
+      } catch (err) {
+        console.error("❌ Tabby Capture/Verify Failed:", err.response?.data || err.message);
       }
-    } else if (status === "expired" || status === "rejected" || status === "failed") {
-      console.log(`⚠️ Tabby Payment Failed/Expired: ${referenceId} (Status: ${status})`);
-      await Order.findOneAndUpdate(
-        { $or: [{ orderId: referenceId }, { tabbySessionId: paymentId }] },
-        { paymentStatus: "failed", orderStatus: "Cancelled" }
+    }
+
+    // -------------------------------------------------
+    // � CLOSED/CAPTURED (Handling redundant status updates)
+    // -------------------------------------------------
+    if (["captured", "closed"].includes(status) && order.paymentStatus !== "paid") {
+      console.log(`✅ Order ${order.orderId} marked PAID (via ${status} status)`);
+
+      order.paymentStatus = "paid";
+      order.orderStatus = "Processing";
+      order.tabbySessionId = paymentId;
+      await order.save();
+
+      if (order.userId) {
+        await userModel.findByIdAndUpdate(order.userId, {
+          $set: { cart: [] }
+        });
+      }
+
+      await sendOrderConfirmation(order._id).catch(e =>
+        console.error("📧 Email Error:", e.message)
       );
     }
+
+    // -------------------------------------------------
+    // 🔴 FAILURE FLOW
+    // -------------------------------------------------
+    if (["expired", "rejected", "failed", "cancelled", "canceled"].includes(status)) {
+      if (order.paymentStatus === "pending") {
+        console.log(`❌ Order ${order.orderId} FAILED/CANCELLED (Status: ${status})`);
+        order.paymentStatus = "failed";
+        order.orderStatus = "Cancelled";
+        await order.save();
+      }
+    }
+
+    // -------------------------------------------------
+    // 🟠 REFUND FLOW
+    // -------------------------------------------------
+    if (["refunded", "partially_refunded"].includes(status.replace(" ", "_"))) {
+      console.log(`↩️ Order ${order.orderId} REFUNDED (Status: ${status})`);
+      order.paymentStatus = "refunded";
+      await order.save();
+    }
+
   } catch (error) {
-    console.error("❌ Tabby Webhook Critical Failure:", error.message);
+    console.error("❌ Tabby Webhook Critical Error:", error.message);
   }
 };
 
