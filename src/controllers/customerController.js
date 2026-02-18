@@ -1,21 +1,31 @@
+const User = require("../models/UserModel");
 const Customer = require("../models/customersModal");
 
-// Create a new user
+// Create a new user (Save manual entries to Customer model to match previous behavior)
 const createCustomer = async (req, res) => {
   try {
-    const { serialNumber, username, email, designation, status } = req.body;
+    const { username, email, designation, status, serialNumber } = req.body;
 
-    // Check for duplicate email
+    // Check for duplicate email in both collections
+    const existingUser = await User.findOne({ email });
     const existingCustomer = await Customer.findOne({ email });
-    if (existingCustomer)
+
+    if (existingUser || existingCustomer)
       return res.status(400).json({ message: "Email already exists" });
 
+    // Find the next serial number if not provided
+    let sNum = serialNumber;
+    if (!sNum) {
+      const lastCustomer = await Customer.findOne().sort({ serialNumber: -1 });
+      sNum = lastCustomer ? lastCustomer.serialNumber + 1 : 1;
+    }
+
     const customer = new Customer({
-      serialNumber,
+      serialNumber: sNum,
       username,
       email,
-      designation,
-      status,
+      designation: designation || "Manual Entry",
+      status: status || "active",
     });
 
     await customer.save();
@@ -26,25 +36,84 @@ const createCustomer = async (req, res) => {
   }
 };
 
-// Get all users
+// Get all users from both website logins and manual entries
 const getAllCustomers = async (req, res) => {
   try {
-    const customers = await Customer.find().sort({ createdAt: -1 });
-    res.status(200).json({ customers });
+    const [users, manualCustomers] = await Promise.all([
+      User.find().sort({ createdAt: -1 }),
+      Customer.find().sort({ createdAt: -1 })
+    ]);
+
+    // Map website users
+    const websiteCustomers = users.map((user) => ({
+      _id: user._id,
+      serialNumber: 0, // Will recalculate
+      joinDate: user.createdAt,
+      username: user.name,
+      email: user.email,
+      avatar: user.avatar,
+      designation: user.provider === "google" ? "Google Login" : "Email Login",
+      status: "active",
+      source: "website"
+    }));
+
+    // Map manual customers
+    const formattedManual = manualCustomers.map((c) => ({
+      _id: c._id,
+      serialNumber: c.serialNumber,
+      joinDate: c.joinDate,
+      username: c.username,
+      email: c.email,
+      designation: c.designation || "Manual Entry",
+      status: c.status,
+      source: "manual"
+    }));
+
+    // Combine and sort by date
+    const allCustomers = [...websiteCustomers, ...formattedManual].sort(
+      (a, b) => new Date(b.joinDate) - new Date(a.joinDate)
+    );
+
+    // Re-assign serial numbers for display if needed, or keep original
+    const finalCustomers = allCustomers.map((c, index) => ({
+      ...c,
+      serialNumber: c.serialNumber || (allCustomers.length - index)
+    }));
+
+    res.status(200).json({ customers: finalCustomers });
   } catch (error) {
     console.error("Get Customers Error:", error);
     res.status(500).json({ message: "Internal Server Error", error });
   }
 };
 
-// Get user by ID
+// Get user by ID (Check both collections)
 const getCustomerById = async (req, res) => {
   try {
     const { id } = req.params;
-    const customer = await Customer.findById(id);
+    let data = await User.findById(id);
+    let source = "website";
 
-    if (!customer)
+    if (!data) {
+      data = await Customer.findById(id);
+      source = "manual";
+    }
+
+    if (!data)
       return res.status(404).json({ message: "Customer not found" });
+
+    // Map to frontend format
+    const customer = {
+      _id: data._id,
+      joinDate: data.createdAt || data.joinDate,
+      username: data.name || data.username,
+      email: data.email,
+      designation: source === "website"
+        ? (data.provider === "google" ? "Google Login" : "Email Login")
+        : (data.designation || "Manual Entry"),
+      status: data.status || "active",
+      source
+    };
 
     res.status(200).json({ customer });
   } catch (error) {
@@ -53,34 +122,48 @@ const getCustomerById = async (req, res) => {
   }
 };
 
-// Update user
+// Update user (Check both collections)
 const updateCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const updatedData = req.body;
+    const { username, email, designation, status } = req.body;
 
-    const customer = await Customer.findByIdAndUpdate(id, updatedData, {
-      new: true,
-      runValidators: true,
-    });
+    let customer = await User.findByIdAndUpdate(
+      id,
+      { name: username, email },
+      { new: true, runValidators: true }
+    );
+
+    if (!customer) {
+      customer = await Customer.findByIdAndUpdate(
+        id,
+        { username, email, designation, status },
+        { new: true, runValidators: true }
+      );
+    }
 
     if (!customer)
       return res.status(404).json({ message: "Customer not found" });
 
-    res
-      .status(200)
-      .json({ message: "Customer updated successfully", customer });
+    res.status(200).json({
+      message: "Customer updated successfully",
+      customer
+    });
   } catch (error) {
     console.error("Update Customer Error:", error);
     res.status(500).json({ message: "Internal Server Error", error });
   }
 };
 
-// Delete user
+// Delete user (Check both collections)
 const deleteCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const customer = await Customer.findByIdAndDelete(id);
+    let customer = await User.findByIdAndDelete(id);
+
+    if (!customer) {
+      customer = await Customer.findByIdAndDelete(id);
+    }
 
     if (!customer)
       return res.status(404).json({ message: "Customer not found" });

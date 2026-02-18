@@ -56,10 +56,14 @@ const createSEOAllpage = async (req, res) => {
 // ⭐ Get SEO Page by slug (frontend)
 const getSeoBySlug = async (req, res) => {
   try {
-    let slug = req.query.slug || "home";
+    let slug = req.query.slug || "/";
 
     // normalize slug
     slug = slug.replace(/^\/+/, "");
+
+    if (!slug) {
+      slug = "/";
+    }
 
     const page = await SeoPage.findOne({
       slug,

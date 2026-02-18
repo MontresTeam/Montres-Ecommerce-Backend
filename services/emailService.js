@@ -223,5 +223,133 @@ const sendWelcomeEmail = async (email, name) => {
   }
 };
 
+// Manual offer email function
+const sendManualOfferEmail = async (offerData, offerLink) => {
+  console.log(offerLink,"offerLink");
+  
+  const { customerName, customerEmail, productName, offeredPrice, originalPrice, expiresAt } = offerData;
+  const expiryDate = expiresAt ? new Date(expiresAt).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  }) : 'N/A';
+
+  const mailOptions = {
+    from: `"Montres Store" <${process.env.EMAIL_USER}>`,
+    to: customerEmail,
+    subject: `🎁 Exclusive Private Offer: ${productName}`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Special Offer from Montres</title>
+        <style>
+          @media only screen and (max-width: 600px) {
+            .container { width: 100% !important; padding: 10px !important; }
+            .header { padding: 30px 15px !important; }
+            .content { padding: 30px 20px !important; }
+            .price-card { padding: 20px !important; }
+          }
+        </style>
+      </head>
+      <body style="margin:0;padding:0;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background-color:#f4f7f9;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f7f9;padding: 20px 0;">
+          <tr>
+            <td align="center">
+              <table class="container" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.08);">
+                
+                <!-- Header -->
+                <tr>
+                  <td class="header" style="background: linear-gradient(135deg, #1a1a1a 0%, #333333 100%);padding:50px 40px;text-align:center;color:#ffffff;">
+                    <div style="font-size:14px;text-transform:uppercase;letter-spacing:3px;margin-bottom:15px;opacity:0.8;">Exclusive Invitation</div>
+                    <h1 style="font-size:32px;margin:0;font-weight:700;letter-spacing:-1px;">Your Private Offer</h1>
+                    <div style="width:50px;height:2px;background-color:#c5a059;margin:25px auto;"></div>
+                  </td>
+                </tr>
+                
+                <!-- Content -->
+                <tr>
+                  <td class="content" style="padding:50px 40px;">
+                    <h2 style="color:#1a1a1a;font-size:22px;margin:0 0 20px;">Hello ${customerName},</h2>
+                    <p style="color:#555555;font-size:16px;line-height:1.7;margin:0 0 30px;">
+                      We are pleased to offer you a special, time-limited price for the <strong>${productName}</strong>. 
+                      This offer has been specially prepared for you and is available only through the link below.
+                    </p>
+                    
+                    <!-- Price Card -->
+                    <div class="price-card" style="background-color:#fafafa;border:1px solid #eeeeee;border-radius:12px;padding:35px;text-align:center;margin-bottom:40px;">
+                      <div style="color:#888888;font-size:14px;text-decoration:line-through;margin-bottom:8px;">Original Price: AED ${originalPrice.toLocaleString()}</div>
+                      <div style="color:#1a1a1a;font-size:18px;margin-bottom:5px;font-weight:500;">Yours for:</div>
+                      <div style="color:#c5a059;font-size:42px;font-weight:800;margin-bottom:10px;">AED ${offeredPrice.toLocaleString()}</div>
+                      <div style="display:inline-block;padding:6px 15px;background-color:#e6f4ea;color:#1e7e34;border-radius:20px;font-size:13px;font-weight:600;">
+                        Save ${(100 - (offeredPrice / originalPrice * 100)).toFixed(0)}% Instantly
+                      </div>
+                    </div>
+                    
+                    <!-- CTA -->
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td align="center">
+                          <a href="${offerLink}" style="display:inline-block;background-color:#1a1a1a;color:#ffffff;text-decoration:none;padding:20px 45px;border-radius:8px;font-weight:700;font-size:16px;letter-spacing:1px;box-shadow:0 15px 35px rgba(0,0,0,0.15);">
+                            CLAIM THIS OFFER
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <!-- Expiry Info -->
+                    <div style="text-align:center;margin-top:35px;">
+                      <p style="color:#999999;font-size:13px;margin:0;">
+                        * This offer is valid until <strong>${expiryDate}</strong>
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+                
+                <!-- Security Note -->
+                <tr>
+                  <td style="padding:0 40px 40px;">
+                    <div style="background-color:#f9f9f9;border-radius:8px;padding:20px;display:flex;align-items:center;">
+                      <div style="color:#555555;font-size:13px;line-height:1.5;">
+                        <strong>Security Note:</strong> This is a secure personal link and should not be shared. 
+                        It will automatically expire after use or on the date specified above.
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                
+                <!-- Footer -->
+                <tr>
+                  <td style="background-color:#1a1a1a;padding:40px;text-align:center;color:#888888;">
+                    <div style="font-size:18px;color:#ffffff;margin-bottom:10px;font-weight:600;">MONTRES</div>
+                    <div style="font-size:12px;margin-bottom:20px;letter-spacing:1px;">LUXURY TIMEPIECES</div>
+                    <p style="font-size:13px;margin:0;line-height:1.6;">
+                      &copy; ${new Date().getFullYear()} Montres Store. All rights reserved.<br>
+                      123 Luxury Lane, Watch District, Geneva, Switzerland
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Manual offer email sent to ${customerEmail}`);
+    return { success: true, message: 'Offer email sent successfully' };
+  } catch (error) {
+    console.error('Error sending offer email:', error);
+    throw error;
+  }
+};
+
 // For CommonJS export
-module.exports = { transporter, sendWelcomeEmail };
+module.exports = { transporter, sendWelcomeEmail, sendManualOfferEmail };

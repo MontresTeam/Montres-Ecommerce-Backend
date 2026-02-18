@@ -122,6 +122,7 @@ const getProducts = async (req, res) => {
       complications,
       crystal,
       includedAccessories,
+      leatherMainCategory,
     } = req.query;
 
     // ✅ Single Product by ID
@@ -158,10 +159,12 @@ const getProducts = async (req, res) => {
     };
 
     // ✅ Category Filter
-    const categoryList = normalizeArray(category);
+    const categoryList = normalizeArray(category).map(cat =>
+      cat.toLowerCase() === 'watches' ? 'Watch' : cat
+    );
     if (categoryList.length > 0) {
       andConditions.push({
-        category: { $in: categoryList.map((cat) => new RegExp(cat, "i")) },
+        category: { $in: categoryList.map((cat) => new RegExp(`^${cat}$`, "i")) },
       });
     }
 
@@ -447,6 +450,11 @@ const getProducts = async (req, res) => {
       });
     }
 
+    // ✅ Leather Main Category Filter
+    if (leatherMainCategory) {
+      andConditions.push({ leatherMainCategory: { $regex: new RegExp(`^${leatherMainCategory}$`, "i") } });
+    }
+
     // ✅ Search Filter
     if (search && search.trim()) {
       const searchRegex = new RegExp(search.trim(), "i");
@@ -466,21 +474,21 @@ const getProducts = async (req, res) => {
       filterQuery.$and = andConditions;
     }
 
-    // ✅ Sort configuration
+    // ✅ Sort configuration - always prioritize inStock
     const sortOptions = {
-      newest: { createdAt: -1 },
-      oldest: { createdAt: 1 },
-      price_low_high: { salePrice: 1 },
-      price_high_low: { salePrice: -1 },
-      name_asc: { name: 1 },
-      name_desc: { name: -1 },
-      featured: { featured: -1, createdAt: -1 },
-      'best-seller': { sold: -1, createdAt: -1 },
-      rating: { rating: -1 },
-      discount: { discountPercentage: -1 },
+      newest: { inStock: -1, createdAt: -1 },
+      oldest: { inStock: -1, createdAt: 1 },
+      price_low_high: { inStock: -1, salePrice: 1 },
+      price_high_low: { inStock: -1, salePrice: -1 },
+      name_asc: { inStock: -1, name: 1 },
+      name_desc: { inStock: -1, name: -1 },
+      featured: { inStock: -1, featured: -1, createdAt: -1 },
+      'best-seller': { inStock: -1, sold: -1, createdAt: -1 },
+      rating: { inStock: -1, rating: -1 },
+      discount: { inStock: -1, discountPercentage: -1 },
     };
 
-    const sortObj = sortOptions[sortBy] || { createdAt: -1 };
+    const sortObj = sortOptions[sortBy] || { inStock: -1, createdAt: -1 };
     if (sortOrder === "asc" && sortObj[Object.keys(sortObj)[0]]) {
       sortObj[Object.keys(sortObj)[0]] = 1;
     }
@@ -532,7 +540,9 @@ const getProducts = async (req, res) => {
     }));
 
     res.json({
+      success: true,
       totalProducts,
+      count: totalProducts, // Aliasing for compatibility with specific brand endpoints
       totalPages,
       currentPage: pageNum,
       products: formattedProducts,
@@ -787,26 +797,10 @@ const addServiceForm = async (req, res) => {
 
 const getBrandWatches = async (req, res) => {
   try {
-    const { brand } = req.params;
-
-    // Find all watches for the brand
-    const products = await Product.find({
-      brand: { $regex: new RegExp(`^${brand}$`, "i") }, // case-insensitive
-      category: "Watch", // only watches
-    });
-
-    if (!products || products.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `No watches found for brand: ${brand}`,
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      products,
-    });
+    // Reuse getProducts logic for pagination, sorting, and filtering
+    req.query.brand = req.params.brand;
+    req.query.category = "Watch";
+    return getProducts(req, res);
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -819,27 +813,9 @@ const getBrandWatches = async (req, res) => {
 
 const getBrandBags = async (req, res) => {
   try {
-    // Trim the brand from URL params to avoid accidental spaces
-    const brandParam = req.params.brand.trim();
-
-    // Find all products for the brand (case-insensitive, ignores extra spaces)
-    const products = await Product.find({
-      brand: { $regex: brandParam, $options: "i" }, // case-insensitive match
-      leatherMainCategory: "Bag" // Only bags
-    });
-
-    if (!products || products.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `No bags found for brand: ${brandParam}`,
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      products,
-    });
+    req.query.brand = req.params.brand;
+    req.query.leatherMainCategory = "Bag";
+    return getProducts(req, res);
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -852,25 +828,9 @@ const getBrandBags = async (req, res) => {
 
 const getBrandAccessories = async (req, res) => {
   try {
-    const brandParam = req.params.brand.trim();
-
-    const products = await Product.find({
-      brand: { $regex: new RegExp(`^${brandParam}$`, "i") },
-      category: "Accessories",
-    });
-
-    if (!products?.length) {
-      return res.status(404).json({
-        success: false,
-        message: `No accessories found for brand: ${brandParam}`,
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      products,
-    });
+    req.query.brand = req.params.brand;
+    req.query.category = "Accessories";
+    return getProducts(req, res);
   } catch (error) {
     res.status(500).json({
       success: false,

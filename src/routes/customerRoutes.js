@@ -8,6 +8,11 @@ const {
   deleteCustomer,
 } = require("../controllers/customerController");
 
+const { adminProtect } = require("../middlewares/authMiddleware");
+
+// Apply adminProtect to all routes in this router
+router.use(adminProtect);
+
 // Routes
 router.post("/create", createCustomer); // Create user
 router.get("/All", getAllCustomers); // Get all users

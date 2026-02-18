@@ -26,6 +26,8 @@ const seoRoutes = require('./routes/seoPage.routes')
 const webhookRoute = require("./routes/webhookRoutes");
 const brandRoutes = require('./routes/brandRoutes');
 const purchaseRoutes = require('./routes/purchaseRoutes');
+const newsletterRoutes = require('./routes/newsletterRoutes');
+const offerRoutes = require('./routes/offerRoutes');
 
 
 
@@ -112,6 +114,8 @@ app.use('/api/admin', adminsRoute)
 app.use("/api/seo-pages", seoRoutes);
 app.use("/api/brands", brandRoutes);
 app.use("/api/purchase", purchaseRoutes);
+app.use("/api/newsletter", newsletterRoutes);
+app.use("/api/offers", offerRoutes);
 
 // ✅ Catch-all generic /api route MUST be last
 app.use("/api", productRoutes);
