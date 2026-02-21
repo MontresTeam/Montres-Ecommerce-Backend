@@ -4,6 +4,7 @@ const WatchService = require("../models/repairserviceModal");
 const mongoose = require("mongoose")
 const InventoryStock = require("../models/InventoryStockModel");
 const { brandList } = require("../models/constants");
+const sendEmail = require("../utils/sendEmail");
 
 
 // Move selected products to inventory
@@ -969,6 +970,42 @@ const restockSubscribe = async (req, res) => {
 
     await subscription.save();
 
+    // 📩 Send Email Notification to Admin & Sales
+    const adminEmails = ["admin@montres.ae", "sales@montres.ae"];
+    const emailSubject = `Restock Request: ${product.name}`;
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <h2 style="color: #000; border-bottom: 1px solid #ddd; padding-bottom: 10px;">Montres Trading L.L.C – The Art Of Time</h2>
+        <p><strong>New Restock Request from Website</strong></p>
+
+        <p><strong>Product Details:</strong></p>
+        <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
+          <tr><td style="padding: 5px; font-weight: bold; width: 120px;">Product:</td><td style="padding: 5px;">${product.name}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">SKU:</td><td style="padding: 5px;">${product.sku || "N/A"}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Category:</td><td style="padding: 5px;">${product.category || "N/A"}</td></tr>
+        </table>
+
+        <p><strong>Customer Details:</strong></p>
+        <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
+          <tr><td style="padding: 5px; font-weight: bold; width: 120px;">Name:</td><td style="padding: 5px;">${customerName || "—"}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Email:</td><td style="padding: 5px;">${email}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Phone:</td><td style="padding: 5px;">${phone || "—"}</td></tr>
+        </table>
+
+        <p style="margin-top: 20px;"><a href="https://www.montres.ae/ProductDetailPage/${product._id}" style="display: inline-block; padding: 10px 15px; background-color: #000; color: #fff; text-decoration: none; border-radius: 4px;">View Product</a></p>
+
+        <footer style="margin-top: 30px; font-size: 12px; color: #777; border-top: 1px solid #eee; padding-top: 10px;">
+          <p>Sent from Montres Store (www.montres.ae)</p>
+        </footer>
+      </div>
+    `;
+    const textContent = `New Restock Request from: ${customerName || "—"}\nEmail: ${email}\nPhone: ${phone || "—"}\nProduct: ${product.name}\nSKU: ${product.sku || "N/A"}\nCategory: ${product.category || "N/A"}`;
+
+    // Send to both emails (parallel)
+    await Promise.all(
+      adminEmails.map((toEmail) => sendEmail(toEmail, emailSubject, htmlContent, textContent))
+    );
+
     res.json({
       success: true,
       message: "Customer added to restock / request list",
@@ -1135,13 +1172,40 @@ const getAllProductwithSearch = async (req, res) => {
     const { search = "" } = req.query;
 
     // ✅ Case-insensitive search by name or brand
-    let query = {};
     if (search.trim()) {
+      const searchTerms = search.trim().split(/\s+/);
+
+      // Helper to create loose regex for singular/plural matching
+      const createRegex = (term) => {
+        let cleanTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape regex chars
+        if (cleanTerm.length > 3) {
+          if (cleanTerm.toLowerCase().endsWith('ies')) cleanTerm = cleanTerm.slice(0, -3); // accessories -> accessor
+          else if (cleanTerm.toLowerCase().endsWith('es')) cleanTerm = cleanTerm.slice(0, -2); // watches -> watch
+          else if (cleanTerm.toLowerCase().endsWith('s') && !cleanTerm.toLowerCase().endsWith('ss')) cleanTerm = cleanTerm.slice(0, -1); // bags -> bag
+        }
+        return new RegExp(cleanTerm, "i");
+      };
+
       query = {
-        $or: [
-          { name: { $regex: search, $options: "i" } },
-          { brand: { $regex: search, $options: "i" } },
-        ],
+        $and: searchTerms.map(term => {
+          const regex = createRegex(term);
+          return {
+            $or: [
+              { name: regex },
+              { brand: regex },
+              { model: regex },
+              { description: regex },
+              { referenceNumber: regex },
+              { category: regex },
+              { accessoryCategory: regex },
+              { accessorySubCategory: regex },
+              { leatherMainCategory: regex },
+              { leatherSubCategory: regex },
+              { watchType: regex },
+              { watchStyle: regex }
+            ]
+          };
+        }),
       };
     }
 

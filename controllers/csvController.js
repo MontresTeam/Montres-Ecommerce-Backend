@@ -3,6 +3,7 @@ const path = require("path");
 const csv = require("csv-parser");
 const xlsx = require("xlsx");
 const InventoryStock = require("../models/InventoryStockModel");
+const MonthEndReport = require("../models/MonthEndReportModel");
 
 // Helper to safely parse numbers
 function parseNumber(value) {
@@ -168,8 +169,8 @@ const getMonthlySalesReport = async (req, res) => {
         category: item.category,
         sku: item.sku,
         soldAt: item.soldAt
-    ? `${item.soldAt.getMonth() + 1}/${item.soldAt.getDate()}/${item.soldAt.getFullYear()}`
-    : null,
+          ? `${item.soldAt.getMonth() + 1}/${item.soldAt.getDate()}/${item.soldAt.getFullYear()}`
+          : null,
         cost: item.cost,
         price: item.price,
         soldPrice: item.soldPrice,
@@ -190,6 +191,104 @@ const getMonthlySalesReport = async (req, res) => {
       error: "Server error while fetching sales report",
       details: err.message,
     });
+  }
+};
+
+const getInventoryMonthEndReports = async (req, res) => {
+  try {
+    const reports = await MonthEndReport.find().sort({ year: -1, monthNumber: -1 });
+    res.status(200).json(reports);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const calculateInventoryMonthEnd = async (req, res) => {
+  try {
+    const { year, month } = req.body; // month is 1-12
+
+    if (!year || !month) {
+      return res.status(400).json({ error: "Year and month are required" });
+    }
+
+    const yearNum = parseInt(year);
+    const monthNum = parseInt(month);
+
+    const startDate = new Date(yearNum, monthNum - 1, 1);
+    const endDate = new Date(yearNum, monthNum, 1);
+
+    // 1. COGS: Cost of items sold during this month
+    const soldItems = await InventoryStock.find({
+      status: "SOLD",
+      soldAt: { $gte: startDate, $lt: endDate }
+    });
+    const cogs = soldItems.reduce((sum, item) => sum + (item.cost || 0), 0);
+
+    // 2. Purchases: Items added during this month
+    const purchasedItems = await InventoryStock.find({
+      createdAt: { $gte: startDate, $lt: endDate }
+    });
+    const purchases = purchasedItems.reduce((sum, item) => sum + (item.cost || 0), 0);
+
+    // 3. Ending Inventory: Value of all AVAILABLE items at the end of this month
+    // Simplified: Current value of AVAILABLE items + items sold AFTER this month but added BEFORE/DURING this month
+    const availableItems = await InventoryStock.find({
+      status: "AVAILABLE",
+      createdAt: { $lt: endDate }
+    });
+
+    const soldLaterItems = await InventoryStock.find({
+      status: "SOLD",
+      soldAt: { $gte: endDate },
+      createdAt: { $lt: endDate }
+    });
+
+    const endingInventory = [...availableItems, ...soldLaterItems].reduce((sum, item) => sum + (item.cost || 0), 0);
+
+    // 4. Beginning Inventory: Ending Inventory of previous month
+    // For simplicity, we'll calculate it as Ending Inventory - Purchases + COGS
+    const beginningInventory = endingInventory - purchases + cogs;
+
+    // Category Breakdown for Ending Inventory
+    const categoryBreakdown = {};
+    [...availableItems, ...soldLaterItems].forEach(item => {
+      const cat = item.category || 'Other';
+      categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + (item.cost || 0);
+    });
+
+    const monthName = startDate.toLocaleString('default', { month: 'long' });
+    const monthLabel = `${monthName} ${yearNum}`;
+
+    // Update or Create Report
+    const reportData = {
+      month: monthLabel,
+      year: yearNum,
+      monthNumber: monthNum,
+      beginningInventory,
+      purchases,
+      cogs,
+      endingInventory,
+      variance: 0, // Manual adjustment if needed
+      accuracy: 99, // Placeholder
+      status: 'completed',
+      lastUpdated: new Date(),
+      categoryBreakdown
+    };
+
+    const report = await MonthEndReport.findOneAndUpdate(
+      { year: yearNum, monthNumber: monthNum },
+      reportData,
+      { upsert: true, new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: report
+    });
+
+  } catch (err) {
+    console.error("Error calculating month-end:", err);
+    res.status(500).json({ error: err.message });
   }
 };
 
@@ -262,10 +361,10 @@ const updateInventory = async (req, res) => {
     if (req.body.status === "SOLD") {
       if (req.body.soldAt) {
         updateData.soldAt = parseSoldDate(req.body.soldAt);
-      } 
+      }
       else if (existingItem.status !== "SOLD") {
         updateData.soldAt = new Date();
-      } 
+      }
       else {
         updateData.soldAt = existingItem.soldAt;
       }
@@ -404,6 +503,7 @@ const exportInventory = async (req, res) => {
 
     const worksheet = xlsx.utils.json_to_sheet(
       items.map((item) => ({
+        productName: item.productName,
         brand: item.brand,
         internalCode: item.internalCode,
         quantity: item.quantity,
@@ -421,10 +521,12 @@ const exportInventory = async (req, res) => {
     const workbook = xlsx.utils.book_new();
     xlsx.utils.book_append_sheet(workbook, worksheet, "InventoryStock");
 
-    const exportFile = path.join(
-      __dirname,
-      "../exports/inventory_export.xlsx"
-    );
+    const exportDir = path.join(__dirname, "../exports");
+    if (!fs.existsSync(exportDir)) {
+      fs.mkdirSync(exportDir, { recursive: true });
+    }
+
+    const exportFile = path.join(exportDir, "inventory_export.xlsx");
     xlsx.writeFile(workbook, exportFile);
 
     res.download(exportFile, "inventory_export.xlsx", (err) => {
@@ -445,5 +547,7 @@ module.exports = {
   deleteInventory,
   importInventory,
   exportInventory,
-  getMonthlySalesReport
+  getMonthlySalesReport,
+  getInventoryMonthEndReports,
+  calculateInventoryMonthEnd
 };

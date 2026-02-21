@@ -9,6 +9,8 @@ const {
   importInventory,
   exportInventory,
   getMonthlySalesReport,
+  getInventoryMonthEndReports,
+  calculateInventoryMonthEnd,
 } = require("../controllers/csvController");
 const { adminProtect } = require("../middlewares/authMiddleware");
 const multer = require("multer")
@@ -21,8 +23,8 @@ router.get("/:id", getInventoryById);
 router.post("/", createInventory);
 router.put("/updated/:id", updateInventory);
 router.delete("/:id", deleteInventory);
-router.get("/reports/monthly-sales", getMonthlySalesReport)
-
+router.get("/reports/month-end", getInventoryMonthEndReports);
+router.post("/reports/calculate-month-end", calculateInventoryMonthEnd);
 router.post("/import", upload.single("file"), importInventory);
 router.get("/export", exportInventory);
 

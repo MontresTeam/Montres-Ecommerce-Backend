@@ -219,6 +219,49 @@ const getMyOrders = async (req, res) => {
   }
 };
 
+const calculateShipping = async (req, res) => {
+  try {
+    const { items, country, subtotal: passedSubtotal } = req.body;
+
+    if (!country) {
+      return res.status(400).json({ success: false, message: "Country is required" });
+    }
+
+    let subtotal = passedSubtotal;
+
+    // If subtotal not provided, calculate it from items
+    if (subtotal === undefined || subtotal === null) {
+      if (!items || !items.length) {
+        return res.status(400).json({ success: false, message: "Items or subtotal required" });
+      }
+
+      const populatedItems = await Promise.all(
+        items.map(async (it) => {
+          const product = await Product.findById(it.productId).select("salePrice regularPrice").lean();
+          if (!product) throw new Error(`Product not found: ${it.productId}`);
+          const price = product.salePrice || product.regularPrice || 0;
+          return { price, quantity: it.quantity || 1 };
+        })
+      );
+      subtotal = populatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    }
+
+    const { shippingFee, region, threshold } = calculateShippingFee({ country, subtotal });
+
+    return res.json({
+      success: true,
+      subtotal,
+      shippingFee,
+      total: subtotal + shippingFee,
+      region,
+      threshold
+    });
+  } catch (error) {
+    console.error("Calculate Shipping Error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Server error" });
+  }
+};
+
 module.exports = {
   createStripeOrder,
   getOrderById,
@@ -232,4 +275,5 @@ module.exports = {
   deleteBillingAddress,
   updateBillingAddress,
   updateShippingAddress,
+  calculateShipping,
 };

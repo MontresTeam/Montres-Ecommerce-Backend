@@ -15,6 +15,7 @@ const {
   deleteBillingAddress,
   updateBillingAddress,
   updateShippingAddress,
+  calculateShipping,
 } = require("../controllers/orderController");
 
 // ✅ Place this route BEFORE /:id
@@ -22,6 +23,7 @@ router.get("/myorders", protect, getMyOrders);
 
 // Specific routes FIRST
 router.post("/stripe/create-checkout", protect, createStripeOrder);
+router.post("/calculate-shipping", protect, calculateShipping);
 
 // Shipping
 router.get("/shipping", protect, getShippingAddresses);

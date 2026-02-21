@@ -44,8 +44,18 @@ const parseJSON = (field) => {
   }
 };
 
-const parseNumber = (val) => (val ? parseFloat(val) || 0 : 0);
-const parseIntNum = (val) => (val ? parseInt(val) || 0 : 0);
+const parseNumber = (val) => {
+  if (val === undefined || val === null || val === "") return 0;
+  const parsed = parseFloat(val);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+const parseIntNum = (val) => {
+  if (val === undefined || val === null || val === "") return 0;
+  const parsed = parseInt(val, 10);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
 const parseBoolean = (val) => val === "true" || val === true;
 
 const parseCondition = (value) => {
@@ -174,11 +184,11 @@ const addProduct = async (req, res) => {
     const savedProduct = await newProduct.save();
 
     const response = await Product.findById(savedProduct._id).select(
-         "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDeliveryWatch " +
-        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-        "salePrice regularPrice stockQuantity taxStatus limitedEdition strapSize caseSize includedAccessories " +
-        "condition itemCondition category description visibility published featured inStock " +
-        "badges images createdAt updatedAt"
+      "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDeliveryWatch " +
+      "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+      "salePrice regularPrice stockQuantity taxStatus limitedEdition strapSize caseSize includedAccessories " +
+      "condition itemCondition category description visibility published featured inStock " +
+      "badges images createdAt updatedAt"
     );
 
     res.status(201).json({
@@ -211,6 +221,8 @@ const updateProduct = async (req, res) => {
     // 🔔 STORE OLD STOCK BEFORE UPDATE
     const oldStockQuantity = product.stockQuantity;
 
+    console.log(`Updating product ${id}. Incoming stockQuantity:`, req.body.stockQuantity);
+
     // Handle images
     let updatedImages = [...(product.images || [])];
     if (req.body.images && req.body.images.length > 0) {
@@ -231,8 +243,8 @@ const updateProduct = async (req, res) => {
       req.body.stockQuantity !== undefined
         ? stockQuantity > 0
         : req.body.inStock !== undefined
-        ? parseBoolean(req.body.inStock)
-        : product.inStock;
+          ? parseBoolean(req.body.inStock)
+          : product.inStock;
 
     // Build updated fields safely
     const updatedFields = {
@@ -310,10 +322,10 @@ const updateProduct = async (req, res) => {
       runValidators: true,
     });
 
-    
-if (oldStockQuantity === 0 && updatedProduct.stockQuantity > 0) {
-  await notifyRestock(updatedProduct._id);
-}
+
+    if (oldStockQuantity === 0 && updatedProduct.stockQuantity > 0) {
+      await notifyRestock(updatedProduct._id);
+    }
 
 
     res.status(200).json({

@@ -28,6 +28,8 @@ const brandRoutes = require('./routes/brandRoutes');
 const purchaseRoutes = require('./routes/purchaseRoutes');
 const newsletterRoutes = require('./routes/newsletterRoutes');
 const offerRoutes = require('./routes/offerRoutes');
+const blogRoutes = require('./routes/blogRoutes');
+
 
 
 
@@ -116,6 +118,8 @@ app.use("/api/brands", brandRoutes);
 app.use("/api/purchase", purchaseRoutes);
 app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/offers", offerRoutes);
+app.use("/api/blogs", blogRoutes);
+
 
 // ✅ Catch-all generic /api route MUST be last
 app.use("/api", productRoutes);

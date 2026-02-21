@@ -98,7 +98,10 @@ const createTamaraOrder = async (req, res) => {
             0
         );
 
-        const shippingFee = 0; // If needed, set real value
+        const { shippingFee } = calculateShippingFee({
+            country: shippingAddress?.country || "AE",
+            subtotal
+        });
         const total = subtotal + shippingFee;
 
         // ===============================

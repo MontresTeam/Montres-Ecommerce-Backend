@@ -6,6 +6,7 @@ const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const nodemailer = require("nodemailer");
 const { getRecommendations } = require("./productController");
+const sendEmail = require("../utils/sendEmail");
 const {
   generateAccessToken,
   generateRefreshToken,
@@ -29,7 +30,20 @@ const transporter = nodemailer.createTransport({
 
 const Registration = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, captchaToken } = req.body;
+
+    if (!captchaToken) {
+      return res.status(400).json({ message: "Please complete the CAPTCHA." });
+    }
+
+    // Verify reCAPTCHA
+    const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+    const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${captchaToken}`;
+
+    const captchaResponse = await axios.post(verifyUrl);
+    if (!captchaResponse.data.success) {
+      return res.status(400).json({ message: "CAPTCHA verification failed. Please try again." });
+    }
 
     if (!name || !email || !password)
       return res.status(400).json({ message: "All fields required" });
@@ -81,7 +95,20 @@ const Registration = async (req, res) => {
 
 const Login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, captchaToken } = req.body;
+
+    if (!captchaToken) {
+      return res.status(400).json({ message: "Please complete the CAPTCHA." });
+    }
+
+    // Verify reCAPTCHA
+    const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+    const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${captchaToken}`;
+
+    const captchaResponse = await axios.post(verifyUrl);
+    if (!captchaResponse.data.success) {
+      return res.status(400).json({ message: "CAPTCHA verification failed. Please try again." });
+    }
 
     if (!email || !password)
       return res.status(400).json({ message: "Email and password required" });
@@ -166,9 +193,6 @@ const RefreshToken = async (req, res) => {
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-
-    // Find User
-
     if (!email) {
       return res
         .status(400)
@@ -181,25 +205,24 @@ const forgotPassword = async (req, res) => {
         .status(404)
         .json({ status: "Fail", message: "User not found." });
     }
+
+    // Token valid for 1 hour to match frontend message
     const token = jwt.sign(
       { id: user._id },
       process.env.USER_ACCESS_TOKEN_SECRET,
-      { expiresIn: "15m" } // token valid for 15 minutes
+      { expiresIn: "1h" }
     );
 
     user.resetPasswordToken = token;
-    user.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 min
+    user.resetPasswordExpire = Date.now() + 60 * 60 * 1000; // 1 hour
     await user.save();
 
     // 🔑 Create reset link
-    const resetLink = `https://www.montres.ae/ResetPassword/${user._id}/${token}`;
+    const frontendUrl = process.env.FRONTEND_URL || "https://www.montres.ae";
+    const resetLink = `${frontendUrl}/ResetPassword/${user._id}/${token}`;
 
-    const mailOptions = {
-      from: `"Montres Trading L.L.C – The Art Of Time" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "🔑 Reset Your Password – Montres Trading L.L.C",
-      html: `
-  <!DOCTYPE html>
+    const htmlContent = `
+         <!DOCTYPE html>
   <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -250,7 +273,7 @@ const forgotPassword = async (req, res) => {
                 </div>
 
                 <p style="font-size:11px;color:#94a3b8;text-align:center;margin:20px 0 0 0;">
-                  This link will expire in <strong style="color:#ef4444;">15 minutes</strong>.
+                  This link will expire in <strong style="color:#ef4444;">1 hour</strong>.
                 </p>
               </td>
             </tr>
@@ -271,24 +294,17 @@ const forgotPassword = async (req, res) => {
     </table>
   </body>
   </html>
-  `,
-    };
+    `;
 
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        console.log("Email error:", error);
-        return res
-          .status(500)
-          .json({ status: "Error", message: "Email not sent" });
-      } else {
-        console.log("Email sent:", info.response);
-        return res.status(200).json({
-          status: "Success",
-          message: "Password reset link sent successfully",
-        });
-      }
+    await sendEmail(email, "🔑 Reset Your Password – Montres Trading L.L.C", htmlContent);
+
+    return res.status(200).json({
+      status: "Success",
+      message: "Password reset link sent successfully",
     });
+
   } catch (error) {
+    console.error("Forgot Password Error:", error);
     res.status(500).json({ status: "Error", message: error.message });
   }
 };
@@ -343,22 +359,21 @@ const ResetPassword = async (req, res) => {
         .json({ status: "Fail", message: "Invalid or expired token" });
     }
 
-    // ✅ Set new password (NO MANUAL HASHING)
+    // ✅ Set new password (NO MANUAL HASHING - Handled by Pre-save hook)
     user.password = newPassword;
 
     // ✅ Clear reset fields
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
 
-    await user.save(); // pre-save hook will hash password here
+    await user.save();
 
     return res.status(200).json({
       status: "Success",
-      message:
-        "Password reset successful. Please login with your new password.",
+      message: "Password reset successful. Please login with your new password.",
     });
   } catch (error) {
-    console.error(error);
+    console.error("Reset Password Error:", error);
     res.status(500).json({ status: "Error", message: error.message });
   }
 };
@@ -1086,17 +1101,46 @@ const googleSignup = async (req, res) => {
 
 const facebookSignup = async (req, res) => {
   try {
-    const { name, email, avatar, provider } = req.body;
-    if (!email) return res.status(400).json({ message: "Email is required" });
+    const { accessToken } = req.body;
+
+    if (!accessToken) {
+      return res.status(400).json({ message: "Access token is required" });
+    }
+
+    // 1. Verify the token and get user data from Facebook Graph API
+    const url = `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`;
+    const { data } = await axios.get(url);
+
+    const { email, name, picture, id } = data;
+
+    if (!email) {
+      return res.status(400).json({
+        message: "Email permission is required from Facebook to sign up.",
+      });
+    }
 
     let user = await userModel.findOne({ email });
 
     if (!user) {
-      user = new userModel({ name, email, avatar, provider });
+      // Create new user
+      user = new userModel({
+        name,
+        email,
+        avatar: picture?.data?.url || "",
+        provider: "facebook",
+        facebookId: id,
+      });
       await user.save();
+      sendWelcomeEmail(user.email, user.name).catch(console.log);
+    } else {
+      // Initialize facebookId if not present
+      if (!user.facebookId) {
+        user.facebookId = id;
+        await user.save();
+      }
     }
 
-    const accessToken = generateAccessToken(user._id, user.email);
+    const newAccessToken = generateAccessToken(user._id, user.email);
     const refreshToken = generateRefreshToken(user._id);
 
     user.refreshToken = refreshToken;
@@ -1112,7 +1156,7 @@ const facebookSignup = async (req, res) => {
       .status(200)
       .json({
         message: "Facebook login/signup successful",
-        accessToken,
+        accessToken: newAccessToken,
         user: {
           id: user._id,
           name: user.name,
@@ -1121,8 +1165,13 @@ const facebookSignup = async (req, res) => {
         },
       });
   } catch (error) {
-    console.log("Facebook Signup Error:", error);
-    res.status(500).json({ message: "Facebook signup failed", error: error.message });
+    console.error(
+      "Facebook Signup Error:",
+      error.response?.data || error.message
+    );
+    res
+      .status(500)
+      .json({ message: "Facebook signup failed", error: error.message });
   }
 };
 

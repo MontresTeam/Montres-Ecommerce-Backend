@@ -88,12 +88,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       minlength: 8,
       required: function () {
-        return !this.googleId;
+        return !this.googleId && !this.facebookId;
       },
     },
     googleId: { type: String, unique: true, sparse: true },
+    facebookId: { type: String, unique: true, sparse: true },
     avatar: { type: String },
-    provider: { type: String, enum: ["local", "google"], default: "local" },
+    provider: { type: String, enum: ["local", "google", "facebook"], default: "local" },
     resetPasswordToken: String,
     refreshToken: String,
     cart: [cartItemSchema],

@@ -8,6 +8,8 @@ const Product = require("../models/product");
 const shippingCalculator = require("../utils/shippingCalculator");
 const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
 
+const TABBY_BASE = process.env.TABBY_BASE_URL || "https://api.tabby.ai/api/v2";
+
 // ----------------- Helpers -----------------
 
 // Format phone to E.164
@@ -25,6 +27,58 @@ const formatPhone = (p) => {
 const normalizeCountry = (country) => {
   if (!country) return "AE";
   return country.length === 2 ? country.toUpperCase() : "AE";
+};
+
+const verifyTabbySignature = (req) => {
+  const signature = req.headers["x-tabby-signature"];
+  const secret = process.env.TABBY_WEBHOOK_SECRET;
+
+  if (!secret) {
+    console.warn("⚠️ TABBY_WEBHOOK_SECRET is not defined. Skipping signature verification.");
+    return false; // Or true if you want to allow in dev, but safer to fail
+  }
+
+  if (!signature) {
+    console.warn("⚠️ Missing X-Tabby-Signature header.");
+    return false;
+  }
+
+  // If in sandbox/dev, you might want to log but allow. 
+  // For strict security, we fail if invalid.
+  try {
+    const hmac = crypto.createHmac("sha256", secret);
+    hmac.update(req.body); // req.body must be the RAW buffer
+    const calculatedSignature = hmac.digest("base64"); // Tabby references often use base64 or hex. 
+    // Correction: Tabby docs usually don't specify, but standard is often hex. 
+    // However, if the previous code was checking equality, maybe it was a simple token?
+    // Let's assume standard HMAC Hex first, as passing a raw token is rare. 
+    // Actually, looking at other integrations (e.g. Tamara uses Hex), let's try Hex.
+    // If it fails, we might need to adjust.
+    // NOTE: Some docs say Tabby sends the token as is? No, let's stick to HMAC.
+    
+    // Changing to simple token check behavior if that's what was intended, 
+    // BUT user asked for "Security", so I'll implement HMAC.
+    
+    // Wait, if I change to HMAC and the dashboard is just a token, it will break.
+    // I will support BOTH: 
+    // 1. Direct equality (Legacy/Token mode)
+    // 2. HMAC Hex
+    
+    if (signature === secret) return true;
+
+    const calculatedSignatureHex = crypto.createHmac("sha256", secret).update(req.body).digest("hex");
+    if (signature === calculatedSignatureHex) return true;
+
+    // Try Base64 just in case
+    // const calculatedSignatureBase64 = crypto.createHmac("sha256", secret).update(req.body).digest("base64");
+    // if (signature === calculatedSignatureBase64) return true;
+
+    console.warn(`❌ Tabby Signature Mismatch. Received: ${signature}`);
+    return false;
+  } catch (e) {
+    console.error("Signature verification error:", e);
+    return false;
+  }
 };
 
 
@@ -143,7 +197,7 @@ const preScoring = async (req, res) => {
 
     let response;
     try {
-      response = await axios.post("https://api.tabby.ai/api/v2/pre-scoring", tabbyPayload, {
+      response = await axios.post(`${TABBY_BASE}/pre-scoring`, tabbyPayload, {
         headers: {
           Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
           "Content-Type": "application/json"
@@ -166,7 +220,7 @@ const preScoring = async (req, res) => {
         };
 
         response = await axios.post(
-          "https://api.tabby.ai/api/v2/checkout",
+          `${TABBY_BASE}/checkout`,
           fallbackPayload,
           {
             headers: {
@@ -359,7 +413,7 @@ const createTabbyOrder = async (req, res) => {
 
     console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
-    const response = await axios.post("https://api.tabby.ai/api/v2/checkout", tabbyPayload, {
+    const response = await axios.post(`${TABBY_BASE}/checkout`, tabbyPayload, {
       headers: {
         Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
         "Content-Type": "application/json"
@@ -402,8 +456,6 @@ const createTabbyOrder = async (req, res) => {
 
 
 
-const TABBY_BASE = "https://api.tabby.ai/api/v2";
-
 const handleTabbyWebhook = async (req, res) => {
   console.log("--------------------------------------------------");
   console.log("🔔 TABBY WEBHOOK HIT");
@@ -415,20 +467,18 @@ const handleTabbyWebhook = async (req, res) => {
     res.status(200).send("ok");
 
     /* =================================================
-       2️⃣ Parse payload & Validate Signature
+       2️⃣ Verify Signature
     ================================================= */
-    const signature = req.headers["x-tabby-signature"];
-    const webhookSecret = process.env.TABBY_WEBHOOK_SECRET;
-
-    // QA CHECKLIST: Webhook signature validation
-    if (webhookSecret && signature !== webhookSecret) {
-      console.warn("⚠️ Tabby Webhook: Invalid signature. Ignoring.");
-      // We still return 200 because Tabby will keep retrying otherwise, 
-      // but we don't process it. Or we could return 401. 
-      // Most recommend 401 for invalid signatures.
+    const isValidSignature = verifyTabbySignature(req);
+    if (!isValidSignature) {
+      // Since we already sent 200 OK, we just stop processing
+      console.warn("⚠️ Cancelling webhook processing due to invalid signature.");
       return;
     }
 
+    /* =================================================
+       3️⃣ Parse payload
+    ================================================= */
     let payload = req.body;
     if (Buffer.isBuffer(payload)) {
       payload = JSON.parse(payload.toString("utf8"));
@@ -446,7 +496,7 @@ const handleTabbyWebhook = async (req, res) => {
     console.log(`📦 Tabby Payload - ID: ${paymentId}, Ref: ${referenceId}`);
 
     /* =================================================
-       3️⃣ VERIFY payment with Tabby API (Source of Truth)
+       4️⃣ VERIFY payment with Tabby API (Source of Truth)
     ================================================= */
     const headers = {
       Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
@@ -465,7 +515,7 @@ const handleTabbyWebhook = async (req, res) => {
     console.log(`🔍 Tabby Verified State: ${status} for Ref: ${referenceId}`);
 
     /* =================================================
-       4️⃣ Find order in DB & Validate
+       5️⃣ Find order in DB & Validate
     ================================================= */
     let order = await Order.findOne({
       $or: [

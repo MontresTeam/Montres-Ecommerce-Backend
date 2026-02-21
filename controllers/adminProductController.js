@@ -53,8 +53,18 @@ const parseJSON = (field) => {
   }
 };
 
-const parseNumber = (val) => (val ? parseFloat(val) || 0 : 0);
-const parseIntNum = (val) => (val ? parseInt(val) || 0 : 0);
+const parseNumber = (val) => {
+  if (val === undefined || val === null || val === "") return 0;
+  const parsed = parseFloat(val);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+const parseIntNum = (val) => {
+  if (val === undefined || val === null || val === "") return 0;
+  const parsed = parseInt(val, 10);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
 const parseBoolean = (val) => val === "true" || val === true;
 
 const parseCondition = (value) => {
@@ -227,6 +237,8 @@ const updateProduct = async (req, res) => {
 
     // 🔔 STORE OLD STOCK BEFORE UPDATE
     const oldStockQuantity = product.stockQuantity;
+
+    console.log(`Updating product ${id}. Incoming stockQuantity:`, req.body.stockQuantity);
 
     // Handle images
     let updatedImages = [...(product.images || [])];
