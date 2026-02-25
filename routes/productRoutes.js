@@ -47,7 +47,7 @@ const router = express.Router();
 router.get("/products", getProducts);
 router.get("/getAllBrands", getAllBrands)                      // Fetch all products
 router.post("/products", adminProtect, ImageUpload, addProduct);          // Add a new product (Admin Only)
-router.post("/createBooking", protect, ImageUpload, addServiceForm); // Create service form
+router.post("/createBooking", ImageUpload, addServiceForm); // Create service form
 router.get("/getBooking", getBookingService)
 router.get("/getLimited", getLimitedEditionProducts);
 router.get("/products/home", productHome);                 // Products for homepage

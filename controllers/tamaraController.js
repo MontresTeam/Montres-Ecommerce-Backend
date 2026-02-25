@@ -147,12 +147,12 @@ const createTamaraOrder = async (req, res) => {
         });
 
         const baseUrl =
-            process.env.FRONTEND_URL ||
-            "https://www.montres.ae";
+            process.env.CLIENT_URL ||
+            "http://localhost:3000";
 
         const backendUrl =
             process.env.BACKEND_URL ||
-            "https://yourbackend.com";
+            "https://api.montres.ae";
 
         const orderId = order._id.toString();
 

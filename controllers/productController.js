@@ -750,6 +750,7 @@ const addServiceForm = async (req, res) => {
     const {
       customerName,
       phoneNumber,
+      email,
       countryCode, // optional, default +971 will be applied by schema
       productName,
       manufactureYear,
@@ -771,19 +772,91 @@ const addServiceForm = async (req, res) => {
     const newBooking = new WatchService({
       customerName,
       phoneNumber,
-      countryCode, // will use default if not provided
+      email: email || undefined,
+      countryCode: countryCode || "+971",
       productName,
-      manufactureYear,
-      watchType,
+      manufactureYear: manufactureYear || undefined,
+      watchType: watchType || undefined,
       selectedService,
       images,
     });
 
     await newBooking.save();
 
+    // 📩 Send Email Notification to Admin & Sales
+    const adminEmails = ["admin@montres.ae", "sales@montres.ae"];
+    const adminSubject = `New Watch Service Booking: ${selectedService}`;
+    const adminHtml = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <h2 style="color: #000; border-bottom: 1px solid #ddd; padding-bottom: 10px;">Montres Trading L.L.C – Watch Service Booking</h2>
+        <p><strong>New Watch Service Request Received</strong></p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <tr><td style="padding: 5px; font-weight: bold; width: 150px;">Customer Name:</td><td style="padding: 5px;">${customerName}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Email:</td><td style="padding: 5px;">${email || "Not Provided"}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Phone:</td><td style="padding: 5px;">${countryCode || "+971"} ${phoneNumber}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Watch Model:</td><td style="padding: 5px;">${productName}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Watch Type:</td><td style="padding: 5px;">${watchType || "N/A"}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Year:</td><td style="padding: 5px;">${manufactureYear || "N/A"}</td></tr>
+          <tr><td style="padding: 5px; font-weight: bold;">Service Requested:</td><td style="padding: 5px;">${selectedService}</td></tr>
+        </table>
+
+        ${images && images.length > 0 ? `<p><strong>Attached Images:</strong> ${images.length} file(s) provided.</p>` : ""}
+        
+        <footer style="margin-top: 30px; font-size: 12px; color: #777; border-top: 1px solid #eee; padding-top: 10px;">
+          <p>Sent from Montres Store (www.montres.ae)</p>
+        </footer>
+      </div>
+    `;
+    const adminText = `New Watch Service Booking:\nCustomer: ${customerName}\nEmail: ${email}\nPhone: ${countryCode || "+971"} ${phoneNumber}\nWatch: ${productName}\nService: ${selectedService}`;
+
+    // 📩 Customer Confirmation Email
+    const customerSubject = "Service Booking Confirmation - Montres Trading L.L.C";
+    const customerHtml = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <h2 style="color: #000;">Thank You for Choosing Montres Trading L.L.C</h2>
+        <p>Dear ${customerName},</p>
+        <p>We have received your service booking request for your <strong>${productName}</strong>. Our specialists will review your request and contact you shortly regarding the next steps.</p>
+        
+        <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; border: 1px solid #eee; margin: 20px 0;">
+          <p><strong>Booking Details:</strong></p>
+          <ul style="list-style: none; padding: 0;">
+            <li><strong>Service:</strong> ${selectedService}</li>
+            <li><strong>Watch:</strong> ${productName}</li>
+            <li><strong>Status:</strong> Pending</li>
+          </ul>
+        </div>
+
+        <p>If you have any urgent questions, please feel free to reply to this email or contact us directly.</p>
+        
+        <footer style="margin-top: 30px; font-size: 12px; color: #777; border-top: 1px solid #eee; padding-top: 10px;">
+          <p>Montres Trading L.L.C – The Art Of Time</p>
+          <p>www.montres.ae | +971 50 123 4567</p>
+        </footer>
+      </div>
+    `;
+    const customerText = `Dear ${customerName},\n\nWe have received your service booking request for your ${productName} (${selectedService}). Our specialists will contact you shortly.\n\nThank you for choosing Montres Trading L.L.C.`;
+
+    // Send emails in parallel
+    try {
+      const emailPromises = [
+        ...adminEmails.map((adminEmail) => sendEmail(adminEmail, adminSubject, adminHtml, adminText))
+      ];
+
+      // Only send customer email if email is provided
+      if (email) {
+        emailPromises.push(sendEmail(email, customerSubject, customerHtml, customerText));
+      }
+
+      await Promise.all(emailPromises);
+    } catch (emailError) {
+      console.error("❌ Email notification failed:", emailError);
+      // We don't fail the whole request if email fails, as the booking is already saved
+    }
+
     res.status(201).json({
       success: true,
-      message: "Service booked successfully",
+      message: "Service booked successfully. A confirmation email has been sent.",
       data: newBooking,
     });
   } catch (error) {

@@ -13,6 +13,11 @@ const watchServiceSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
     countryCode: {
       type: String,
       default: "+971", // Default UAE country code

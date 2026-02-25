@@ -153,7 +153,7 @@ const createTamaraOrder = async (req, res) => {
 
         const backendUrl =
             process.env.BACKEND_URL ||
-            "https://yourbackend.com";
+            "https://api.montres.ae";
 
         const tamaraPayload = {
             order_reference_id: orderId,
