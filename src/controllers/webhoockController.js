@@ -214,10 +214,12 @@ const handleTamaraWebhook = async (req, res) => {
 
         const referenceId = notification.order_reference_id;
         const tamaraOrderId = notification.order_id;
-        const status = notification.event_type || notification.order_status;
+        const status = (notification.event_type || notification.order_status || notification.status || "").toLowerCase();
 
-        // ✅ APPROVED / AUTHORIZED
-        if (status === "approved" || status === "order_authorized") {
+        console.log(`📦 Status received: ${status} for Order: ${referenceId}`);
+
+        // ✅ APPROVED / AUTHORIZED / CAPTURED
+        if (["approved", "authorised", "order_authorized", "captured", "ready_for_capture"].includes(status)) {
             let order = await Order.findOne({ $or: [{ orderId: referenceId }, { tamaraOrderId: tamaraOrderId }] });
 
             if (!order) {

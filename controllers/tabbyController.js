@@ -13,20 +13,51 @@ const TABBY_BASE = process.env.TABBY_BASE_URL || "https://api.tabby.ai/api/v2";
 // ----------------- Helpers -----------------
 
 // Format phone to E.164
-const formatPhone = (p) => {
-  if (!p) return "+971500000001";
+// Format phone to E.164
+const formatPhone = (p, country = "AE") => {
+  if (!p) return undefined;
   let cleaned = p.replace(/\D/g, "");
-  if (cleaned.startsWith("971")) return "+" + cleaned;
-  if (cleaned.startsWith("05")) return "+971" + cleaned.substring(1);
-  if (cleaned.length === 9 && cleaned.startsWith("5")) return "+971" + cleaned;
+
+  const c = (country || "AE").toUpperCase();
+
+  if (c === "AE") {
+    if (cleaned.startsWith("971")) return "+" + cleaned;
+    if (cleaned.startsWith("05")) return "+971" + cleaned.substring(1);
+    if (cleaned.length === 9 && cleaned.startsWith("5")) return "+971" + cleaned;
+  } else if (c === "OM") {
+    if (cleaned.startsWith("968")) return "+" + cleaned;
+    if (cleaned.length === 8) return "+968" + cleaned;
+  } else if (c === "SA") {
+    if (cleaned.startsWith("966")) return "+" + cleaned;
+    if (cleaned.startsWith("05")) return "+966" + cleaned.substring(1);
+    if (cleaned.length === 9 && cleaned.startsWith("5")) return "+966" + cleaned;
+  } else if (c === "KW") {
+    if (cleaned.startsWith("965")) return "+" + cleaned;
+    if (cleaned.length === 8) return "+965" + cleaned;
+  } else if (c === "BH") {
+    if (cleaned.startsWith("973")) return "+" + cleaned;
+    if (cleaned.length === 8) return "+973" + cleaned;
+  } else if (c === "QA") {
+    if (cleaned.startsWith("974")) return "+" + cleaned;
+    if (cleaned.length === 8) return "+974" + cleaned;
+  }
+
   if (cleaned.startsWith("00")) return "+" + cleaned.substring(2);
   return "+" + cleaned;
 };
 
 // Normalize country code
+// Normalize country code to ISO 3166-1 alpha-2
 const normalizeCountry = (country) => {
   if (!country) return "AE";
-  return country.length === 2 ? country.toUpperCase() : "AE";
+  const c = country.trim().toUpperCase();
+  if (c === "UNITED ARAB EMIRATES" || c === "UAE" || c === "DUBAI") return "AE";
+  if (c === "SAUDI ARABIA" || c === "KSA" || c === "SAUDI") return "SA";
+  if (c === "OMAN") return "OM";
+  if (c === "KUWAIT") return "KW";
+  if (c === "BAHRAIN") return "BH";
+  if (c === "QATAR") return "QA";
+  return c.length === 2 ? c : "AE";
 };
 
 const verifyTabbySignature = (req) => {
@@ -55,15 +86,15 @@ const verifyTabbySignature = (req) => {
     // Actually, looking at other integrations (e.g. Tamara uses Hex), let's try Hex.
     // If it fails, we might need to adjust.
     // NOTE: Some docs say Tabby sends the token as is? No, let's stick to HMAC.
-    
+
     // Changing to simple token check behavior if that's what was intended, 
     // BUT user asked for "Security", so I'll implement HMAC.
-    
+
     // Wait, if I change to HMAC and the dashboard is just a token, it will break.
     // I will support BOTH: 
     // 1. Direct equality (Legacy/Token mode)
     // 2. HMAC Hex
-    
+
     if (signature === secret) return true;
 
     const calculatedSignatureHex = crypto.createHmac("sha256", secret).update(req.body).digest("hex");
@@ -101,7 +132,7 @@ const getTabbyHistory = async (userId) => {
     const user = await userModel.findById(userId).lean();
     if (user) {
       buyerHistory = {
-        registered_since: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
+        registered_since: user.createdAt ? user.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         loyalty_level: 0,
         wishlist_count: user.wishlistGroups?.reduce((acc, g) => acc + (g.items?.length || 0), 0) || 0,
         is_social_networks_connected: !!user.googleId,
@@ -116,8 +147,8 @@ const getTabbyHistory = async (userId) => {
       .lean();
 
     orderHistory = pastOrders.map((o) => ({
-      purchased_at: o.createdAt ? o.createdAt.toISOString() : new Date().toISOString(),
-      amount: parseFloat(o.total || 0).toFixed(2),
+      purchased_at: o.createdAt ? o.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      amount: parseFloat(o.total || 0).toFixed(decimals),
       currency: o.currency || "AED",
       status: "complete",
       payment_method:
@@ -130,7 +161,7 @@ const getTabbyHistory = async (userId) => {
         id: o.userId?.toString() || "guest",
         email: o.shippingAddress?.email || user?.email || "noemail@test.com",
         name: `${o.shippingAddress?.firstName || ""} ${o.shippingAddress?.lastName || ""}`.trim() || user?.name || "Customer",
-        phone: formatPhone(o.shippingAddress?.phone || user?.phone || "+971500000001")
+        phone: formatPhone(o.shippingAddress?.phone || user?.phone, normalizeCountry(o.shippingAddress?.country))
       },
       shipping_address: {
         city: o.shippingAddress?.city || "Dubai",
@@ -170,14 +201,15 @@ const preScoring = async (req, res) => {
     const userId = req.user?.userId;
     const { buyerHistory, orderHistory } = await getTabbyHistory(userId);
 
+    const decimals = ["KWD", "BHD", "OMR"].includes(currency.toUpperCase()) ? 3 : 2;
     const tabbyPayload = {
       payment: {
-        amount: String(Number(amount).toFixed(2)),
+        amount: String(Number(amount).toFixed(decimals)),
         currency: currency,
         buyer: {
           email: buyer?.email,
           name: buyer?.name,
-          phone: formatPhone(buyer?.phone),
+          phone: formatPhone(buyer?.phone, normalizeCountry(shipping_address?.country)),
           id: userId || "guest_" + Date.now(),
         },
         shipping_address: shipping_address || {
@@ -317,9 +349,12 @@ const createTabbyOrder = async (req, res) => {
       }];
     }
 
+    const currency = req.body.currency || "AED";
+    const decimals = ["KWD", "BHD", "OMR"].includes(currency.toUpperCase()) ? 3 : 2;
+
     const subtotal = populatedItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
-    const { shippingFee } = shippingCalculator.calculateShippingFee({ country: shippingAddress?.country || "AE", subtotal });
-    const total = parseFloat((subtotal + shippingFee).toFixed(2));
+    const { shippingFee, region } = shippingCalculator.calculateShippingFee({ country: shippingAddress?.country || "AE", subtotal });
+    const total = parseFloat((subtotal + shippingFee).toFixed(decimals));
 
     const referenceId = `tabby_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
@@ -331,10 +366,11 @@ const createTabbyOrder = async (req, res) => {
       subtotal: subtotal,
       shippingFee: shippingFee,
       total: total,
+      region: region,
       paymentMethod: "tabby",
       paymentStatus: "pending",
       orderStatus: "Pending",
-      currency: "AED",
+      currency: currency,
       shippingAddress: {
         firstName: shippingAddress?.firstName || "Customer",
         lastName: shippingAddress?.lastName || "User",
@@ -367,7 +403,7 @@ const createTabbyOrder = async (req, res) => {
       title: item.name,
       description: item.name,
       quantity: item.quantity,
-      unit_price: item.price.toFixed(2),
+      unit_price: item.price.toFixed(decimals),
       category: "Watch",
       image_url: item.image || "https://www.montres.ae/logo.png",
       product_url: item.productId ? `${clientUrl}/product/${item.productId}` : clientUrl,
@@ -378,14 +414,14 @@ const createTabbyOrder = async (req, res) => {
 
     const tabbyPayload = {
       payment: {
-        amount: total.toFixed(2),
-        currency: "AED",
+        amount: total.toFixed(decimals),
+        currency: currency,
         description: `Order via Tabby`,
         buyer: {
           id: req.user?.userId || "guest_" + Date.now(),
           email: buyerEmail,
           name: buyerName,
-          phone: formatPhone(buyerPhone)
+          phone: formatPhone(buyerPhone, normalizeCountry(shippingAddress?.country))
         },
         buyer_history: buyerHistory,
         shipping_address: {
@@ -397,8 +433,9 @@ const createTabbyOrder = async (req, res) => {
         order: {
           reference_id: referenceId,
           items: tabbyItems,
-          shipping_amount: shippingFee.toFixed(2),
-          tax_amount: "0.00"
+          shipping_amount: shippingFee.toFixed(decimals),
+          tax_amount: (0).toFixed(decimals),
+          discount_amount: (0).toFixed(decimals)
         },
         order_history: orderHistory
       },
@@ -410,6 +447,10 @@ const createTabbyOrder = async (req, res) => {
         failure: failureUrl
       }
     };
+
+    if (!process.env.TABBY_SECRET_KEY) {
+      throw new Error("TABBY_SECRET_KEY is not defined in environment variables");
+    }
 
     console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
 
@@ -445,11 +486,18 @@ const createTabbyOrder = async (req, res) => {
     return res.status(201).json({ success: true, referenceId, checkoutUrl: paymentUrl });
 
   } catch (error) {
-    console.error("❌ Tabby error details:", JSON.stringify(error.response?.data || error.message, null, 2));
-    return res.status(500).json({
+    const errorDetails = error.response?.data || error.message;
+    console.error("❌ Tabby initialization failed:", JSON.stringify(errorDetails, null, 2));
+
+    // Attempt to extract a user-friendly message
+    let userMessage = "Tabby initialization failed";
+    if (error.response?.data?.error) userMessage = error.response.data.error;
+    if (error.response?.data?.message) userMessage = error.response.data.message;
+
+    return res.status(error.response?.status || 500).json({
       success: false,
-      message: "Tabby initialization failed",
-      error: error.response?.data || error.message
+      message: userMessage,
+      error: errorDetails
     });
   }
 };
@@ -563,7 +611,7 @@ const handleTabbyWebhook = async (req, res) => {
           phone: buyer.phone,
           city: shipping.city || "N/A",
           street: shipping.address || "N/A",
-          country: shipping.country || (payment.currency === 'SAR' ? 'SA' : 'AE'),
+          country: shipping.country || (payment.currency === 'SAR' ? 'SA' : payment.currency === 'OMR' ? 'OM' : 'AE'),
           postalCode: shipping.zip || ""
         }
       });
@@ -600,9 +648,10 @@ const handleTabbyWebhook = async (req, res) => {
 
       console.log("💳 Triggering capture...");
       try {
+        const captureDecimals = ["KWD", "BHD", "OMR"].includes(order.currency?.toUpperCase()) ? 3 : 2;
         const captureRes = await axios.post(
           `${TABBY_BASE}/payments/${paymentId}/captures`,
-          { amount: String(amount.toFixed(2)) }, // Capture FULL amount
+          { amount: String(amount.toFixed(captureDecimals)) }, // Capture FULL amount with correct decimals
           { headers }
         );
         console.log("✅ Capture request sent successfully");

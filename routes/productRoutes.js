@@ -87,15 +87,15 @@ router.get("/restock/subscribers", adminProtect, getRestockSubscribers) // Admin
 router.delete("/restock/:id/unsubscribe", unsubscribeRestock)
 // Single product by 
 
-router.get("/:id", getProductById);
+router.get('/brand/:brand/watches', getBrandWatches);
+router.get("/brand/:brand/handbags", getBrandBags);
+router.get("/brand/:brand/accessories", getBrandAccessories)
 
+router.get("/:id", getProductById);
 /* ----------------- Simillar product ----------------- */
 router.get("/:id/similar", SimilarProduct);
 router.get("/:id/you-may-also-like", YouMayAlsoLike);
 
-router.get('/brand/:brand/watches', getBrandWatches);
-router.get("/brand/:brand/handbags", getBrandBags);
-router.get("/brand/:brand/accessories", getBrandAccessories)
 router.post("/inventory/move", adminProtect, moveToInventory) // Admin Only
 
 

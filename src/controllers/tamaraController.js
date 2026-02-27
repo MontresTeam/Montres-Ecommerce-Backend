@@ -13,10 +13,14 @@ const TAMARA_API_URL = `${TAMARA_API_BASE}/checkout`;
 // ==================================================
 const normalizeCountryCode = (value) => {
     if (!value) return "AE";
-    const v = value.toUpperCase();
-    if (v === "UAE" || v === "UNITED ARAB EMIRATES") return "AE";
-    if (v === "KSA" || v === "SAUDI ARABIA") return "SA";
-    return v;
+    const v = value.toUpperCase().trim();
+    if (v === "UAE" || v === "UNITED ARAB EMIRATES" || v === "DUBAI") return "AE";
+    if (v === "KSA" || v === "SAUDI ARABIA" || v === "SAUDI") return "SA";
+    if (v === "OMAN") return "OM";
+    if (v === "KUWAIT") return "KW";
+    if (v === "BAHRAIN") return "BH";
+    if (v === "QATAR") return "QA";
+    return v.length === 2 ? v : "AE";
 };
 
 // ==================================================
@@ -251,7 +255,119 @@ const createTamaraOrder = async (req, res) => {
     }
 };
 
+// ==================================================
+// VERIFY TAMARA PAYMENT
+// ==================================================
+const verifyTamaraPayment = async (req, res) => {
+    try {
+        const { orderId } = req.query; // This is our DB _id or orderId field
+
+        if (!orderId) {
+            return res.status(400).json({ success: false, message: "Order ID is required" });
+        }
+
+        // 1. Find the order
+        let order;
+        if (orderId.match(/^[0-9a-fA-F]{24}$/)) {
+            order = await Order.findById(orderId);
+        } else {
+            order = await Order.findOne({ orderId: orderId });
+        }
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: "Order not found" });
+        }
+
+        // If already paid, just return success
+        if (order.paymentStatus === "paid" || order.paymentStatus === "captured") {
+            return res.status(200).json({ 
+                success: true, 
+                message: "Order already processed", 
+                status: order.paymentStatus,
+                order 
+            });
+        }
+
+        if (!order.tamaraOrderId) {
+            return res.status(400).json({ success: false, message: "Tamara Order ID missing from DB" });
+        }
+
+        // 2. Poll Tamara API for actual status
+        console.log(`🔍 Verifying Tamara status for: ${order.tamaraOrderId}`);
+        const tamaraResponse = await axios.get(
+            `${process.env.TAMARA_API_BASE}/orders/${order.tamaraOrderId}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.TAMARA_SECRET_KEY}`,
+                },
+            }
+        );
+
+        const tamaraStatus = tamaraResponse.data.status;
+        console.log(`⚖️ Tamara API Status: ${tamaraStatus}`);
+
+        // 3. Update DB based on status
+        // Tamara status can be 'authorised', 'captured', 'declined', 'expired', 'canceled'
+        if (tamaraStatus === "authorised" || tamaraStatus === "captured" || tamaraStatus === "ready_for_capture") {
+            order.paymentStatus = "paid";
+            order.orderStatus = "Processing";
+            order.paidAt = new Date();
+            await order.save();
+
+            // Clear cart & link order to user
+            if (order.userId) {
+                await User.findByIdAndUpdate(order.userId, {
+                    $set: { cart: [] },
+                    $addToSet: { orders: order._id }
+                });
+            }
+
+            // Send Email Confirmation (Optional: Trigger here if webhook hasn't yet)
+            try {
+                const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
+                await sendOrderConfirmation(order._id);
+            } catch (e) {
+                console.error("Email sending failed during verification:", e.message);
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: "Payment verified successfully",
+                status: tamaraStatus,
+                order
+            });
+        } else if (["declined", "expired", "canceled", "failed"].includes(tamaraStatus)) {
+            order.paymentStatus = "failed";
+            order.orderStatus = "Cancelled";
+            await order.save();
+
+            return res.status(200).json({
+                success: false,
+                message: `Payment ${tamaraStatus}`,
+                status: tamaraStatus
+            });
+        }
+
+        // Catch-all: Still pending on Tamara's side
+        return res.status(200).json({
+            success: true,
+            message: "Payment is still pending on Tamara",
+            status: tamaraStatus,
+            order
+        });
+
+    } catch (error) {
+        console.error("VERIFY ERROR:", error?.response?.data || error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Verification failed",
+            error: error?.response?.data || error.message,
+        });
+    }
+};
+
 module.exports = {
     createTamaraOrder,
+    verifyTamaraPayment,
     normalizeCountryCode
 };

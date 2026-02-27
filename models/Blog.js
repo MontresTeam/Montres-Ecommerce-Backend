@@ -33,6 +33,8 @@ const BlogSchema = new mongoose.Schema({
         enum: ['Draft', 'Published', 'Scheduled'],
         default: 'Draft'
     },
+    metaTitle: { type: String },
+    metaDescription: { type: String },
     publishedAt: { type: Date }
 }, {
     timestamps: true

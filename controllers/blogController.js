@@ -5,7 +5,7 @@ const createBlog = async (req, res, next) => {
 
     console.log("📝 Create Blog Request Body:", JSON.stringify(req.body, null, 2));
     try {
-        const { title, slug, excerpt, content, category, tags, author, status, featuredImage } = req.body;
+        const { title, slug, excerpt, content, category, tags, author, status, featuredImage, metaTitle, metaDescription } = req.body;
 
         if (!title || !slug) {
             return res.status(400).json({
@@ -33,6 +33,8 @@ const createBlog = async (req, res, next) => {
             tags: typeof tags === 'string' ? JSON.parse(tags) : tags,
             author,
             status,
+            metaTitle,
+            metaDescription,
             featuredImage: req.body.images && req.body.images.length > 0 ? req.body.images[0].url : featuredImage,
             publishedAt: req.body.publishedAt ? new Date(req.body.publishedAt) : (status === 'Published' ? new Date() : null)
         });

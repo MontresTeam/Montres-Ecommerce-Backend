@@ -160,9 +160,13 @@ const getProducts = async (req, res) => {
     };
 
     // ✅ Category Filter
-    const categoryList = normalizeArray(category).map(cat =>
-      cat.toLowerCase() === 'watches' ? 'Watch' : cat
-    );
+    const categoryList = normalizeArray(category).map(cat => {
+      const lowerCat = cat.toLowerCase();
+      if (lowerCat === 'watches' || lowerCat === 'watch') return 'Watch';
+      if (lowerCat === 'accessories') return 'Accessories';
+      return cat;
+    });
+
     if (categoryList.length > 0) {
       andConditions.push({
         category: { $in: categoryList.map((cat) => new RegExp(`^${cat}$`, "i")) },
@@ -170,10 +174,10 @@ const getProducts = async (req, res) => {
     }
 
     // ✅ Brand Filter
-    const brandList = normalizeArray(brand);
-    if (brandList.length > 0) {
+    const selectedBrands = normalizeArray(brand);
+    if (selectedBrands.length > 0) {
       andConditions.push({
-        brand: { $in: brandList.map((br) => new RegExp(br, "i")) },
+        brand: { $in: selectedBrands.map((br) => new RegExp(`^${br.trim()}$`, "i")) },
       });
     }
 
@@ -871,11 +875,78 @@ const addServiceForm = async (req, res) => {
 
 const getBrandWatches = async (req, res) => {
   try {
-    // Reuse getProducts logic for pagination, sorting, and filtering
-    req.query.brand = req.params.brand;
-    req.query.category = "Watch";
-    return getProducts(req, res);
+    const brandName = decodeURIComponent(req.params.brand);
+    const { page = 1, limit = 16, sortBy = "featured" } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
+
+    // Normalize brand naming variations (e.g., handling typos in URL slugs or DB)
+    // We make 'arpels' and 'arels' interchangeable and treat spaces/hyphens as flexible separators
+    let searchPattern = brandName.trim()
+      .replace(/[-\s]+/g, "[\\s&\\-\\.]+")
+      .replace(/arp?els/gi, "ar(p)?(e)?ls");
+
+    const filterQuery = {
+      published: true,
+      category: { $regex: /Watch/i },
+      brand: { $regex: new RegExp(`${searchPattern}`, "i") }
+    };
+
+    const totalProducts = await Product.countDocuments(filterQuery);
+
+    // Sort configuration similar to getProducts
+    const sortOptions = {
+      newest: { inStock: -1, createdAt: -1 },
+      oldest: { inStock: -1, createdAt: 1 },
+      price_low_high: { inStock: -1, salePrice: 1 },
+      price_high_low: { inStock: -1, salePrice: -1 },
+      name_asc: { inStock: -1, name: 1 },
+      name_desc: { inStock: -1, name: -1 },
+      featured: { inStock: -1, featured: -1, createdAt: -1 },
+    };
+
+    const sortObj = sortOptions[sortBy] || { inStock: -1, createdAt: -1 };
+
+    const products = await Product.find(filterQuery)
+      .select(
+        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery scopeOfDeliveryWatch " +
+        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
+        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
+        "condition itemCondition category description visibility published featured inStock " +
+        "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
+      )
+      .sort(sortObj)
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
+
+    const formattedProducts = products.map((p) => ({
+      ...p,
+      brand: p.brand || "",
+      category: p.category || "",
+      image:
+        p.images?.find((img) => img.type === "main")?.url ||
+        p.images?.[0]?.url ||
+        "",
+      available: p.stockQuantity > 0 || p.inStock,
+      discount:
+        p.regularPrice && p.salePrice && p.regularPrice > p.salePrice
+          ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
+          : 0,
+      isOnSale: p.regularPrice && p.salePrice && p.regularPrice > p.salePrice,
+    }));
+
+    res.json({
+      success: true,
+      totalProducts,
+      count: totalProducts,
+      totalPages: Math.ceil(totalProducts / limitNum),
+      currentPage: pageNum,
+      products: formattedProducts,
+    });
   } catch (error) {
+    console.error("❌ Error fetching brand watches:", error);
     res.status(500).json({
       success: false,
       message: "Server Error",
@@ -887,9 +958,65 @@ const getBrandWatches = async (req, res) => {
 
 const getBrandBags = async (req, res) => {
   try {
-    req.query.brand = req.params.brand;
-    req.query.leatherMainCategory = "Bag";
-    return getProducts(req, res);
+    const brandName = decodeURIComponent(req.params.brand);
+    const { page = 1, limit = 16, sortBy = "featured" } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
+
+    // Flexible brand matching for bags
+    let searchPattern = brandName.trim()
+      .replace(/[-\s]+/g, "[\\s&\\-\\.]+")
+      .replace(/arp?els/gi, "ar(p)?(e)?ls");
+
+    const filterQuery = {
+      published: true,
+      brand: { $regex: new RegExp(`${searchPattern}`, "i") },
+      $or: [
+        { category: /Leather Bag/i },
+        { category: /Leather Good/i, leatherMainCategory: "Bag" }
+      ]
+    };
+
+    const totalProducts = await Product.countDocuments(filterQuery);
+
+    const sortOptions = {
+      newest: { inStock: -1, createdAt: -1 },
+      oldest: { inStock: -1, createdAt: 1 },
+      price_low_high: { inStock: -1, salePrice: 1 },
+      price_high_low: { inStock: -1, salePrice: -1 },
+      name_asc: { inStock: -1, name: 1 },
+      name_desc: { inStock: -1, name: -1 },
+      featured: { inStock: -1, featured: -1, createdAt: -1 },
+    };
+
+    const sortObj = sortOptions[sortBy] || { inStock: -1, createdAt: -1 };
+
+    const products = await Product.find(filterQuery)
+      .sort(sortObj)
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
+
+    const formattedProducts = products.map((p) => ({
+      ...p,
+      brand: p.brand || "",
+      category: p.category || "",
+      image:
+        p.images?.find((img) => img.type === "main")?.url ||
+        p.images?.[0]?.url ||
+        "",
+      available: p.stockQuantity > 0 || p.inStock,
+    }));
+
+    res.json({
+      success: true,
+      totalProducts,
+      count: totalProducts,
+      totalPages: Math.ceil(totalProducts / limitNum),
+      currentPage: pageNum,
+      products: formattedProducts,
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -902,9 +1029,62 @@ const getBrandBags = async (req, res) => {
 
 const getBrandAccessories = async (req, res) => {
   try {
-    req.query.brand = req.params.brand;
-    req.query.category = "Accessories";
-    return getProducts(req, res);
+    const brandName = decodeURIComponent(req.params.brand);
+    const { page = 1, limit = 16, sortBy = "featured" } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
+
+    // Flexible brand matching for accessories
+    let searchPattern = brandName.trim()
+      .replace(/[-\s]+/g, "[\\s&\\-\\.]+")
+      .replace(/arp?els/gi, "ar(p)?(e)?ls");
+
+    const filterQuery = {
+      published: true,
+      category: /Accessor/i,
+      brand: { $regex: new RegExp(`${searchPattern}`, "i") }
+    };
+
+    const totalProducts = await Product.countDocuments(filterQuery);
+
+    const sortOptions = {
+      newest: { inStock: -1, createdAt: -1 },
+      oldest: { inStock: -1, createdAt: 1 },
+      price_low_high: { inStock: -1, salePrice: 1 },
+      price_high_low: { inStock: -1, salePrice: -1 },
+      name_asc: { inStock: -1, name: 1 },
+      name_desc: { inStock: -1, name: -1 },
+      featured: { inStock: -1, featured: -1, createdAt: -1 },
+    };
+
+    const sortObj = sortOptions[sortBy] || { inStock: -1, createdAt: -1 };
+
+    const products = await Product.find(filterQuery)
+      .sort(sortObj)
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
+
+    const formattedProducts = products.map((p) => ({
+      ...p,
+      brand: p.brand || "",
+      category: p.category || "",
+      image:
+        p.images?.find((img) => img.type === "main")?.url ||
+        p.images?.[0]?.url ||
+        "",
+      available: p.stockQuantity > 0 || p.inStock,
+    }));
+
+    res.json({
+      success: true,
+      totalProducts,
+      count: totalProducts,
+      totalPages: Math.ceil(totalProducts / limitNum),
+      currentPage: pageNum,
+      products: formattedProducts,
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -1243,9 +1423,10 @@ const getRecommendations = async (cartItems, limit = 4) => {
 const getAllProductwithSearch = async (req, res) => {
   try {
     const { search = "" } = req.query;
+    let query = { published: true };
 
     // ✅ Case-insensitive search by name or brand
-    if (search.trim()) {
+    if (search && search.trim()) {
       const searchTerms = search.trim().split(/\s+/);
 
       // Helper to create loose regex for singular/plural matching
@@ -1260,6 +1441,7 @@ const getAllProductwithSearch = async (req, res) => {
       };
 
       query = {
+        published: true,
         $and: searchTerms.map(term => {
           const regex = createRegex(term);
           return {
@@ -1286,12 +1468,14 @@ const getAllProductwithSearch = async (req, res) => {
     const products = await Product.find(query);
 
     return res.json({
+      success: true,
       totalProducts: products.length,
       products,
     });
   } catch (error) {
     console.error("Product fetch error: ", error);
     res.status(500).json({
+      success: false,
       message: "❌ Error fetching products",
       error: error.message,
     });

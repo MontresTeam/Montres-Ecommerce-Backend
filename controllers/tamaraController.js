@@ -13,12 +13,19 @@ const TAMARA_API_URL = `${TAMARA_API_BASE}/checkout`;
 // ==================================================
 // COUNTRY CODE NORMALIZATION HELPER
 // ==================================================
+// ==================================================
+// COUNTRY CODE NORMALIZATION HELPER
+// ==================================================
 const normalizeCountryCode = (value) => {
     if (!value) return "AE";
-    const v = value.toUpperCase();
-    if (v === "UAE" || v === "UNITED ARAB EMIRATES") return "AE";
-    if (v === "KSA" || v === "SAUDI ARABIA") return "SA";
-    return v;
+    const v = value.toUpperCase().trim();
+    if (v === "UAE" || v === "UNITED ARAB EMIRATES" || v === "DUBAI") return "AE";
+    if (v === "KSA" || v === "SAUDI ARABIA" || v === "SAUDI") return "SA";
+    if (v === "OMAN") return "OM";
+    if (v === "KUWAIT") return "KW";
+    if (v === "BAHRAIN") return "BH";
+    if (v === "QATAR") return "QA";
+    return v.length === 2 ? v : "AE";
 };
 
 // ==================================================
@@ -99,7 +106,7 @@ const createTamaraOrder = async (req, res) => {
         );
 
         const { shippingFee } = calculateShippingFee({
-            country: shippingAddress?.country || "AE",
+            country: shippingAddress?.country || "AE", // Tamara UAE only supports AED, so country is fixed to AE
             subtotal
         });
         const total = subtotal + shippingFee;
