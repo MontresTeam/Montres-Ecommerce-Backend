@@ -93,73 +93,154 @@ const updateHomeProducts = async (req, res) => {
 
 const getHomeProductsGrid = async (req, res) => {
   try {
-    // Define categories and their style fields
-    const categories = [
-      { title: "Watch", styleField: "watchStyle" },
-      { title: "Accessories", styleField: "accessoryCategory" },
-      { title: "Leather Goods", styleField: "leatherMainCategory", excludeBags: true },
-      { title: "Leather Bags", styleField: "subcategory", includeBags: true },
+    const CATEGORIES = [
+      { title: "Watch",        styleField: "watchStyle",        limit: 1 },
+      { title: "Accessories",  styleField: "accessoryCategory", limit: 3 },
+      {
+        title: "Leather Goods",
+        styleField: "leatherMainCategory",
+        limit: 1,
+        valueFilter: { $nin: ["Hand Bag", "Tote Bag", "Crossbody Bag"] },
+      },
+      {
+        title: "Leather Bags",
+        styleField: "subcategory",
+        limit: 1,
+        valueFilter: { $in: ["Shoulder Bag", "Tote Bag", "Crossbody Bag"] },
+      },
     ];
 
+    // published: true filter — only add if products actually have this field set
+    const BASE_MATCH = { inStock: true, stockQuantity: { $gt: 0 } };
+
     const homeProducts = await Promise.all(
-      categories.map(async (cat) => {
-        // Build filter
-        let filter = {
-          [cat.styleField]: { $exists: true, $ne: null },
-          inStock: true,
-          stockQuantity: { $gt: 0 }
-        };
+      CATEGORIES.map(async ({ title, styleField, limit, valueFilter }) => {
+        const styleMatch = valueFilter ?? { $exists: true, $ne: null };
 
-        if (cat.title === "Leather Bags") {
-          // Only get bag products
-          filter[cat.styleField] = { $in: ["Shoulder Bag", "Tote Bag", "Crossbody Bag"] };
-        }
+        const pipeline = [
+          // 1. Filter at DB level — uses indexes
+          { $match: { ...BASE_MATCH, [styleField]: styleMatch } },
 
-        if (cat.title === "Leather Goods") {
-          // Exclude bags
-          filter[cat.styleField] = { $nin: ["Hand Bag", "Tote Bag", "Crossbody Bag"] };
-        }
+          // 2. Sort before grouping so newest products end up first in each group
+          { $sort: { createdAt: -1 } },
 
-        // Fetch products for this category
-        const productsInCategory = await Product.find(filter).sort({ createdAt: -1 });
+          // 3. Project only needed fields.
+          //    NOTE: displayPrice is a Mongoose virtual — it does NOT exist in raw MongoDB
+          //    documents. Aggregation pipelines bypass Mongoose virtuals entirely.
+          //    Use regularPrice and salePrice (the actual stored fields) instead.
+          //    Extract a single image URL here so the full images array is never sent over the wire.
+          {
+            $project: {
+              name: 1,
+              regularPrice: 1,
+              salePrice: 1,
+              seoTitle: 1,
+              seoDescription: 1,
+              slug: 1,
+              // keep fields the frontend needs for routing
+              category: 1,
+              leatherMainCategory: 1,
+              subCategory: 1,
+              _styleValue: `$${styleField}`,
+              // Resolve single image URL in MongoDB — prefer type:"main", fall back to first
+              image: {
+                $let: {
+                  vars: {
+                    mainImg: {
+                      $arrayElemAt: [
+                        { $filter: { input: { $ifNull: ["$images", []] }, as: "i", cond: { $eq: ["$$i.type", "main"] } } },
+                        0,
+                      ],
+                    },
+                    firstImg: { $arrayElemAt: [{ $ifNull: ["$images", []] }, 0] },
+                  },
+                  in: { $ifNull: ["$$mainImg.url", "$$firstImg.url"] },
+                },
+              },
+            },
+          },
 
-        // Get unique style/subcategory values
-        const styles = [
-          ...new Set(productsInCategory.flatMap(p => p[cat.styleField]).filter(Boolean))
+          // 4. Normalize style field to array so $unwind works for both string & array fields
+          {
+            $addFields: {
+              _styleValues: {
+                $cond: {
+                  if: { $isArray: "$_styleValue" },
+                  then: "$_styleValue",
+                  else: ["$_styleValue"],
+                },
+              },
+            },
+          },
+
+          // 5. Expand — one document per style value
+          { $unwind: "$_styleValues" },
+
+          // 6. Drop nulls/empty strings that may appear after unwind
+          { $match: { _styleValues: { $nin: [null, ""] } } },
+
+          // 7. Group by style — MongoDB does the grouping, not Node.js
+          {
+            $group: {
+              _id: "$_styleValues",
+              products: {
+                $push: {
+                  _id: "$_id",
+                  name: "$name",
+                  regularPrice: "$regularPrice",
+                  salePrice: "$salePrice",
+                  image: "$image",
+                  seoTitle: "$seoTitle",
+                  seoDescription: "$seoDescription",
+                  slug: "$slug",
+                  category: "$category",
+                  leatherMainCategory: "$leatherMainCategory",
+                  subCategory: "$subCategory",
+                },
+              },
+            },
+          },
+
+          // 8. Slice products per group at DB level — no JS slicing needed
+          {
+            $project: {
+              _id: 0,
+              subCategory: "$_id",
+              products: { $slice: ["$products", limit] },
+            },
+          },
+
+          { $sort: { subCategory: 1 } },
         ];
 
-        // Pick products per style
-        const groupedProducts = styles.map(style => {
-          let matchedProducts = productsInCategory.filter(p => {
-            const val = p[cat.styleField];
-            return Array.isArray(val) ? val.includes(style) : val === style;
-          });
-
-          // Logic: Watches = 1 product per style, Accessories = up to 3 products, Leather = 1 per style
-          let productsToReturn = [];
-          if (cat.title === "Watch" || cat.title.includes("Leather")) {
-            productsToReturn = matchedProducts.slice(0, 1);
-          } else if (cat.title === "Accessories") {
-            productsToReturn = matchedProducts.slice(0, 3);
-          }
-
-          return {
-            subCategory: style,
-            products: productsToReturn
-          };
-        });
+        const grouped = await Product.aggregate(pipeline);
 
         return {
-          category: cat.title,
-          groupedProducts
+          category: title,
+          groupedProducts: grouped.map(({ subCategory, products }) => ({
+            subCategory,
+            products: products.map((p) => ({
+              _id: p._id,
+              name: p.name,
+              regularPrice: p.regularPrice ?? 0,
+              salePrice: p.salePrice ?? 0,
+              image: p.image ?? null,
+              seoTitle: p.seoTitle ?? null,
+              seoDescription: p.seoDescription ?? null,
+              slug: p.slug ?? null,
+              category: p.category ?? null,
+              leatherMainCategory: p.leatherMainCategory ?? null,
+              subCategory: p.subCategory ?? null,
+            })),
+          })),
         };
       })
     );
 
     res.status(200).json({
       success: true,
-      category: homeProducts.length,
-      homeProducts
+      totalCategories: homeProducts.length,
+      homeProducts,
     });
 
   } catch (error) {
