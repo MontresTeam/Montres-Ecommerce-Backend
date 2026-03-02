@@ -3,7 +3,8 @@ const axios = require("axios");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
 const Order = require("../models/OrderModel");
-const userModel = require('../models/UserModel')
+const userModel = require('../models/UserModel');
+const Customer = require("../models/customersModal");
 const Product = require("../models/product");
 const shippingCalculator = require("../utils/shippingCalculator");
 const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
@@ -116,64 +117,154 @@ const verifyTabbySignature = (req) => {
 // ----------------- Tabby Helpers -----------------
 
 // Get buyer and order history for Tabby
-const getTabbyHistory = async (userId) => {
+const getTabbyHistory = async (userId, email, phone, excludeOrderId = null) => {
+  // 1. Setup Identifiers
+  let registeredEmail = email?.toLowerCase();
+  let registeredPhone = phone;
+  let userObject = null;
+
+  if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+    userObject = await userModel.findById(userId).lean();
+    if (userObject) {
+      registeredEmail = registeredEmail || userObject.email?.toLowerCase();
+      registeredPhone = registeredPhone || userObject.phone;
+    }
+  }
+
+  // 2. Build Matching Conditions for History
+  const conditions = [];
+  if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+    conditions.push({ userId: userId });
+  }
+  if (registeredEmail) {
+    conditions.push({ "shippingAddress.email": registeredEmail });
+  }
+  if (registeredPhone) {
+    conditions.push({ "shippingAddress.phone": registeredPhone });
+  }
+
+  // 3. Find Absolute Earliest Registration Date (True Account Age)
+  let earliestDate = userObject?.createdAt;
+
+  // Fallback 1: Match by email if user not logged in
+  if (!earliestDate && registeredEmail) {
+    const regUser = await userModel.findOne({ email: registeredEmail }).select("createdAt").lean();
+    if (regUser) earliestDate = regUser.createdAt;
+  }
+
+  // Fallback 2: Manual Customer records
+  if (!earliestDate && registeredEmail) {
+    const manualCustomer = await Customer.findOne({ email: registeredEmail }).lean();
+    if (manualCustomer) earliestDate = manualCustomer.joinDate || manualCustomer.createdAt;
+  }
+
+  // Fallback 3: First ever guest order
+  if (!earliestDate && conditions.length > 0) {
+    const queryEarliestOrder = await Order.findOne({
+      $and: [
+        { $or: conditions },
+        excludeOrderId ? { orderId: { $ne: excludeOrderId } } : {}
+      ]
+    })
+      .sort({ createdAt: 1 })
+      .select("createdAt")
+      .lean();
+    if (queryEarliestOrder) earliestDate = queryEarliestOrder.createdAt;
+  }
+
+  // 4. Initialize Core Buyer History Object
   let buyerHistory = {
-    registered_since: new Date().toISOString(),
+    registered_since: earliestDate ? new Date(earliestDate).toISOString() : null,
     loyalty_level: 0,
-    wishlist_count: 0,
-    is_social_networks_connected: false,
+    wishlist_count: userObject?.wishlistGroups?.reduce((acc, g) => acc + (g.items?.length || 0), 0) || 0,
+    is_social_networks_connected: !!userObject?.googleId,
     is_phone_number_verified: true,
     is_email_verified: true
   };
 
   let orderHistory = [];
 
-  if (userId && /^[0-9a-fA-F]{24}$/.test(userId)) {
-    const user = await userModel.findById(userId).lean();
-    if (user) {
-      buyerHistory = {
-        registered_since: user.createdAt ? user.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        loyalty_level: 0,
-        wishlist_count: user.wishlistGroups?.reduce((acc, g) => acc + (g.items?.length || 0), 0) || 0,
-        is_social_networks_connected: !!user.googleId,
-        is_phone_number_verified: true,
-        is_email_verified: true
-      };
-    }
+  // Safety: If no identifiers (no user, email, or phone), return default empty history
+  if (conditions.length === 0) {
+    return { buyerHistory, orderHistory };
+  }
 
-    const pastOrders = await Order.find({ userId: userId, paymentStatus: "paid" })
-      .limit(10)
+  // 5. Fetch Loyalty Stats and Order History from WHOLE database
+  if (conditions.length > 0) {
+    // Loyalty: Count all PAID/COMPLETED orders ever recorded
+    const totalSuccessfulOrders = await Order.countDocuments({
+      $and: [
+        { $or: conditions },
+        excludeOrderId ? { orderId: { $ne: excludeOrderId } } : {},
+        {
+          $or: [
+            { paymentStatus: "paid" },
+            { orderStatus: "Completed" }
+          ]
+        }
+      ]
+    });
+    buyerHistory.loyalty_level = totalSuccessfulOrders;
+
+    // History: Fetch last 20 orders for Tabby's review
+    // EXCLUDING current order
+    const pastOrders = await Order.find({
+      $and: [
+        { $or: conditions },
+        excludeOrderId ? { orderId: { $ne: excludeOrderId } } : {}
+      ]
+    })
+      .limit(20)
       .sort({ createdAt: -1 })
       .lean();
 
-    orderHistory = pastOrders.map((o) => ({
-      purchased_at: o.createdAt ? o.createdAt.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-      amount: parseFloat(o.total || 0).toFixed(decimals),
-      currency: o.currency || "AED",
-      status: "complete",
-      payment_method:
-        o.paymentMethod === "stripe"
-          ? "card"
-          : o.paymentMethod === "tabby"
-            ? "installments"
-            : "other",
-      buyer: {
-        id: o.userId?.toString() || "guest",
-        email: o.shippingAddress?.email || user?.email || "noemail@test.com",
-        name: `${o.shippingAddress?.firstName || ""} ${o.shippingAddress?.lastName || ""}`.trim() || user?.name || "Customer",
-        phone: formatPhone(o.shippingAddress?.phone || user?.phone, normalizeCountry(o.shippingAddress?.country))
-      },
-      shipping_address: {
-        city: o.shippingAddress?.city || "Dubai",
-        address: o.shippingAddress?.street || o.shippingAddress?.address || "N/A",
-        zip: o.shippingAddress?.postalCode || "00000",
-        country: normalizeCountry(o.shippingAddress?.country)
-      }
-    }));
+    if (pastOrders.length > 0) {
+      // (registered_since and loyalty_level already handled above)
+
+      // 3. Order History: mapped to requirements
+      orderHistory = pastOrders.map((o) => {
+        const oCurrency = o.currency || "AED";
+        const oDecimals = ["KWD", "BHD", "OMR"].includes(oCurrency.toUpperCase()) ? 3 : 2;
+
+        let tabbyStatus = "new";
+        const ps = (o.paymentStatus || "").toLowerCase();
+        const os = (o.orderStatus || "").toLowerCase();
+
+        // Status mapping: Comprehensive support for all system statuses (Tabby standard)
+        if (ps === "paid" || ps === "authorized" || ps === "closed" || os === "completed") {
+          tabbyStatus = "paid";
+        } else if (ps === "refunded") {
+          tabbyStatus = "refunded";
+        } else if (os === "cancelled" || ps === "cancelled" || ps === "canceled") {
+          tabbyStatus = "cancelled";
+        } else if (ps === "failed" || ps === "rejected" || ps === "expired") {
+          tabbyStatus = "failed";
+        } else {
+          tabbyStatus = "new";
+        }
+
+        return {
+          purchased_at: o.createdAt ? o.createdAt.toISOString() : new Date().toISOString(),
+          amount: parseFloat(o.total || 0).toFixed(oDecimals),
+          payment_method:
+            o.paymentMethod === "stripe"
+              ? "card"
+              : ["tabby", "tamara"].includes(o.paymentMethod)
+                ? "installments"
+                : "other",
+          status: tabbyStatus
+        };
+      });
+    }
   }
+
+  // If absolutely no history, we will NOT use new Date() as per user rules.
+  // Tabby will receive null or the current timestamp if the first order was just created.
+  // This satisfies "real stored database value" and "not generated dynamically".
 
   return { buyerHistory, orderHistory };
 };
+
 
 // ----------------- Tabby Pre-Scoring -----------------
 
@@ -199,7 +290,19 @@ const preScoring = async (req, res) => {
     }
 
     const userId = req.user?.userId;
-    const { buyerHistory, orderHistory } = await getTabbyHistory(userId);
+    const buyerEmail = buyer?.email || req.user?.email || shipping_address?.email;
+    const buyerPhone = buyer?.phone || req.user?.phone || shipping_address?.phone;
+
+    const { buyerHistory, orderHistory } = await getTabbyHistory(userId, buyerEmail, buyerPhone);
+
+    // Persistent guest ID logic: Use userId if present, otherwise MD5 of email
+    let persistentBuyerId = userId;
+    if (!persistentBuyerId && buyerEmail) {
+      persistentBuyerId = "guest_" + crypto.createHash("md5").update(buyerEmail.toLowerCase()).digest("hex").substring(0, 12);
+    } else if (!persistentBuyerId) {
+      // Last resort fallback
+      persistentBuyerId = buyer?.id || (buyer?.phone ? "guest_" + buyer.phone.replace(/\D/g, "") : "guest_" + Date.now());
+    }
 
     const decimals = ["KWD", "BHD", "OMR"].includes(currency.toUpperCase()) ? 3 : 2;
     const tabbyPayload = {
@@ -207,10 +310,10 @@ const preScoring = async (req, res) => {
         amount: String(Number(amount).toFixed(decimals)),
         currency: currency,
         buyer: {
-          email: buyer?.email,
+          email: buyerEmail,
           name: buyer?.name,
-          phone: formatPhone(buyer?.phone, normalizeCountry(shipping_address?.country)),
-          id: userId || "guest_" + Date.now(),
+          phone: formatPhone(buyerPhone, normalizeCountry(shipping_address?.country)),
+          id: persistentBuyerId,
         },
         shipping_address: shipping_address || {
           city: "Dubai",
@@ -270,18 +373,37 @@ const preScoring = async (req, res) => {
     const eligible = ["approved", "approved_with_changes", "created"].includes(response.data.status?.toLowerCase()) ||
       (response.data.configuration?.available_products?.installments?.length > 0);
 
+    // Extract rejection reasons if not eligible
+    let rejectionMessage = null;
+    if (!eligible && response.data.rejection_reason) {
+      // Map common Tabby rejection reasons to user-friendly messages
+      const reason = response.data.rejection_reason;
+      if (reason === "order_amount_too_high") rejectionMessage = "This order amount exceeds the limit for Tabby.";
+      else if (reason === "order_amount_too_low") rejectionMessage = "This order amount is too low for Tabby.";
+      else rejectionMessage = "Tabby is currently unavailable for this order.";
+    }
+
     res.json({
       success: true,
       eligible: eligible,
       status: response.data.status,
+      rejection_reason: response.data.rejection_reason,
+      rejection_message: rejectionMessage,
       details: response.data
     });
   } catch (error) {
     const errorData = error.response?.data || error.message;
     console.error("Tabby pre-scoring error:", JSON.stringify(errorData, null, 2));
+
+    // Extract rejection from potential 400 rejection
+    let rejectionMessage = "Eligibility check failed";
+    if (errorData.status === "rejected") {
+      rejectionMessage = "Tabby has rejected this request. Please try another payment method.";
+    }
+
     res.status(error.response?.status || 500).json({
       success: false,
-      message: "Eligibility check failed",
+      message: rejectionMessage,
       error: errorData,
       eligible: false
     });
@@ -318,7 +440,7 @@ const createTabbyOrder = async (req, res) => {
     if (!dummy && Array.isArray(items) && items.length > 0) {
       populatedItems = await Promise.all(items.map(async (it) => {
         const productId = it.productId || it.reference_id || it.id;
-        const product = await Product.findById(productId).select("name images salePrice sku referenceNumber").lean();
+        const product = await Product.findById(productId).select("name images salePrice sku referenceNumber category").lean();
         if (!product) {
           return {
             productId: productId && mongoose.Types.ObjectId.isValid(productId) ? productId : null,
@@ -326,7 +448,8 @@ const createTabbyOrder = async (req, res) => {
             image: it.image || "",
             price: Number(it.price || it.unit_price || 0),
             quantity: Number(it.quantity || 1),
-            sku: it.sku || it.reference_id || "N/A"
+            sku: it.sku || it.reference_id || "N/A",
+            category: "Accessories" // Fallback
           };
         }
         return {
@@ -335,7 +458,8 @@ const createTabbyOrder = async (req, res) => {
           image: product.images?.[0]?.url || product.images?.[0] || "",
           price: product.salePrice || 0,
           quantity: it.quantity || 1,
-          sku: product.sku || product.referenceNumber || product._id.toString()
+          sku: product.sku || product.referenceNumber || product._id.toString(),
+          category: product.category || "Watch"
         };
       }));
     } else {
@@ -345,9 +469,11 @@ const createTabbyOrder = async (req, res) => {
         image: "https://www.montres.ae/logo.png",
         price: 100,
         quantity: 1,
-        sku: "DUMMY-001"
+        sku: "DUMMY-001",
+        category: "Watch"
       }];
     }
+
 
     const currency = req.body.currency || "AED";
     const decimals = ["KWD", "BHD", "OMR"].includes(currency.toUpperCase()) ? 3 : 2;
@@ -397,14 +523,24 @@ const createTabbyOrder = async (req, res) => {
       ? `${frontendFailureUrl}${frontendFailureUrl.includes("?") ? "&" : "?"}orderId=${referenceId}`
       : `${clientUrl}/checkout?failed=true&orderId=${referenceId}`;
 
-    const { buyerHistory, orderHistory } = await getTabbyHistory(req.user?.userId);
+    const userId = req.user?.userId;
+    const { buyerHistory, orderHistory } = await getTabbyHistory(userId, buyerEmail, buyerPhone, referenceId);
+
+    // Persistent guest ID logic: Use userId if present, otherwise MD5 of email
+    let persistentBuyerId = userId;
+    if (!persistentBuyerId && buyerEmail) {
+      persistentBuyerId = "guest_" + crypto.createHash("md5").update(buyerEmail.toLowerCase()).digest("hex").substring(0, 12);
+    } else if (!persistentBuyerId) {
+      // Last resort fallback
+      persistentBuyerId = "guest_" + (buyerPhone ? buyerPhone.replace(/\D/g, "") : Date.now());
+    }
 
     const tabbyItems = populatedItems.map((item) => ({
       title: item.name,
       description: item.name,
       quantity: item.quantity,
       unit_price: item.price.toFixed(decimals),
-      category: "Watch",
+      category: item.category || "Watch",
       image_url: item.image || "https://www.montres.ae/logo.png",
       product_url: item.productId ? `${clientUrl}/product/${item.productId}` : clientUrl,
       brand: "Montres",
@@ -412,13 +548,16 @@ const createTabbyOrder = async (req, res) => {
       is_refundable: true
     }));
 
+    const lang = req.body.lang || req.body.language || "en";
+    const isAr = lang.toLowerCase() === "ar";
+
     const tabbyPayload = {
       payment: {
         amount: total.toFixed(decimals),
         currency: currency,
-        description: `Order via Tabby`,
+        description: isAr ? "ادفع لاحقًا عبر تابي" : "Order via Tabby",
         buyer: {
-          id: req.user?.userId || "guest_" + Date.now(),
+          id: persistentBuyerId,
           email: buyerEmail,
           name: buyerName,
           phone: formatPhone(buyerPhone, normalizeCountry(shippingAddress?.country))
@@ -440,7 +579,7 @@ const createTabbyOrder = async (req, res) => {
         order_history: orderHistory
       },
       merchant_code: req.body.merchant_code || process.env.TABBY_MERCHANT_CODE || "MTAE",
-      lang: req.body.lang || req.body.language || "en",
+      lang: lang,
       merchant_urls: {
         success: successUrl,
         cancel: cancelUrl,
