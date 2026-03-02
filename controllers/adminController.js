@@ -77,16 +77,22 @@ const adminlogin = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.json({
-      message: "Login successful",
-      token,
-      admin: {
-        id: admin.id,
-        username: admin.username,
-        role: admin.role,
-        profile: admin.profile
-      },
-    });
+    res
+      .cookie("adminToken", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      })
+      .json({
+        message: "Login successful",
+        admin: {
+          id: admin.id,
+          username: admin.username,
+          role: admin.role,
+          profile: admin.profile
+        },
+      });
   } catch (error) {
     console.error("Admin login error:", error);
     res.status(500).json({ message: "Server error" });

@@ -2,11 +2,17 @@ const jwt = require("jsonwebtoken");
 
 // Existing user protection
 exports.protect = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer"))
-    return res.status(401).json({ message: "No token provided" });
+  let token = req.cookies.accessToken;
 
-  const token = authHeader.split(" ")[1];
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer")) {
+      token = authHeader.split(" ")[1];
+    }
+  }
+
+  if (!token) return res.status(401).json({ message: "No token provided" });
+
   try {
     const decoded = jwt.verify(token, process.env.USER_ACCESS_TOKEN_SECRET);
     req.user = { userId: decoded.id };
@@ -18,12 +24,19 @@ exports.protect = (req, res, next) => {
 
 // New Admin protection
 exports.adminProtect = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer")) {
+  let token = req.cookies.adminToken;
+
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer")) {
+      token = authHeader.split(" ")[1];
+    }
+  }
+
+  if (!token) {
     return res.status(401).json({ message: "No admin token provided" });
   }
 
-  const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
 

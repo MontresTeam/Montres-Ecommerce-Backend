@@ -72,6 +72,12 @@ const Registration = async (req, res) => {
     sendWelcomeEmail(newUser.email, newUser.name).catch(console.log);
 
     res
+      .cookie("accessToken", accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 15 * 60 * 1000, // 15 minutes
+      })
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -81,7 +87,6 @@ const Registration = async (req, res) => {
       .status(201)
       .json({
         message: "Registration successful",
-        accessToken,
         user: {
           id: newUser._id,
           name: newUser.name,
@@ -127,6 +132,12 @@ const Login = async (req, res) => {
     await user.save();
 
     res
+      .cookie("accessToken", accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 15 * 60 * 1000, // 15 minutes
+      })
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -136,7 +147,6 @@ const Login = async (req, res) => {
       .status(200)
       .json({
         message: "Login successful",
-        accessToken,
         user: { id: user._id, name: user.name, email: user.email },
       });
   } catch (err) {
@@ -146,7 +156,12 @@ const Login = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    // ✅ Clear refresh token cookie
+    // ✅ Clear tokens
+    res.clearCookie("accessToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -180,7 +195,14 @@ const RefreshToken = async (req, res) => {
 
         const newAccessToken = generateAccessToken(user._id, user.email);
 
-        return res.status(200).json({ accessToken: newAccessToken });
+        res.cookie("accessToken", newAccessToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "strict",
+          maxAge: 15 * 60 * 1000,
+        });
+
+        return res.status(200).json({ message: "Token refreshed" });
       }
     );
   } catch (error) {
@@ -1084,15 +1106,29 @@ const googleSignup = async (req, res) => {
     user.refreshToken = refreshToken;
     await user.save();
 
-    res.status(200).json({
-      accessToken,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-      },
-    });
+    res
+      .cookie("accessToken", accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 15 * 60 * 1000,
+      })
+      .cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      })
+      .status(200)
+      .json({
+        message: "Google login successful",
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar,
+        },
+      });
   } catch (err) {
     res.status(500).json({ message: "Google login failed" });
   }
@@ -1147,6 +1183,12 @@ const facebookSignup = async (req, res) => {
     await user.save();
 
     res
+      .cookie("accessToken", newAccessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 15 * 60 * 1000,
+      })
       .cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -1156,7 +1198,6 @@ const facebookSignup = async (req, res) => {
       .status(200)
       .json({
         message: "Facebook login/signup successful",
-        accessToken: newAccessToken,
         user: {
           id: user._id,
           name: user.name,
