@@ -34,7 +34,11 @@ connectDB();
 
 
 
+const compression = require("compression");
 const app = express();
+
+// ✅ Gzip/Brotli compression — reduces API response sizes by ~70%
+app.use(compression({ level: 6 }));
 
 // ✅ CORS setup
 const allowedOrigins = [
