@@ -11,6 +11,32 @@ const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
 
 const TABBY_BASE = process.env.TABBY_BASE_URL || "https://api.tabby.ai/api/v2";
 
+// ─────────────────────────────────────────────────────────────
+// 🔍 BOOT CHECK — validate all Tabby env vars at server start
+// ─────────────────────────────────────────────────────────────
+(function tabbyBootCheck() {
+  const secretKey = process.env.TABBY_SECRET_KEY;
+  const publicKey = process.env.TABBY_PUBLIC_KEY;
+  const merchantCode = process.env.TABBY_MERCHANT_CODE;
+
+  console.log("\n══════════════════════════════════════");
+  console.log("   🟡 TABBY MODULE BOOT CHECK");
+  console.log("══════════════════════════════════════");
+  console.log(`  TABBY_BASE_URL  : ${TABBY_BASE}`);
+  console.log(`  TABBY_SECRET_KEY: ${secretKey ? secretKey.substring(0, 12) + "..." + secretKey.slice(-4) : "❌ NOT SET"}`);
+  console.log(`  TABBY_PUBLIC_KEY: ${publicKey ? publicKey.substring(0, 12) + "..." + publicKey.slice(-4) : "❌ NOT SET"}`);
+  console.log(`  MERCHANT_CODE   : ${merchantCode || "❌ NOT SET"}`);
+
+  const mode = secretKey?.startsWith("sk_test_") ? "SANDBOX" : secretKey?.startsWith("sk_live_") ? "LIVE" : "UNKNOWN";
+  console.log(`  KEY MODE        : ${mode === "UNKNOWN" ? "❌ " : ""}${mode}`);
+
+  if (!secretKey) console.error("  ❌ CRITICAL: TABBY_SECRET_KEY is missing — all Tabby API calls will fail!");
+  if (!merchantCode) console.error("  ❌ CRITICAL: TABBY_MERCHANT_CODE is missing!");
+  if (mode === "UNKNOWN") console.warn("  ⚠️  Key does not start with sk_test_ or sk_live_ — check your key!");
+
+  console.log("══════════════════════════════════════\n");
+})()
+
 // ----------------- Helpers -----------------
 
 // Format phone to E.164
@@ -269,6 +295,15 @@ const getTabbyHistory = async (userId, email, phone, excludeOrderId = null) => {
 // ----------------- Tabby Pre-Scoring -----------------
 
 const preScoring = async (req, res) => {
+  console.log("\n══════════════════════════════════════════════════");
+  console.log("   📥 TABBY PRE-SCORING — REQUEST RECEIVED");
+  console.log("══════════════════════════════════════════════════");
+
+  // ✅ [1] Confirm route is triggered
+  console.log("  [1] ✅ Route triggered: POST /api/tabby/pre-scoring");
+  console.log(`       User: ${req.user?.userId || "guest"} | IP: ${req.ip}`);
+  console.log(`       Body keys: ${Object.keys(req.body || {}).join(", ") || "(empty)"}`);
+
   try {
     let { amount, currency, buyer, shipping_address } = req.body;
 
@@ -283,11 +318,35 @@ const preScoring = async (req, res) => {
     }
 
     if (!amount || !currency) {
+      console.warn("  [2] ❌ Missing amount or currency — aborting");
       return res.status(400).json({
         success: false,
         message: "Amount and currency are required for eligibility check",
       });
     }
+
+    // ✅ [6] Check currency = AED
+    if (currency && currency.toUpperCase() !== "AED") {
+      console.warn(`  [6] ❌ Currency check FAILED — received '${currency}', Tabby only supports AED`);
+      return res.status(400).json({
+        success: false,
+        eligible: false,
+        message: "Tabby only supports AED currency. Please switch your currency to AED."
+      });
+    }
+    console.log(`  [6] ✅ Currency check PASSED — currency is '${currency}'`);
+
+    // ✅ [7] Check buyer country = AE
+    const customerCountry = normalizeCountry(shipping_address?.country || buyer?.country);
+    if (customerCountry && customerCountry !== "AE") {
+      console.warn(`  [7] ❌ Country check FAILED — resolved country is '${customerCountry}', Tabby only supports AE`);
+      return res.status(400).json({
+        success: false,
+        eligible: false,
+        message: "Tabby is only available for UAE customers."
+      });
+    }
+    console.log(`  [7] ✅ Country check PASSED — resolved country is '${customerCountry}'`);
 
     const userId = req.user?.userId;
     const buyerEmail = buyer?.email || req.user?.email || shipping_address?.email;
@@ -295,12 +354,10 @@ const preScoring = async (req, res) => {
 
     const { buyerHistory, orderHistory } = await getTabbyHistory(userId, buyerEmail, buyerPhone);
 
-    // Persistent guest ID logic: Use userId if present, otherwise MD5 of email
     let persistentBuyerId = userId;
     if (!persistentBuyerId && buyerEmail) {
       persistentBuyerId = "guest_" + crypto.createHash("md5").update(buyerEmail.toLowerCase()).digest("hex").substring(0, 12);
     } else if (!persistentBuyerId) {
-      // Last resort fallback
       persistentBuyerId = buyer?.id || (buyer?.phone ? "guest_" + buyer.phone.replace(/\D/g, "") : "guest_" + Date.now());
     }
 
@@ -328,22 +385,43 @@ const preScoring = async (req, res) => {
       lang: req.body.lang || "en"
     };
 
-    console.log("Tabby Pre-Scoring Payload:", JSON.stringify(tabbyPayload, null, 2));
+    // ✅ [5] Check payload structure
+    console.log("  [5] ✅ Payload built — structure:");
+    console.log(`       amount   : ${tabbyPayload.payment.amount}`);
+    console.log(`       currency : ${tabbyPayload.payment.currency}`);
+    console.log(`       buyer    : ${tabbyPayload.payment.buyer.email} / ${tabbyPayload.payment.buyer.phone}`);
+    console.log(`       merchant : ${tabbyPayload.merchant_code}`);
+    console.log(`       lang     : ${tabbyPayload.lang}`);
+
+    // ✅ [3] Check correct endpoint
+    const endpoint = `${TABBY_BASE}/pre-scoring`;
+    console.log(`  [3] ✅ Endpoint: POST ${endpoint}`);
+
+    // ✅ [4] Check correct secret key
+    const sk = process.env.TABBY_SECRET_KEY || "";
+    const skMode = sk.startsWith("sk_test_") ? "SANDBOX" : sk.startsWith("sk_live_") ? "LIVE" : "UNKNOWN";
+    console.log(`  [4] ✅ Secret key: ${sk ? sk.substring(0, 12) + "..." + sk.slice(-4) : "❌ MISSING"} [${skMode}]`);
+    if (!sk) throw new Error("TABBY_SECRET_KEY is not defined in environment variables");
+
+    // 📦 Full payload log
+    console.log("  [5] 📦 FULL TABBY PRE-SCORING PAYLOAD:");
+    console.log(JSON.stringify(tabbyPayload, null, 2));
+
+    // ✅ [2] Confirm request is being sent
+    console.log("  [2] 🚀 Sending request to Tabby API...");
 
     let response;
     try {
-      response = await axios.post(`${TABBY_BASE}/pre-scoring`, tabbyPayload, {
+      response = await axios.post(endpoint, tabbyPayload, {
         headers: {
-          Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+          Authorization: `Bearer ${sk}`,
           "Content-Type": "application/json"
         },
         timeout: 10000
       });
     } catch (preError) {
       if (preError.response?.status === 404 || preError.response?.status === 405) {
-        console.warn(`⚠️ Tabby pre-scoring endpoint returned ${preError.response?.status}. Falling back to checkout endpoint for eligibility.`);
-
-        // Add dummy merchant_urls for checkout eligibility check
+        console.warn(`  [2] ⚠️ pre-scoring returned ${preError.response?.status} — falling back to /checkout for eligibility`);
         const clientUrl = process.env.CLIENT_URL || "https://www.montres.ae";
         const fallbackPayload = {
           ...tabbyPayload,
@@ -353,30 +431,28 @@ const preScoring = async (req, res) => {
             failure: `${clientUrl}/checkout/failure`
           }
         };
-
-        response = await axios.post(
-          `${TABBY_BASE}/checkout`,
-          fallbackPayload,
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
-              "Content-Type": "application/json"
-            },
-            timeout: 10000
-          }
-        );
+        response = await axios.post(`${TABBY_BASE}/checkout`, fallbackPayload, {
+          headers: { Authorization: `Bearer ${sk}`, "Content-Type": "application/json" },
+          timeout: 10000
+        });
       } else {
         throw preError;
       }
     }
 
+    // ✅ [8] Log response from Tabby
+    console.log("  [8] ✅ Tabby API responded:");
+    console.log(`       HTTP status : ${response.status}`);
+    console.log(`       status      : ${response.data?.status}`);
+    console.log(`       rejection   : ${response.data?.rejection_reason || "none"}`);
+    console.log(`       installments: ${response.data?.configuration?.available_products?.installments?.length ?? 0}`);
+    console.log("══════════════════════════════════════════════════\n");
+
     const eligible = ["approved", "approved_with_changes", "created"].includes(response.data.status?.toLowerCase()) ||
       (response.data.configuration?.available_products?.installments?.length > 0);
 
-    // Extract rejection reasons if not eligible
     let rejectionMessage = null;
     if (!eligible && response.data.rejection_reason) {
-      // Map common Tabby rejection reasons to user-friendly messages
       const reason = response.data.rejection_reason;
       if (reason === "order_amount_too_high") rejectionMessage = "This order amount exceeds the limit for Tabby.";
       else if (reason === "order_amount_too_low") rejectionMessage = "This order amount is too low for Tabby.";
@@ -385,19 +461,22 @@ const preScoring = async (req, res) => {
 
     res.json({
       success: true,
-      eligible: eligible,
+      eligible,
       status: response.data.status,
       rejection_reason: response.data.rejection_reason,
       rejection_message: rejectionMessage,
       details: response.data
     });
+
   } catch (error) {
     const errorData = error.response?.data || error.message;
-    console.error("Tabby pre-scoring error:", JSON.stringify(errorData, null, 2));
+    console.error("  [8] ❌ Tabby pre-scoring FAILED:");
+    console.error(`       HTTP status : ${error.response?.status || "N/A"}`);
+    console.error(`       Error body  : ${JSON.stringify(errorData, null, 2)}`);
+    console.log("══════════════════════════════════════════════════\n");
 
-    // Extract rejection from potential 400 rejection
     let rejectionMessage = "Eligibility check failed";
-    if (errorData.status === "rejected") {
+    if (errorData?.status === "rejected") {
       rejectionMessage = "Tabby has rejected this request. Please try another payment method.";
     }
 
@@ -413,6 +492,15 @@ const preScoring = async (req, res) => {
 // ----------------- Create Tabby Order -----------------
 
 const createTabbyOrder = async (req, res) => {
+  console.log("\n══════════════════════════════════════════════════");
+  console.log("   📥 TABBY CREATE ORDER — REQUEST RECEIVED");
+  console.log("══════════════════════════════════════════════════");
+
+  // ✅ [1] Confirm route is triggered
+  console.log("  [1] ✅ Route triggered: POST /api/tabby/create-checkout");
+  console.log(`       User: ${req.user?.userId || "guest"} | IP: ${req.ip}`);
+  console.log(`       Body keys: ${Object.keys(req.body || {}).join(", ") || "(empty)"}`);
+
   try {
     let {
       items,
@@ -429,6 +517,28 @@ const createTabbyOrder = async (req, res) => {
     if (!items && frontendOrder?.items) items = frontendOrder.items;
     if (!shippingAddress && customer?.shipping) shippingAddress = customer.shipping;
     if (!billingAddress) billingAddress = shippingAddress;
+
+    // ✅ [6] Check currency = AED
+    const incomingCurrency = req.body.currency || "AED";
+    if (incomingCurrency.toUpperCase() !== "AED") {
+      console.warn(`  [6] ❌ Currency check FAILED — received '${incomingCurrency}', Tabby only supports AED`);
+      return res.status(400).json({
+        success: false,
+        message: "Tabby only supports AED currency. Please switch your currency to AED to use Tabby."
+      });
+    }
+    console.log(`  [6] ✅ Currency check PASSED — currency is '${incomingCurrency}'`);
+
+    // ✅ [7] Check buyer country = AE
+    const shipCountry = normalizeCountry(shippingAddress?.country || customer?.shipping?.country);
+    if (shipCountry && shipCountry !== "AE") {
+      console.warn(`  [7] ❌ Country check FAILED — resolved country is '${shipCountry}', Tabby only supports AE`);
+      return res.status(400).json({
+        success: false,
+        message: "Tabby is only available for UAE customers."
+      });
+    }
+    console.log(`  [7] ✅ Country check PASSED — resolved country is '${shipCountry}'`);
 
     const buyerInfo = customer?.buyer || frontendOrder?.buyer || {};
     const buyerEmail = buyerInfo.email || shippingAddress?.email || "otp.success@tabby.ai";
@@ -587,19 +697,53 @@ const createTabbyOrder = async (req, res) => {
       }
     };
 
-    if (!process.env.TABBY_SECRET_KEY) {
-      throw new Error("TABBY_SECRET_KEY is not defined in environment variables");
-    }
+    // ✅ [4] Check correct secret key
+    const sk = process.env.TABBY_SECRET_KEY || "";
+    const skMode = sk.startsWith("sk_test_") ? "SANDBOX" : sk.startsWith("sk_live_") ? "LIVE" : "UNKNOWN";
+    console.log(`  [4] ✅ Secret key: ${sk ? sk.substring(0, 12) + "..." + sk.slice(-4) : "❌ MISSING"} [${skMode}]`);
+    if (!sk) throw new Error("TABBY_SECRET_KEY is not defined in environment variables");
+    if (skMode === "UNKNOWN") console.warn("  [4] ⚠️ Key mode is UNKNOWN — ensure key starts with sk_test_ or sk_live_");
 
-    console.log("🟠 Sending Tabby Payload:", JSON.stringify(tabbyPayload, null, 2));
+    // ✅ [5] Check payload structure
+    console.log("  [5] ✅ Payload built — structure:");
+    console.log(`       referenceId   : ${referenceId}`);
+    console.log(`       amount        : ${tabbyPayload.payment.amount} ${tabbyPayload.payment.currency}`);
+    console.log(`       buyer.email   : ${tabbyPayload.payment.buyer.email}`);
+    console.log(`       buyer.phone   : ${tabbyPayload.payment.buyer.phone}`);
+    console.log(`       buyer.name    : ${tabbyPayload.payment.buyer.name}`);
+    console.log(`       merchant_code : ${tabbyPayload.merchant_code}`);
+    console.log(`       success_url   : ${tabbyPayload.merchant_urls.success}`);
+    console.log(`       cancel_url    : ${tabbyPayload.merchant_urls.cancel}`);
+    console.log(`       failure_url   : ${tabbyPayload.merchant_urls.failure}`);
+    console.log(`       items count   : ${tabbyPayload.payment.order.items.length}`);
+    console.log(`       lang          : ${tabbyPayload.lang}`);
 
-    const response = await axios.post(`${TABBY_BASE}/checkout`, tabbyPayload, {
+    // ✅ [3] Check correct endpoint
+    const endpoint = `${TABBY_BASE}/checkout`;
+    console.log(`  [3] ✅ Endpoint: POST ${endpoint}`);
+
+    // 📦 Full payload log
+    console.log("  [5] 📦 FULL TABBY CHECKOUT PAYLOAD:");
+    console.log(JSON.stringify(tabbyPayload, null, 2));
+
+    // ✅ [2] Confirm request is now being sent
+    console.log("  [2] 🚀 Sending request to Tabby API...");
+
+    const response = await axios.post(endpoint, tabbyPayload, {
       headers: {
-        Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+        Authorization: `Bearer ${sk}`,
         "Content-Type": "application/json"
       },
       timeout: 10000
     });
+
+    // ✅ [8] Log response from Tabby
+    console.log("  [8] ✅ Tabby API responded:");
+    console.log(`       HTTP status   : ${response.status}`);
+    console.log(`       checkout id   : ${response.data?.id || "N/A"}`);
+    console.log(`       status        : ${response.data?.status || "N/A"}`);
+    console.log(`       rejection     : ${response.data?.rejection_reason || "none"}`);
+    console.log(`       checkout_url  : ${response.data?.checkout_url || response.data?.web_url || "N/A"}`);
 
     const paymentUrl =
       response.data?.checkout_url ||
@@ -608,17 +752,22 @@ const createTabbyOrder = async (req, res) => {
       null;
 
     if (!paymentUrl) {
-      // Cleanup if failed
+      console.error("  [8] ❌ No checkout URL in Tabby response — status:", response.data?.status);
+      console.error("       Full response:", JSON.stringify(response.data, null, 2));
+      console.log("══════════════════════════════════════════════════\n");
       await Order.findByIdAndDelete(newOrder._id);
       return res.status(400).json({
         success: false,
         message: response.data.status === "rejected" ? "Tabby has rejected this order" : "Tabby checkout unavailable",
         status: response.data.status,
+        rejection_reason: response.data?.rejection_reason,
         debug: response.data
       });
     }
 
-    // Save session ID to order
+    console.log(`  ✅ Checkout URL obtained: ${paymentUrl}`);
+    console.log("══════════════════════════════════════════════════\n");
+
     newOrder.tabbySessionId = response.data.id;
     await newOrder.save();
 
@@ -626,9 +775,11 @@ const createTabbyOrder = async (req, res) => {
 
   } catch (error) {
     const errorDetails = error.response?.data || error.message;
-    console.error("❌ Tabby initialization failed:", JSON.stringify(errorDetails, null, 2));
+    console.error("  [2/8] ❌ Tabby API call FAILED:");
+    console.error(`         HTTP status : ${error.response?.status || "N/A (network error?)"}`);
+    console.error(`         Error body  : ${JSON.stringify(errorDetails, null, 2)}`);
+    console.log("══════════════════════════════════════════════════\n");
 
-    // Attempt to extract a user-friendly message
     let userMessage = "Tabby initialization failed";
     if (error.response?.data?.error) userMessage = error.response.data.error;
     if (error.response?.data?.message) userMessage = error.response.data.message;

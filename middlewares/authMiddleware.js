@@ -1,5 +1,33 @@
 const jwt = require("jsonwebtoken");
 
+// Optional auth: populates req.user if a valid token exists, but never blocks the request.
+// Use this for routes that work for both guests and logged-in users (e.g. Tabby checkout).
+exports.optionalProtect = (req, res, next) => {
+  let token = req.cookies.accessToken;
+
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer")) {
+      token = authHeader.split(" ")[1];
+    }
+  }
+
+  if (!token) {
+    // No token — guest user, allow through without req.user
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.USER_ACCESS_TOKEN_SECRET);
+    req.user = { userId: decoded.id };
+  } catch (err) {
+    // Invalid/expired token — treat as guest, don't block
+    req.user = null;
+  }
+
+  return next();
+};
+
 // Existing user protection
 exports.protect = (req, res, next) => {
   let token = req.cookies.accessToken;
