@@ -1,15 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require("../middlewares/authMiddleware");
+const { optionalProtect } = require("../middlewares/authMiddleware");
 const {
     preScoring,
     createTabbyOrder,
-
 } = require('../controllers/tabbyController');
 
-// Standardized routes
-router.post('/pre-scoring', preScoring);
-router.post('/create-checkout', createTabbyOrder);
-
+// Tabby routes — optionalProtect allows both logged-in and guest users.
+// Logged-in users get req.user populated; guests proceed without a token.
+router.post('/pre-scoring', optionalProtect, preScoring);
+router.post('/create-checkout', optionalProtect, createTabbyOrder);
+router.post('/session', optionalProtect, createTabbyOrder);
 
 module.exports = router;
