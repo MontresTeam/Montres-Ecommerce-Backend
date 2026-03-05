@@ -497,11 +497,9 @@ const getProducts = async (req, res) => {
     // ✅ Query products
     const products = await Product.find(filterQuery)
       .select(
-        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery scopeOfDeliveryWatch " +
-        "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
-        "condition itemCondition category description visibility published featured inStock " +
-        "badges images createdAt updatedAt waterResistance complications crystal limitedEdition"
+        "brand name regularPrice salePrice stockQuantity inStock " +
+        "condition category leatherMainCategory subCategory " +
+        "images limitedEdition badges featured createdAt"
       )
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
@@ -512,19 +510,23 @@ const getProducts = async (req, res) => {
 
     // ✅ Format response
     const formattedProducts = products.map((p) => ({
-      ...p,
+      _id: p._id,
       brand: p.brand || "",
-      category: p.category || "",
+      name: p.name,
+      regularPrice: p.regularPrice ?? 0,
+      salePrice: p.salePrice ?? 0,
       image:
         p.images?.find((img) => img.type === "main")?.url ||
         p.images?.[0]?.url ||
-        "",
-      available: p.stockQuantity > 0 || p.inStock,
-      discount:
-        p.regularPrice && p.salePrice && p.regularPrice > p.salePrice
-          ? Math.round(((p.regularPrice - p.salePrice) / p.regularPrice) * 100)
-          : 0,
-      isOnSale: p.regularPrice && p.salePrice && p.regularPrice > p.salePrice,
+        null,
+      category: p.category || "",
+      leatherMainCategory: p.leatherMainCategory || null,
+      subCategory: p.subCategory || null,
+      inStock: p.stockQuantity > 0 || p.inStock,
+      condition: p.condition || null,
+      limitedEdition: p.limitedEdition || false,
+      badges: p.badges || [],
+      featured: p.featured || false,
     }));
 
     res.json({
