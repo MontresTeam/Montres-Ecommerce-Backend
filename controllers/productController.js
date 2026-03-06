@@ -1422,63 +1422,69 @@ const getRecommendations = async (cartItems, limit = 4) => {
   }
 };
 
+const Fuse = require("fuse.js");
+
+const SEARCH_SELECT =
+  "brand name regularPrice salePrice images category leatherMainCategory " +
+  "subcategory referenceNumber inStock stockQuantity model";
+
+const SEARCH_STOCK_FILTER = {
+  published: true,
+  $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }],
+};
+
+const FUSE_OPTIONS = {
+  keys: [
+    { name: "brand", weight: 0.4 },
+    { name: "name", weight: 0.35 },
+    { name: "model", weight: 0.15 },
+    { name: "referenceNumber", weight: 0.1 },
+  ],
+  threshold: 0.35,
+  includeScore: true,
+  minMatchCharLength: 2,
+};
+
 const getAllProductwithSearch = async (req, res) => {
   try {
     const { search = "" } = req.query;
-    let query = { published: true };
+    const trimmed = search.trim();
 
-    // ✅ Case-insensitive search by name or brand
-    if (search && search.trim()) {
-      const searchTerms = search.trim().split(/\s+/);
+    if (trimmed) {
+      // Primary: $text search — indexed, ranked by relevance score
+      const query = { ...SEARCH_STOCK_FILTER, $text: { $search: trimmed } };
+      const textResults = await Product.find(query, { score: { $meta: "textScore" } })
+        .select(SEARCH_SELECT)
+        .sort({ score: { $meta: "textScore" } })
+        .limit(20)
+        .lean();
 
-      // Helper to create loose regex for singular/plural matching
-      const createRegex = (term) => {
-        let cleanTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape regex chars
-        if (cleanTerm.length > 3) {
-          if (cleanTerm.toLowerCase().endsWith('ies')) cleanTerm = cleanTerm.slice(0, -3); // accessories -> accessor
-          else if (cleanTerm.toLowerCase().endsWith('es')) cleanTerm = cleanTerm.slice(0, -2); // watches -> watch
-          else if (cleanTerm.toLowerCase().endsWith('s') && !cleanTerm.toLowerCase().endsWith('ss')) cleanTerm = cleanTerm.slice(0, -1); // bags -> bag
-        }
-        return new RegExp(cleanTerm, "i");
-      };
+      if (textResults.length > 0) {
+        return res.json({ success: true, totalProducts: textResults.length, products: textResults });
+      }
 
-      query = {
-        published: true,
-        $and: searchTerms.map(term => {
-          const regex = createRegex(term);
-          return {
-            $or: [
-              { name: regex },
-              { brand: regex },
-              { model: regex },
-              { description: regex },
-              { referenceNumber: regex },
-              { category: regex },
-              { accessoryCategory: regex },
-              { accessorySubCategory: regex },
-              { leatherMainCategory: regex },
-              { leatherSubCategory: regex },
-              { watchType: regex },
-              { watchStyle: regex }
-            ]
-          };
-        }),
-      };
+      // Fallback: Fuse.js fuzzy search — handles typos like "rolexx" → "Rolex"
+      const catalog = await Product.find(SEARCH_STOCK_FILTER)
+        .select(SEARCH_SELECT)
+        .lean();
+      const fuse = new Fuse(catalog, FUSE_OPTIONS);
+      const fuzzyResults = fuse.search(trimmed).slice(0, 20).map((r) => r.item);
+
+      return res.json({ success: true, totalProducts: fuzzyResults.length, products: fuzzyResults });
     }
 
-    // ✅ Fetch all matching products
-    const products = await Product.find(query);
+    // No search term — return full catalog for client-side search (Navbar preload)
+    const products = await Product.find(SEARCH_STOCK_FILTER)
+      .select(SEARCH_SELECT)
+      .sort({ createdAt: -1 })
+      .lean();
 
-    return res.json({
-      success: true,
-      totalProducts: products.length,
-      products,
-    });
+    return res.json({ success: true, totalProducts: products.length, products });
   } catch (error) {
     console.error("Product fetch error: ", error);
     res.status(500).json({
       success: false,
-      message: "❌ Error fetching products",
+      message: "Error fetching products",
       error: error.message,
     });
   }
