@@ -545,8 +545,8 @@ const updateLeathergoods = async (req, res) => {
     if (body.seoKeywords !== undefined) updateData.seoKeywords = toArray(body.seoKeywords);
 
     // ── Image handling ───────────────────────────────────────────────────────
-    // Priority: newly uploaded (via Cloudinary multer) > explicit body.images > keep existing
-    // The multer middleware puts Cloudinary results in req.body.uploadedImages
+    // Priority: newly uploaded (via AWS S3 middleware) > explicit body.images > keep existing
+    // The upload middleware puts S3 results in req.body.uploadedImages
     const newlyUploaded = req.body.uploadedImages
       ? (Array.isArray(req.body.uploadedImages) ? req.body.uploadedImages : [req.body.uploadedImages])
       : [];

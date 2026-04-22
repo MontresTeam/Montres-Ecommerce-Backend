@@ -206,7 +206,39 @@ const buildProductQuery = (queryParams) => {
         andConditions.push({ movement: { $in: movementList.map(m => new RegExp(m, "i")) } });
     }
 
-    // Leather Goods
+    // Leather Goods & Accessories Specific
+    const colorList = normalizeArray(color);
+    if (colorList.length > 0) {
+        andConditions.push({
+            $or: [
+                { color: { $in: colorList.map(c => new RegExp(c, "i")) } },
+                { dialColor: { $in: colorList.map(c => new RegExp(c, "i")) } },
+                { accessoryColor: { $in: colorList.map(c => new RegExp(c, "i")) } }
+            ]
+        });
+    }
+
+    const materialList = normalizeArray(material);
+    if (materialList.length > 0) {
+        andConditions.push({
+            $or: [
+                { leatherMaterial: { $in: materialList.map(m => new RegExp(m, "i")) } },
+                { accessoryMaterial: { $in: materialList.map(m => new RegExp(m, "i")) } },
+                { caseMaterial: { $in: materialList.map(m => new RegExp(m, "i")) } }
+            ]
+        });
+    }
+
+    const hardwareList = normalizeArray(hardware);
+    if (hardwareList.length > 0) {
+        andConditions.push({ hardwareColor: { $in: hardwareList.map(h => new RegExp(h, "i")) } });
+    }
+
+    const interiorList = normalizeArray(interiorMaterial);
+    if (interiorList.length > 0) {
+        andConditions.push({ interiorMaterial: { $in: interiorList.map(i => new RegExp(i, "i")) } });
+    }
+
     const leatherMainList = normalizeArray(leatherMainCategory);
     if (leatherMainList.length > 0) {
         andConditions.push({ leatherMainCategory: { $in: leatherMainList.map(c => new RegExp(`^${c}$`, "i")) } });
@@ -215,6 +247,11 @@ const buildProductQuery = (queryParams) => {
     const leatherSubList = normalizeArray(leatherSubCategory);
     if (leatherSubList.length > 0) {
         andConditions.push({ leatherSubCategory: { $in: leatherSubList.map(c => new RegExp(`^${c}$`, "i")) } });
+    }
+
+    const accessorySubList = normalizeArray(accessorySubCategory);
+    if (accessorySubList.length > 0) {
+        andConditions.push({ accessorySubCategory: { $in: accessorySubList.map(c => new RegExp(`^${c}$`, "i")) } });
     }
 
     // Merge

@@ -1,5 +1,6 @@
 const Product = require("../models/product");
 const mongoose = require("mongoose");
+const { uploadToS3 } = require("../config/s3Client");
 
 // ============================================
 // GET ALL ACCESSORIES WITH FILTERING & PAGINATION
@@ -637,46 +638,21 @@ const updateAccessory = async (req, res) => {
     console.log("Update data received:", updateData);
 
     // ============================================
-    // IMAGE HANDLING
+    // IMAGE HANDLING (AWS S3)
+    // The upload middleware already uploaded files to S3 and deleted temp
+    // files before this controller runs. Never re-read req.files here.
     // ============================================
-    if (req.files) {
-      console.log("Files received:", req.files);
 
-      // Handle main image
-      if (req.files.main && req.files.main[0]) {
-        const mainFile = req.files.main[0];
-        const mainResult = await cloudinary.uploader.upload(mainFile.path, {
-          folder: 'accessories',
-          width: 800,
-          height: 800,
-          crop: 'fill'
-        });
-        updateData.mainImage = {
-          url: mainResult.secure_url,
-          publicId: mainResult.public_id
-        };
-      }
-
-      // Handle cover images
-      if (req.files.covers && req.files.covers.length > 0) {
-        const coverUploads = await Promise.all(
-          req.files.covers.map(async (file) => {
-            const result = await cloudinary.uploader.upload(file.path, {
-              folder: 'accessories/gallery',
-              width: 600,
-              height: 600,
-              crop: 'fill'
-            });
-            return {
-              url: result.secure_url,
-              publicId: result.public_id
-            };
-          })
-        );
-
-        // Merge with existing images if needed
-        updateData.images = [...(existingProduct.images || []), ...coverUploads];
-      }
+    // updateProductImageUpload sets req.body.uploadedImages (new uploads only)
+    if (req.body.uploadedImages && req.body.uploadedImages.length > 0) {
+      updateData.images = [
+        ...(existingProduct.images || []),
+        ...req.body.uploadedImages,
+      ];
+    }
+    // accessoriesUpload sets req.body.images (replaces images array entirely)
+    else if (req.body.images && req.body.images.length > 0) {
+      updateData.images = req.body.images;
     }
 
     // ============================================

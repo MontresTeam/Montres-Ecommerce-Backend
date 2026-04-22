@@ -775,76 +775,66 @@ const getProductBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
 
-    // 1. Try finding by the 'slug' field exactly
-    let product = await Product.findOne({
+    // ✅ STEP 1: Get ALL products with same slug
+    const products = await Product.find({
       slug: slug,
       published: true
-    }).select("-__v").lean();
+    })
+      .sort({
+        inStock: -1,       // ✅ available first
+        stockQuantity: -1, // ✅ extra safety
+        createdAt: -1      // ✅ newest first
+      })
+      .lean();
 
-    // 2. Fallback: Search by name/model using a flexible regex
-    if (!product) {
-      // Create a pattern that matches the slug parts with spaces or hyphens between them
-      const items = slug.split('-').filter(Boolean);
-      const pattern = items.join('[\\s-]+');
-      
-      product = await Product.findOne({
-        $or: [
-          { name: { $regex: new RegExp(`^${pattern}`, 'i') } },
-          { model: { $regex: new RegExp(`^${pattern}`, 'i') } },
-          { slug: { $regex: new RegExp(`^${slug}`, 'i') } } // partial slug match
-        ],
-        published: true
-      }).select("-__v").lean();
-    }
-
-    // 3. Final Fallback: if slug looks like a SKU or ID, try those too
-    if (!product && slug.length > 5) {
-      product = await Product.findOne({
-        $or: [
-          { sku: { $regex: new RegExp(`^${slug}`, 'i') } },
-          { referenceNumber: { $regex: new RegExp(`^${slug}`, 'i') } }
-        ],
-        published: true
-      }).select("-__v").lean();
-    }
-
-    if (!product) {
+    if (!products.length) {
       return res.status(404).json({
-        message: "❌ Product not found by slug or name fallback",
+        message: "❌ Product not found"
       });
     }
 
-    // Format consistent with getProductById
+    // ✅ STEP 2: Smart selection
+    let selectedProduct = null;
+
+    // 1. Try in-stock first
+    selectedProduct = products.find(p => p.inStock || p.stockQuantity > 0);
+
+    // 2. If none in stock → fallback to first
+    if (!selectedProduct) {
+      selectedProduct = products[0];
+    }
+
+    console.log("✅ Selected:", selectedProduct.referenceNumber || selectedProduct.sku);
+
+    // ✅ STEP 3: Format
     const formattedProduct = {
-      ...product,
-      brand: product.brand || "",
-      category: product.category || "",
+      ...selectedProduct,
       image:
-        product.images?.find((img) => img.type === "main")?.url ||
-        product.images?.[0]?.url ||
+        selectedProduct.images?.find(img => img.type === "main")?.url ||
+        selectedProduct.images?.[0]?.url ||
         "",
-      available: product.stockQuantity > 0 || product.inStock,
-      discount:
-        product.regularPrice &&
-          product.salePrice &&
-          product.regularPrice > product.salePrice
-          ? Math.round(
-            ((product.regularPrice - product.salePrice) /
-              product.regularPrice) *
-            100
-          )
-          : 0,
-      isOnSale:
-        product.regularPrice &&
-        product.salePrice &&
-        product.regularPrice > product.salePrice,
+      available:
+        selectedProduct.stockQuantity > 0 || selectedProduct.inStock,
     };
 
-    return res.status(200).json({ product: formattedProduct });
+    return res.status(200).json({
+      product: formattedProduct,
+
+      // 🔥 IMPORTANT: send all variants
+      variants: products.map(p => ({
+        _id: p._id,
+        referenceNumber: p.referenceNumber,
+        sku: p.sku,
+        price: p.salePrice,
+        inStock: p.inStock,
+        stockQuantity: p.stockQuantity
+      }))
+    });
+
   } catch (err) {
-    console.error("❌ Error fetching product by slug:", err);
+    console.error(err);
     return res.status(500).json({
-      message: "❌ Error fetching product",
+      message: "❌ Server error"
     });
   }
 };

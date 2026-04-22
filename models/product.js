@@ -820,7 +820,7 @@ productSchema.pre("save", async function () {
   if (this.isModified('brand') || this.isModified('name') || !this.slug) {
     const brandStr = (this.brand || "").trim().toLowerCase();
     const nameStr = (this.name || "").trim().toLowerCase();
-    
+
     // If name already starts with brand, don't prepend it again
     let combined = nameStr;
     if (brandStr && !nameStr.startsWith(brandStr)) {
@@ -830,7 +830,7 @@ productSchema.pre("save", async function () {
     const slugBase = combined
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '');
-    
+
     // Ensure uniqueness internally, if a product with the same slug exists, append internal db ID fragment
     let targetSlug = slugBase;
     try {
