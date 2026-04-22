@@ -17,14 +17,14 @@ exports.submitContactForm = async (req, res) => {
     // ✅ Optional attachment handling
     let attachmentUrl = "";
 
-    // Case 1: Cloudinary upload (images array)
+    // Case 1: S3 upload (images array set by upload middleware)
     if (req.body.images && Array.isArray(req.body.images)) {
       if (req.body.images.length > 0) {
         attachmentUrl = req.body.images[0].url;
       }
     }
 
-    // Case 2: Single uploaded file (multer / cloudinary)
+    // Case 2: Single uploaded file (multer only, no cloud upload)
     if (req.file && req.file.path) {
       attachmentUrl = req.file.path;
     }

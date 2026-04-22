@@ -11,7 +11,13 @@ const calculateReadingTime = (content) => {
 
 const createBlog = async (req, res, next) => {
     try {
-        const { title, slug, excerpt, shortDescription, content, category, tags, author, status, featuredImage, images, metaTitle, metaDescription, featured, publishDate } = req.body;
+        const {
+            title, slug, excerpt, content, category, tags,
+            authorName, authorDesignation, authorImage,
+            status, featuredImage, images,
+            metaTitle, metaDescription, metaKeywords, canonicalUrl, ogImage,
+            featured, publishDate, isCommentsEnabled
+        } = req.body;
 
         if (!title || !slug) {
             return res.status(400).json({ success: false, message: "Title and Slug are required" });
@@ -24,28 +30,39 @@ const createBlog = async (req, res, next) => {
 
         const readingTime = calculateReadingTime(content || "");
 
+        // Map flat fields to nested objects for the professional schema
         const newBlog = new Blog({
             title,
             slug,
             excerpt,
-            shortDescription: shortDescription || excerpt,
             content,
-            category: category && category !== "" ? category : null,
+            category: category && category !== "" ? category : 'Watch Education',
             tags: typeof tags === 'string' ? JSON.parse(tags) : (tags || []),
-            author,
+            author: {
+                name: authorName || req.body.author, // Fallback to 'author' if sent as string
+                designation: authorDesignation || "Editorial Team",
+                image: authorImage || ""
+            },
             status: status ? status.toLowerCase() : 'draft',
             readingTime,
             featured: featured === 'true' || featured === true,
-            metaTitle,
-            metaDescription,
+            seo: {
+                metaTitle: metaTitle || title,
+                metaDescription: metaDescription || excerpt,
+                metaKeywords: typeof metaKeywords === 'string' ? JSON.parse(metaKeywords) : (metaKeywords || []),
+                canonicalUrl: canonicalUrl || "",
+                ogImage: ogImage || ""
+            },
+            isCommentsEnabled: isCommentsEnabled === 'true' || isCommentsEnabled === true,
             images: typeof images === 'string' ? JSON.parse(images) : (images || []),
-            featuredImage: req.body.images && req.body.images.length > 0 ? req.body.images[0].url : featuredImage,
+            featuredImage: (req.body.images && req.body.images.length > 0) ? req.body.images[0].url : (featuredImage || ""),
             publishDate: publishDate ? new Date(publishDate) : (status?.toLowerCase() === 'published' ? new Date() : null)
         });
 
         await newBlog.save();
         res.status(201).json({ success: true, message: "Blog created successfully", blog: newBlog });
     } catch (error) {
+        console.error("Create Blog Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -103,36 +120,50 @@ const getBlogById = async (req, res) => {
 const updateBlog = async (req, res) => {
     try {
         const { id } = req.params;
-        const updateData = { ...req.body };
+        const body = { ...req.body };
 
-        if (updateData.tags && typeof updateData.tags === 'string') {
-            updateData.tags = JSON.parse(updateData.tags);
-        }
+        // Parsing JSON strings if sent from FormData
+        const tags = typeof body.tags === 'string' ? JSON.parse(body.tags) : body.tags;
+        const metaKeywords = typeof body.metaKeywords === 'string' ? JSON.parse(body.metaKeywords) : body.metaKeywords;
+        const images = typeof body.images === 'string' ? JSON.parse(body.images) : body.images;
 
-        if (updateData.images && typeof updateData.images === 'string') {
-            updateData.images = JSON.parse(updateData.images);
+        const updateData = {
+            title: body.title,
+            slug: body.slug,
+            excerpt: body.excerpt,
+            content: body.content,
+            category: body.category || 'Watch Education',
+            tags: tags,
+            author: {
+                name: body.authorName || body.author,
+                designation: body.authorDesignation,
+                image: body.authorImage
+            },
+            status: body.status ? body.status.toLowerCase() : undefined,
+            featured: body.featured === 'true' || body.featured === true,
+            seo: {
+                metaTitle: body.metaTitle,
+                metaDescription: body.metaDescription,
+                metaKeywords: metaKeywords,
+                canonicalUrl: body.canonicalUrl,
+                ogImage: body.ogImage
+            },
+            isCommentsEnabled: body.isCommentsEnabled === 'true' || body.isCommentsEnabled === true,
+            images: images,
+            publishDate: body.publishDate ? new Date(body.publishDate) : undefined
+        };
+
+        if (body.content) {
+            updateData.readingTime = calculateReadingTime(body.content);
         }
 
         if (req.body.images && req.body.images.length > 0) {
             updateData.featuredImage = req.body.images[0].url;
+        } else if (body.featuredImage) {
+            updateData.featuredImage = body.featuredImage;
         }
 
-        if (updateData.content) {
-            updateData.readingTime = calculateReadingTime(updateData.content);
-        }
-
-        if (updateData.status) {
-            updateData.status = updateData.status.toLowerCase();
-            if (updateData.status === 'published' && !updateData.publishDate) {
-                updateData.publishDate = new Date();
-            }
-        }
-
-        if (updateData.category === "") {
-            updateData.category = null;
-        }
-
-        const updatedBlog = await Blog.findByIdAndUpdate(id, updateData, { new: true });
+        const updatedBlog = await Blog.findByIdAndUpdate(id, { $set: updateData }, { new: true });
 
         if (!updatedBlog) {
             return res.status(404).json({ success: false, message: "Blog not found" });
@@ -140,6 +171,7 @@ const updateBlog = async (req, res) => {
 
         res.status(200).json({ success: true, message: "Blog updated successfully", blog: updatedBlog });
     } catch (error) {
+        console.error("Update Blog Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

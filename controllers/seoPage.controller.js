@@ -6,17 +6,23 @@ const createSEOAllpage = async (req, res) => {
       pageTitle,
       seoTitle,
       metaDescription,
+      metaKeywords,
       slug,
+      canonicalUrl,
+      ogImage,
+      robots,
+      structuredData,
       pageContent,
       pageType,
+      author,
       isActive,
       views,
       keywordRank,
     } = req.body;
 
-    if (!pageTitle || !seoTitle || !metaDescription || !slug) {
+    if (!seoTitle || !metaDescription || !slug) {
       return res.status(400).json({
-        message: "pageTitle, seoTitle, metaDescription and slug are required",
+        message: "seoTitle, metaDescription and slug are required",
       });
     }
 
@@ -27,13 +33,29 @@ const createSEOAllpage = async (req, res) => {
         .json({ message: "SEO content for this slug already exists" });
     }
 
+    // Handle metaKeywords if sent as a JSON string
+    let parsedKeywords = metaKeywords;
+    if (typeof metaKeywords === 'string') {
+      try {
+        parsedKeywords = JSON.parse(metaKeywords);
+      } catch (e) {
+        parsedKeywords = metaKeywords.split(',').map(k => k.trim());
+      }
+    }
+
     const newPage = new SeoPage({
-      pageTitle,
+      pageTitle: pageTitle || "",
       seoTitle,
-      pageType,
       metaDescription,
+      metaKeywords: parsedKeywords || [],
       slug,
+      canonicalUrl: canonicalUrl || "",
+      ogImage: ogImage || "",
+      robots: robots || "index, follow",
+      structuredData: structuredData || "",
       pageContent: pageContent || "",
+      pageType: pageType || "page",
+      author: author || "",
       isActive: isActive ?? true,
       views: views ?? 0,
       keywordRank: keywordRank ?? 0,
@@ -130,18 +152,52 @@ const DeleteSeoPages = async (req, res) => {
 const EditSeoPages = async (req, res) => {
   try {
     const { id } = req.params;
-    const { pageTitle, seoTitle, metaDescription, pageType, slug, pageContent, isActive } = req.body;
+    const {
+      pageTitle,
+      seoTitle,
+      metaDescription,
+      metaKeywords,
+      slug,
+      canonicalUrl,
+      ogImage,
+      robots,
+      structuredData,
+      pageContent,
+      pageType,
+      author,
+      isActive,
+      views,
+      keywordRank
+    } = req.body;
 
     const page = await SeoPage.findById(id);
     if (!page) return res.status(404).json({ message: "SEO page not found" });
 
-    page.pageTitle = pageTitle || page.pageTitle;
-    page.pageType = pageType || page.pageType;
+    // Handle metaKeywords parsing
+    let parsedKeywords = metaKeywords;
+    if (typeof metaKeywords === 'string') {
+      try {
+        parsedKeywords = JSON.parse(metaKeywords);
+      } catch (e) {
+        parsedKeywords = metaKeywords.split(',').map(k => k.trim());
+      }
+    }
+
+    page.pageTitle = pageTitle !== undefined ? pageTitle : page.pageTitle;
     page.seoTitle = seoTitle || page.seoTitle;
     page.metaDescription = metaDescription || page.metaDescription;
+    if (parsedKeywords) page.metaKeywords = parsedKeywords;
     page.slug = slug || page.slug;
+    page.canonicalUrl = canonicalUrl !== undefined ? canonicalUrl : page.canonicalUrl;
+    page.ogImage = ogImage !== undefined ? ogImage : page.ogImage;
+    page.robots = robots !== undefined ? robots : page.robots;
+    page.structuredData = structuredData !== undefined ? structuredData : page.structuredData;
     page.pageContent = pageContent !== undefined ? pageContent : page.pageContent;
+    page.pageType = pageType || page.pageType;
+    page.author = author !== undefined ? author : page.author;
     page.isActive = isActive !== undefined ? isActive : page.isActive;
+    page.views = views !== undefined ? views : page.views;
+    page.keywordRank = keywordRank !== undefined ? keywordRank : page.keywordRank;
 
     const updatedPage = await page.save();
     return res.json({ message: "SEO page updated successfully", data: updatedPage });

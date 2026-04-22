@@ -1,12 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
-
-// ✅ Cloudinary is assumed to be configured globally
+const { uploadToS3 } = require("./s3Client");
 
 // Ensure uploads folder exists
-const uploadDir = path.join(__dirname, "uploads");
+const uploadDir = path.join(__dirname, "../uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 // Configure multer
@@ -30,21 +28,19 @@ const uploadAdminProfile = (req, res, next) => {
     if (!req.file) return next();
 
     try {
-      // Upload file to Cloudinary
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: "MontresAdminProfiles",
-      });
+      const s3Key = `MontresAdminProfiles/${Date.now()}-${req.file.originalname}`;
+      const url = await uploadToS3(req.file.path, s3Key, req.file.mimetype);
 
       // Remove local file
       fs.unlinkSync(req.file.path);
 
-      // Attach Cloudinary URL to request body
-      req.body.profileUrl = result.secure_url;
+      // Attach S3 URL to request body
+      req.body.profileUrl = url;
 
       next();
     } catch (error) {
-      console.error("Cloudinary upload error:", error);
-      res.status(500).json({ message: "Error uploading profile image" });
+      console.error("S3 upload error:", error);
+      res.status(500).json({ message: "Error uploading profile image to S3" });
     }
   });
 };

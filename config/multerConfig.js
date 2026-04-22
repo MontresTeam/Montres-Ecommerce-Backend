@@ -1,18 +1,11 @@
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
-
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+const { uploadToS3 } = require("./s3Client");
 
 // Configure Multer (temporary local storage)
 const storage = multer.diskStorage({
-  destination: path.join(__dirname, "uploads"),
+  destination: path.join(__dirname, "../uploads"),
   filename: (req, file, cb) => {
     cb(null, Date.now() + "-" + file.originalname);
   },
@@ -26,9 +19,9 @@ const imageUpload = (req, res, next) => {
       return res.status(400).json({ error: err.message });
     }
 
-    // ✅ IMPORTANT: If no files → just continue
+    // If no files → just continue
     if (!req.files || req.files.length === 0) {
-      req.body.images = []; // ensure safe default
+      req.body.images = [];
       return next();
     }
 
@@ -36,30 +29,25 @@ const imageUpload = (req, res, next) => {
       const uploadedImages = [];
 
       for (const file of req.files) {
-        const result = await cloudinary.uploader.upload(file.path, {
-          folder: "MontresTradingLLC",
-          quality: "auto",
-          fetch_format: "auto",
-        });
+        const s3Key = `MontresTradingLLC/${Date.now()}-${file.originalname}`;
+        const url = await uploadToS3(file.path, s3Key, file.mimetype);
 
         uploadedImages.push({
-          url: result.secure_url,
+          url,
           alt: file.originalname,
         });
 
-        // Remove local file
+        // Remove local temp file
         fs.unlink(file.path, (error) => {
           if (error) console.error("File delete error:", error);
         });
       }
 
-      req.body.images = uploadedImages; // send to controller
+      req.body.images = uploadedImages;
       next();
     } catch (error) {
-      console.error("Cloudinary upload error:", error);
-      return res
-        .status(500)
-        .json({ message: "Error uploading files to Cloudinary" });
+      console.error("S3 upload error:", error);
+      return res.status(500).json({ message: "Error uploading files to S3" });
     }
   });
 };

@@ -3,12 +3,15 @@ const mongoose = require('mongoose');
 const BlogSchema = new mongoose.Schema({
     title: { type: String, required: true },
     slug: { type: String, required: true, unique: true },
-    shortDescription: { type: String },
-    excerpt: { type: String }, // Keep for compatibility if used
-    content: { type: String }, // HTML or JSON rich text
+    excerpt: { type: String }, // Short summary for listing pages
+    content: { type: String }, // HTML rich text from editor
     featuredImage: { type: String },
-    images: [{ type: String }],
-    author: { type: String },
+    images: [{ type: String }], // Gallery or additional images
+    author: {
+        name: { type: String },
+        image: { type: String },
+        designation: { type: String }, // e.g., "Senior Watch Specialist"
+    },
     category: {
         type: String,
         enum: [
@@ -20,7 +23,7 @@ const BlogSchema = new mongoose.Schema({
             'Collectors & Lifestyle'
         ],
         required: false,
-        default: null
+        default: 'Watch Education'
     },
     tags: [{ type: String }],
     status: {
@@ -30,10 +33,16 @@ const BlogSchema = new mongoose.Schema({
     },
     publishDate: { type: Date },
     readingTime: { type: Number, default: 0 },
-    metaTitle: { type: String },
-    metaDescription: { type: String },
+    seo: {
+        metaTitle: { type: String },
+        metaDescription: { type: String },
+        metaKeywords: [{ type: String }],
+        canonicalUrl: { type: String },
+        ogImage: { type: String }
+    },
     views: { type: Number, default: 0 },
-    featured: { type: Boolean, default: false }
+    featured: { type: Boolean, default: false },
+    isCommentsEnabled: { type: Boolean, default: true }
 }, {
     timestamps: true
 });

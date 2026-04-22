@@ -81,6 +81,10 @@ const orderSchema = new mongoose.Schema(
       default: "pending"
     },
 
+    delivered_at:{
+     Date
+    },
+
     stripeSessionId: { type: String, index: true },
     stripePaymentIntentId: { type: String, index: true },
     tabbySessionId: String,

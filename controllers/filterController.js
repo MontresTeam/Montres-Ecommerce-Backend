@@ -205,16 +205,51 @@ const getFacetedFilters = async (req, res) => {
             { $match: { _id: { $ne: null, $ne: "" } } }
           ],
           subCategories: [
-            { $unwind: { path: "$subcategory", preserveNullAndEmptyArrays: false } },
-            { $group: { _id: "$subcategory", count: { $sum: 1 } } },
+            {
+              $project: {
+                combinedSub: {
+                  $concatArrays: [
+                    { $ifNull: ["$subcategory", []] },
+                    { $cond: { if: { $gt: ["$leatherSubCategory", null] }, then: ["$leatherSubCategory"], else: [] } },
+                    { $cond: { if: { $gt: ["$accessorySubCategory", null] }, then: ["$accessorySubCategory"], else: [] } }
+                  ]
+                }
+              }
+            },
+            { $unwind: "$combinedSub" },
+            { $group: { _id: "$combinedSub", count: { $sum: 1 } } },
             { $match: { _id: { $ne: null, $ne: "" } } }
           ],
           colors: [
-            { $group: { _id: { $ifNull: ["$color", "$dialColor"] }, count: { $sum: 1 } } },
+            {
+              $project: {
+                combinedColor: {
+                  $concatArrays: [
+                    { $cond: { if: { $gt: ["$color", null] }, then: ["$color"], else: [] } },
+                    { $cond: { if: { $gt: ["$dialColor", null] }, then: ["$dialColor"], else: [] } },
+                    { $ifNull: ["$accessoryColor", []] }
+                  ]
+                }
+              }
+            },
+            { $unwind: "$combinedColor" },
+            { $group: { _id: "$combinedColor", count: { $sum: 1 } } },
             { $match: { _id: { $ne: null, $ne: "" } } }
           ],
           materials: [
-            { $group: { _id: { $ifNull: ["$caseMaterial", "$leatherMaterial"] }, count: { $sum: 1 } } },
+            {
+              $project: {
+                combinedMat: {
+                  $concatArrays: [
+                    { $cond: { if: { $gt: ["$caseMaterial", null] }, then: ["$caseMaterial"], else: [] } },
+                    { $cond: { if: { $gt: ["$leatherMaterial", null] }, then: ["$leatherMaterial"], else: [] } },
+                    { $ifNull: ["$accessoryMaterial", []] }
+                  ]
+                }
+              }
+            },
+            { $unwind: "$combinedMat" },
+            { $group: { _id: "$combinedMat", count: { $sum: 1 } } },
             { $match: { _id: { $ne: null, $ne: "" } } }
           ],
           genders: [
@@ -234,6 +269,10 @@ const getFacetedFilters = async (req, res) => {
               }
             },
             { $group: { _id: "$status", count: { $sum: 1 } } }
+          ],
+          leatherMainCategories: [
+            { $group: { _id: "$leatherMainCategory", count: { $sum: 1 } } },
+            { $match: { _id: { $ne: null, $ne: "" } } }
           ]
         }
       }
@@ -259,6 +298,7 @@ const getFacetedFilters = async (req, res) => {
         materials: formatFacet(result.materials),
         genders: formatFacet(result.genders),
         availabilities: formatFacet(result.availabilities),
+        leatherMainCategories: formatFacet(result.leatherMainCategories),
       }
     });
   } catch (error) {

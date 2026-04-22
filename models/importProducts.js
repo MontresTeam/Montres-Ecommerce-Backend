@@ -2,14 +2,17 @@ const fs = require("fs");
 const mongoose = require("mongoose");
 const csv = require("csv-parser");
 const Product = require("./product");
-const cloudinary = require("cloudinary").v2;
+const AWS = require("aws-sdk");
+const axios = require("axios");
+require("dotenv").config();
 
-// ✅ Cloudinary config
-cloudinary.config({
-  cloud_name: "dkjikgwqi",
-  api_key: "691197166358735",
-  api_secret: "hHzf0lMK1EgWshxZznDxuu2cAUI",
+// ✅ AWS S3 config (reads from .env)
+const s3 = new AWS.S3({
+  accessKeyId: process.env.AWS_ACCESS_KEY,
+  secretAccessKey: process.env.AWS_SECRET_KEY,
+  region: process.env.AWS_REGION,
 });
+const BUCKET = process.env.S3_BUCKET;
 
 const MONGO_URI =
   "mongodb://monterodeveloper82_db_user:Montres123@ac-x1yeyl4-shard-00-00.xbg6rgl.mongodb.net:27017,ac-x1yeyl4-shard-00-01.xbg6rgl.mongodb.net:27017,ac-x1yeyl4-shard-00-02.xbg6rgl.mongodb.net:27017/montresDB?ssl=true&replicaSet=atlas-ipf6s3-shard-0&authSource=admin&retryWrites=true&w=majority&appName=MontersTeam";
@@ -27,17 +30,27 @@ async function connectDB() {
   }
 }
 
-// ✅ Upload helper
-async function uploadToCloudinary(imagePathOrUrl) {
+// ✅ Upload helper — downloads image URL then uploads to S3
+async function uploadToS3(imageUrl) {
   try {
-    const result = await cloudinary.uploader.upload(imagePathOrUrl, {
-      folder: "MontresTradingLLC/products",
-      use_filename: true,
-      unique_filename: false,
-    });
-    return { url: result.secure_url, public_id: result.public_id };
+    const response = await axios.get(imageUrl, { responseType: "arraybuffer" });
+    const buffer = Buffer.from(response.data);
+    const contentType = response.headers["content-type"] || "image/jpeg";
+    const ext = contentType.split("/")[1] || "jpg";
+    const key = `MontresTradingLLC/products/${Date.now()}-import.${ext}`;
+
+    const result = await s3
+      .upload({
+        Bucket: BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      })
+      .promise();
+
+    return { url: result.Location };
   } catch (err) {
-    console.error("❌ Cloudinary upload error:", imagePathOrUrl, err.message);
+    console.error("❌ S3 upload error:", imageUrl, err.message);
     return null;
   }
 }
@@ -63,7 +76,7 @@ async function importProducts() {
         if (row.Images) {
           const imgList = row.Images.split(",");
           for (const img of imgList) {
-            const uploaded = await uploadToCloudinary(img.trim());
+            const uploaded = await uploadToS3(img.trim());
             if (uploaded) uploadedImages.push(uploaded);
           }
         }
@@ -92,7 +105,7 @@ async function importProducts() {
           stockQuantity: row.Stock ? Number(row.Stock) : 0,
           categories: row.Categories ? row.Categories.split(",") : [],
           tags: row.Tags ? row.Tags.split(",") : [],
-          images: uploadedImages, // ✅ Cloudinary URLs
+          images: uploadedImages, // ✅ S3 URLs
           meta: row,
         });
       }

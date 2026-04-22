@@ -10,7 +10,7 @@ const imageUpload = require("../config/multerConfig");
 
 const { adminProtect } = require("../middlewares/authMiddleware");
 
-// 📩 Submit contact form (with Cloudinary upload) - Public
+// 📩 Submit contact form (with S3 upload) - Public
 router.post("/submit", imageUpload, submitContactForm);
 
 // 📜 Get all contact submissions - Admin only

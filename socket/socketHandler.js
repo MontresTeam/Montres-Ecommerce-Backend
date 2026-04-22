@@ -8,6 +8,11 @@ const mongoose = require('mongoose');
 const ADMIN_ROOM = "admin_room";
 // Track online users: userId -> Set of socketIds (to handle multiple tabs)
 const onlineUsers = new Map();
+// Track active product viewers: productId -> Set of socketIds
+const productViewers = new Map();
+// Track which product each socket is viewing: socketId -> productId
+const socketToProduct = new Map();
+
 // Track if any admin is online (socket-wise)
 let adminSocketConnected = false;
 
@@ -94,6 +99,49 @@ const socketHandler = (io) => {
                     userName,
                     userEmail
                 });
+            }
+        });
+
+        // ── Real-time Product Viewers ──
+        socket.on('join_product', (productId) => {
+            if (!productId) return;
+
+            // Leave previous product room if any
+            const prevProduct = socketToProduct.get(socket.id);
+            if (prevProduct && prevProduct !== productId) {
+                socket.leave(`product:${prevProduct}`);
+                if (productViewers.has(prevProduct)) {
+                    productViewers.get(prevProduct).delete(socket.id);
+                    const count = productViewers.get(prevProduct).size;
+                    io.to(`product:${prevProduct}`).emit(`engagement:active_viewers:${prevProduct}`, { count });
+                }
+            }
+
+            // Join new product room
+            socket.join(`product:${productId}`);
+            socketToProduct.set(socket.id, productId);
+
+            if (!productViewers.has(productId)) {
+                productViewers.set(productId, new Set());
+            }
+            productViewers.get(productId).add(socket.id);
+
+            // Broadcast new count to all in this room
+            const count = productViewers.get(productId).size;
+            io.to(`product:${productId}`).emit(`engagement:active_viewers:${productId}`, { count });
+            
+            console.log(`Socket ${socket.id} joined product ${productId}. Active viewers: ${count}`);
+        });
+
+        socket.on('leave_product', (productId) => {
+            if (!productId) return;
+            socket.leave(`product:${productId}`);
+            socketToProduct.delete(socket.id);
+
+            if (productViewers.has(productId)) {
+                productViewers.get(productId).delete(socket.id);
+                const count = productViewers.get(productId).size;
+                io.to(`product:${productId}`).emit(`engagement:active_viewers:${productId}`, { count });
             }
         });
 
@@ -219,6 +267,18 @@ const socketHandler = (io) => {
 
         socket.on('disconnect', async () => {
             console.log('User disconnected:', socket.id);
+
+            // Clean up product viewers
+            const productId = socketToProduct.get(socket.id);
+            if (productId) {
+                if (productViewers.has(productId)) {
+                    productViewers.get(productId).delete(socket.id);
+                    const count = productViewers.get(productId).size;
+                    io.to(`product:${productId}`).emit(`engagement:active_viewers:${productId}`, { count });
+                }
+                socketToProduct.delete(socket.id);
+            }
+
             if (currentUserId) {
                 const userSockets = onlineUsers.get(currentUserId);
                 if (userSockets) {
