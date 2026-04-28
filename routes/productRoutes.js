@@ -41,7 +41,8 @@ const {
   updateCart,
   recommendationsProduct,
   getWishlistCount,
-  getCartCount
+  getCartCount,
+  clearCart
 } = require("../controllers/userController");
 const ImageUpload = require("../config/multerConfig");
 const { protect, adminProtect } = require("../middlewares/authMiddleware");
@@ -67,6 +68,7 @@ router.post("/cart/add", protect, addToCart);
 router.get('/cart', protect, getCart)            // Add to cart
 router.delete("/cart/remove", protect, removeFromCart);   // Remove from cart
 router.put('/cart/update-cart', protect, updateCart)
+router.delete("/cart/clear", protect, clearCart);
 
 /*------------------ Recommendations ----------------*/
 router.get('/cart/recommendations', protect, recommendationsProduct)

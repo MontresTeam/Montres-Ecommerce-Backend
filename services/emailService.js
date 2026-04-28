@@ -42,198 +42,124 @@ const sendWelcomeEmail = async (email, name) => {
     to: email,
     subject: "🎉 Welcome to Montres — Your Account is Ready!",
     html: `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome to Montres</title>
-        <style>
-          @media only screen and (max-width: 600px) {
-            .container {
-              width: 100% !important;
-              padding: 20px !important;
-            }
-            .header {
-              padding: 20px 10px !important;
-            }
-            .content {
-              padding: 20px 15px !important;
-            }
-            .btn {
-              display: block !important;
-              width: 90% !important;
-              margin: 0 auto !important;
-              text-align: center !important;
-            }
-          }
-        </style>
-      </head>
-      <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background-color:#f7f7f7;">
-        
-        <!-- Main Container -->
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f7f7f7;">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Welcome to Montres</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0"
+               style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+
+          <!-- ── Header ── -->
           <tr>
-            <td align="center">
-              <!-- Email Container -->
-              <table class="container" width="600" cellpadding="0" cellspacing="0" style="margin:0 auto;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.05);">
-                
-                <!-- Header -->
-                <tr>
-                  <td class="header" style="background-color: #1a1a1a; padding: 40px; text-align: center;">
-                    <h1 style="color: #c5a059; margin: 0; font-size: 24px; letter-spacing: 4px; font-weight: 700;">MONTRES</h1>
-                    <div style="width: 40px; height: 1px; background-color: #c5a059; margin: 15px auto;"></div>
-                    <p style="color: #ffffff; margin: 5px 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.8;">Welcome to the Community</p>
-                  </td>
-                </tr>
-                
-                <!-- Content Section -->
-                <tr>
-                  <td class="content" style="padding:40px 30px;">
-                    
-                    <!-- Greeting -->
-                    <table width="100%">
-                      <tr>
-                        <td>
-                          <h2 style="color:#333333;font-size:22px;font-weight:600;margin:0 0 20px;">Hello ${name},</h2>
-                          <p style="color:#666666;font-size:16px;line-height:1.6;margin:0 0 20px;">
-                            Thank you for creating an account with <strong style="color:#667eea;">Montres</strong>. 
-                            We're thrilled to have you join our community of watch enthusiasts!
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-                    
-                    <!-- Benefits List -->
-                    <table width="100%" style="margin:30px 0;">
-                      <tr>
-                        <td>
-                          <table width="100%">
-                            <tr>
-                              <td width="40" style="vertical-align:top;">
-                                <div style="background-color:#f0f4ff;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;">
-                                  <span style="color:#667eea;">✓</span>
-                                </div>
-                              </td>
-                              <td style="padding-left:15px;">
-                                <p style="color:#333333;font-size:15px;margin:0 0 10px;font-weight:500;">Browse Premium Watches</p>
-                                <p style="color:#666666;font-size:14px;margin:0;line-height:1.5;">Discover our curated collection of luxury and classic timepieces</p>
-                              </td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                      <tr><td style="height:20px;"></td></tr>
-                      <tr>
-                        <td>
-                          <table width="100%">
-                            <tr>
-                              <td width="40" style="vertical-align:top;">
-                                <div style="background-color:#f0f4ff;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;">
-                                  <span style="color:#667eea;">✓</span>
-                                </div>
-                              </td>
-                              <td style="padding-left:15px;">
-                                <p style="color:#333333;font-size:15px;margin:0 0 10px;font-weight:500;">Manage Orders Easily</p>
-                                <p style="color:#666666;font-size:14px;margin:0;line-height:1.5;">Track shipments and view order history in your account</p>
-                              </td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                      <tr><td style="height:20px;"></td></tr>
-                      <tr>
-                        <td>
-                          <table width="100%">
-                            <tr>
-                              <td width="40" style="vertical-align:top;">
-                                <div style="background-color:#f0f4ff;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;">
-                                  <span style="color:#667eea;">✓</span>
-                                </div>
-                              </td>
-                              <td style="padding-left:15px;">
-                                <p style="color:#333333;font-size:15px;margin:0 0 10px;font-weight:500;">Exclusive Offers</p>
-                                <p style="color:#666666;font-size:14px;margin:0;line-height:1.5;">Be the first to know about new arrivals and special promotions</p>
-                              </td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                    </table>
-                    
-                    <!-- CTA Button -->
-                    <table width="100%" style="margin:40px 0 30px;">
-                      <tr>
-                        <td align="center">
-                          <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/login" 
-                             class="btn" 
-                             style="display:inline-block;background-color: #1a1a1a;color:#ffffff;text-decoration:none;padding:18px 45px;border-radius:8px;font-weight:700;font-size:14px;letter-spacing:1px;box-shadow:0 10px 20px rgba(0,0,0,0.1);">
-                            ACCESS YOUR ACCOUNT
-                          </a>
-                        </td>
-                      </tr>
-                    </table>
-                    
-                    <!-- Help Text -->
-                    <table width="100%">
-                      <tr>
-                        <td style="padding:20px 0;border-top:1px solid #eeeeee;">
-                          <p style="color:#999999;font-size:14px;line-height:1.6;margin:0;text-align:center;">
-                            If you did not create this account, please ignore this email.<br>
-                            Need help? Contact us at <a href="mailto:support@montres.com" style="color:#667eea;text-decoration:none;">support@montres.com</a>
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-                    
-                  </td>
-                </tr>
-                
-                <!-- Footer -->
-                <tr>
-                  <td style="background-color:#f9f9f9;padding:30px;text-align:center;">
-                    <p style="color:#888888;font-size:14px;margin:0 0 15px;">
-                      Montres Store &copy; ${new Date().getFullYear()}
-                    </p>
-                    <p style="color:#aaaaaa;font-size:12px;margin:0;line-height:1.5;">
-                      123 Luxury Lane, Watch District<br>
-                      Geneva, Switzerland
-                    </p>
-                  </td>
-                </tr>
-                
-              </table>
-              
-              <!-- Bottom Spacing -->
-              <table width="100%" style="margin:30px 0;">
-                <tr>
-                  <td style="text-align:center;">
-                    <p style="color:#aaaaaa;font-size:12px;margin:0;">
-                      You received this email because you signed up for Montres.<br>
-                      <a href="#" style="color:#999999;text-decoration:underline;">Unsubscribe</a> | 
-                      <a href="#" style="color:#999999;text-decoration:underline;">Privacy Policy</a> | 
-                      <a href="#" style="color:#999999;text-decoration:underline;">Terms of Service</a>
-                    </p>
-                  </td>
-                </tr>
-              </table>
-              
+            <td style="background:#000000;padding:48px 32px;text-align:center;">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:5px;color:#c5a059;margin-bottom:12px;">Montres</div>
+              <div style="font-size:26px;font-weight:700;color:#ffffff;letter-spacing:1px;">Welcome to the Community</div>
+              <div style="width:40px;height:1px;background:#c5a059;margin:20px auto;"></div>
+              <div style="font-size:14px;color:rgba(255,255,255,0.6);margin-top:6px;text-transform:uppercase;letter-spacing:2px;">Exclusive Luxury Awaits</div>
             </td>
           </tr>
+
+          <!-- ── Body ── -->
+          <tr>
+            <td style="padding:40px 32px;">
+              <h2 style="color:#111827;font-size:22px;font-weight:700;margin:0 0 20px;">Hello ${name},</h2>
+              <p style="font-size:16px;color:#374151;line-height:1.7;margin:0 0 30px;">
+                Thank you for creating an account with <strong>Montres</strong>. 
+                We're thrilled to have you join our exclusive community of watch enthusiasts and collectors.
+              </p>
+
+              <!-- Benefits -->
+              <div style="background:#f9fafb;border-radius:8px;padding:24px;margin-bottom:36px;">
+                <div style="font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:1px;margin-bottom:20px;border-bottom:1px solid #e5e7eb;padding-bottom:10px;">
+                  What you can do now
+                </div>
+                
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="vertical-align:top;padding-bottom:20px;">
+                      <div style="width:24px;height:24px;background:#c5a059;border-radius:50%;text-align:center;line-height:24px;color:#fff;font-size:12px;">✓</div>
+                    </td>
+                    <td style="padding-left:16px;padding-bottom:20px;">
+                      <div style="font-weight:700;font-size:15px;color:#111827;">Browse Premium Watches</div>
+                      <div style="font-size:14px;color:#6b7280;margin-top:4px;">Discover our curated collection of luxury and classic timepieces.</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="vertical-align:top;padding-bottom:20px;">
+                      <div style="width:24px;height:24px;background:#c5a059;border-radius:50%;text-align:center;line-height:24px;color:#fff;font-size:12px;">✓</div>
+                    </td>
+                    <td style="padding-left:16px;padding-bottom:20px;">
+                      <div style="font-weight:700;font-size:15px;color:#111827;">Manage Orders Easily</div>
+                      <div style="font-size:14px;color:#6b7280;margin-top:4px;">Track shipments and view order history in your personal dashboard.</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="vertical-align:top;">
+                      <div style="width:24px;height:24px;background:#c5a059;border-radius:50%;text-align:center;line-height:24px;color:#fff;font-size:12px;">✓</div>
+                    </td>
+                    <td style="padding-left:16px;">
+                      <div style="font-weight:700;font-size:15px;color:#111827;">Exclusive Offers</div>
+                      <div style="font-size:14px;color:#6b7280;margin-top:4px;">Be the first to know about new arrivals and private member-only promotions.</div>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- CTA -->
+              <div style="text-align:center;margin-bottom:40px;">
+                <a href="${process.env.CLIENT_URL || 'https://www.montres.ae'}/login"
+                   style="background:#000000;color:#ffffff;padding:18px 45px;text-decoration:none;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:2px;display:inline-block;text-transform:uppercase;box-shadow:0 10px 20px rgba(0,0,0,0.1);">
+                  Access Your Account
+                </a>
+              </div>
+
+              <!-- Help -->
+              <div style="text-align:center;padding-top:24px;border-top:1px solid #f3f4f6;">
+                <p style="color:#9ca3af;font-size:13px;line-height:1.6;margin:0;">
+                  If you did not create this account, please ignore this email.<br>
+                  Need assistance? Contact us at <a href="mailto:admin@montres.ae" style="color:#c5a059;text-decoration:none;font-weight:600;">admin@montres.ae</a>
+                </p>
+              </div>
+            </td>
+          </tr>
+
+          <!-- ── Footer ── -->
+          <tr>
+            <td style="padding:32px;background:#f9fafb;text-align:center;border-top:1px solid #f3f4f6;">
+              <div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">
+                The Montres Store
+              </div>
+              <div style="font-size:12px;color:#9ca3af;">
+                Dubai, United Arab Emirates
+              </div>
+              <div style="font-size:11px;color:#d1d5db;margin-top:16px;">
+                &copy; ${new Date().getFullYear()} Montres. All rights reserved.
+              </div>
+            </td>
+          </tr>
+
         </table>
-        
-      </body>
-      </html>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
     `,
   };
 
   try {
-    // FIX: Changed from mailTransporter to transporter
     await transporter.sendMail(mailOptions);
-    console.log(`Welcome email sent to ${email}`);
+    console.log(`✅ Welcome email sent successfully to ${email}`);
     return { success: true, message: 'Welcome email sent successfully' };
   } catch (error) {
-    console.error('Error sending welcome email:', error);
+    console.error('❌ Error sending welcome email:', error.message);
     throw error;
   }
 };
@@ -575,7 +501,7 @@ const sendCounterOfferEmail = async (offerData, counterPrice, expirationHours) =
 // 5. Offer Alerts (To Admin)
 const sendAdminOfferNotification = async (offerData) => {
   const { productName, customerName, customerEmail, offerPrice, originalPrice, status, orderId } = offerData;
-  const targetEmail = process.env.ADMIN_EMAIL || 'admin@montres.ae';
+  const targetEmail = process.env.ADMIN_EMAIL || 'farhan.dev24@gmail.com';
   const adminUrl = process.env.ADMIN_URL || '#';
 
   let subject = `🚨 New Offer: ${customerName}`;
@@ -751,7 +677,7 @@ const sendOrderConfirmationEmail = async (order) => {
                 </tr>
                 <tr>
                   <td style="background-color: #f9f9f9; padding: 30px; text-align: center; border-top: 1px solid #eee;">
-                    <p style="color: #888; font-size: 14px; margin: 0;">Questions? Contact us at support@montres.ae</p>
+                    <p style="color: #888; font-size: 14px; margin: 0;">Questions? Contact us at admin@montres.ae</p>
                   </td>
                 </tr>
               </table>
