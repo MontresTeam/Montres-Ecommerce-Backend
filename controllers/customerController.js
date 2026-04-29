@@ -1,5 +1,6 @@
 const User = require("../models/UserModel");
 const Customer = require("../models/customersModal");
+const Order = require("../models/OrderModel");
 const mongoose = require("mongoose");
 
 // Create a new user (Save manual entries to Customer model to match previous behavior)
@@ -40,34 +41,53 @@ const createCustomer = async (req, res) => {
 // Get all users from both website logins and manual entries
 const getAllCustomers = async (req, res) => {
   try {
-    const [users, manualCustomers] = await Promise.all([
+    const [users, manualCustomers, allOrders] = await Promise.all([
       User.find().sort({ createdAt: -1 }),
-      Customer.find().sort({ createdAt: -1 })
+      Customer.find().sort({ createdAt: -1 }),
+      Order.find().sort({ createdAt: -1 })
     ]);
 
     // Map website users
-    const websiteCustomers = users.map((user) => ({
-      _id: user._id,
-      serialNumber: 0, // Will recalculate
-      joinDate: user.createdAt,
-      username: user.name,
-      email: user.email,
-      avatar: user.avatar,
-      designation: user.provider === "google" ? "Google Login" : "Email Login",
-      status: "active",
-      source: "website"
-    }));
+    const websiteCustomers = users.map((user) => {
+      const userOrders = allOrders.filter(o => o.userId && o.userId.toString() === user._id.toString());
+      const totalSpent = userOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+      
+      return {
+        _id: user._id,
+        serialNumber: 0,
+        joinDate: user.createdAt,
+        lastSeen: user.lastSeen || user.updatedAt || user.createdAt,
+        username: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        designation: user.provider === "google" ? "Google Login" : "Email Login",
+        status: "active",
+        source: "website",
+        ordersCount: userOrders.length,
+        totalSpent,
+        recentOrders: userOrders.slice(0, 3).map(o => ({
+          id: o.orderId,
+          total: o.total,
+          status: o.orderStatus,
+          date: o.createdAt
+        }))
+      };
+    });
 
     // Map manual customers
     const formattedManual = manualCustomers.map((c) => ({
       _id: c._id,
       serialNumber: c.serialNumber,
       joinDate: c.joinDate,
+      lastSeen: c.updatedAt || c.joinDate,
       username: c.username,
       email: c.email,
       designation: c.designation || "Manual Entry",
       status: c.status,
-      source: "manual"
+      source: "manual",
+      ordersCount: 0,
+      totalSpent: 0,
+      recentOrders: []
     }));
 
     // Combine and sort by date
@@ -75,7 +95,7 @@ const getAllCustomers = async (req, res) => {
       (a, b) => new Date(b.joinDate) - new Date(a.joinDate)
     );
 
-    // Re-assign serial numbers for display if needed, or keep original
+    // Re-assign serial numbers for display if needed
     const finalCustomers = allCustomers.map((c, index) => ({
       ...c,
       serialNumber: c.serialNumber || (allCustomers.length - index)

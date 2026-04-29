@@ -779,6 +779,170 @@ const sendOfferExpiredEmail = async (offerData) => {
   return transporter.sendMail(mailOptions);
 };
 
+/**
+ * 📧 Generic Newsletter & Marketing Email Sender
+ */
+const sendNewsletterEmail = async (email, subject, htmlContent) => {
+  const mailOptions = {
+    from: `"Montres Boutique" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: subject,
+    html: htmlContent,
+  };
+
+  try {
+    return await transporter.sendMail(mailOptions);
+  } catch (error) {
+    console.error(`❌ Error sending newsletter to ${email}:`, error.message);
+    throw error;
+  }
+};
+
+/**
+ * ✨ Professional Email Templates
+ */
+const getWelcomeTemplate = (name) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #ffffff; }
+    .container { max-width: 600px; margin: 0 auto; }
+    .hero { background-color: #1a1a1a; color: #ffffff; padding: 80px 40px; text-align: center; }
+    .content { padding: 60px 40px; text-align: center; color: #1a1a1a; }
+    .btn { display: inline-block; background-color: #1a1a1a; color: #ffffff; padding: 20px 45px; text-decoration: none; font-weight: 700; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; margin-top: 30px; }
+    .footer { padding: 40px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #f0f0f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <h1 style="letter-spacing: 10px; text-transform: uppercase; font-weight: 300; margin-bottom: 20px;">MONTRES</h1>
+      <p style="font-size: 18px; font-weight: 300; color: #c5a358; letter-spacing: 2px;">WELCOME TO THE INNER CIRCLE</p>
+    </div>
+    <div class="content">
+      <h2 style="font-size: 24px; margin-bottom: 20px;">Hello ${name || 'Valued Member'},</h2>
+      <p style="line-height: 1.8; font-size: 16px;">We are delighted to welcome you to Montres, where luxury meets time. You now have exclusive access to our curated collection of world-class timepieces and private member offers.</p>
+      <a href="https://www.montres.ae/shop" class="btn">SHOP THE COLLECTION</a>
+    </div>
+    <div class="footer">
+      <p>&copy; ${new Date().getFullYear()} MONTRES LUXURY MARKETPLACE</p>
+      <p>Dubai, United Arab Emirates</p>
+      <div style="margin-top: 20px;">
+        <a href="#" style="color: #888; text-decoration: none; margin: 0 10px;">Instagram</a>
+        <a href="#" style="color: #888; text-decoration: none; margin: 0 10px;">Facebook</a>
+        <a href="#" style="color: #888; text-decoration: none; margin: 0 10px;">Twitter</a>
+      </div>
+      <p style="margin-top: 20px; font-size: 10px;">If you wish to stop receiving these emails, you can <a href="#" style="color: #1a1a1a;">unsubscribe here</a>.</p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+const getDiscountTemplate = (discountCode = "WELCOME10", percentage = "10") => `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #f8f8f8; }
+    .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; }
+    .hero { padding: 60px 40px; text-align: center; }
+    .discount-box { background-color: #1a1a1a; color: #ffffff; padding: 40px; margin: 30px 0; border-radius: 8px; }
+    .btn { display: inline-block; background-color: #c5a358; color: #ffffff; padding: 20px 45px; text-decoration: none; font-weight: 700; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; }
+    .footer { padding: 40px; text-align: center; font-size: 11px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <h1 style="letter-spacing: 5px; text-transform: uppercase; font-size: 20px;">MONTRES</h1>
+      <div style="width: 30px; height: 1px; background-color: #c5a358; margin: 20px auto;"></div>
+      <h2 style="font-size: 32px; margin-bottom: 10px;">EXCLUSIVE OFFER</h2>
+      <p style="color: #666;">A special gift for our most dedicated collectors.</p>
+      
+      <div class="discount-box">
+        <p style="font-size: 14px; letter-spacing: 3px; margin-bottom: 10px;">YOUR PRIVATE CODE</p>
+        <h3 style="font-size: 48px; margin: 0; letter-spacing: 5px; color: #c5a358;">${percentage}% OFF</h3>
+        <p style="font-size: 24px; font-weight: 700; margin-top: 20px; border: 1px dashed #c5a358; display: inline-block; padding: 10px 30px;">${discountCode}</p>
+      </div>
+      
+      <p style="margin-bottom: 30px; color: #ff4d4d; font-weight: 700; font-size: 13px;">LIMITED TIME ONLY — EXPIRES IN 48 HOURS</p>
+      <a href="https://www.montres.ae/shop" class="btn">REDEEM MY OFFER</a>
+    </div>
+    <div class="footer">
+      <p>&copy; ${new Date().getFullYear()} MONTRES LUXURY MARKETPLACE</p>
+      <p>Terms and conditions apply. Offer valid on select items only.</p>
+      <p><a href="#" style="color: #999;">Unsubscribe</a></p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+const getNewArrivalTemplate = (products = []) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #ffffff; }
+    .container { max-width: 600px; margin: 0 auto; }
+    .header { padding: 40px; text-align: center; border-bottom: 1px solid #f0f0f0; }
+    .product-grid { padding: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+    .product-card { text-align: center; margin-bottom: 40px; }
+    .product-img { width: 100%; aspect-ratio: 1; background-color: #f9f9f9; border-radius: 4px; object-fit: cover; }
+    .btn { display: inline-block; background-color: #1a1a1a; color: #ffffff; padding: 15px 30px; text-decoration: none; font-weight: 700; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin-top: 15px; }
+    .footer { padding: 40px; text-align: center; font-size: 11px; color: #999; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="letter-spacing: 8px; text-transform: uppercase; font-size: 22px;">MONTRES</h1>
+      <p style="font-size: 12px; letter-spacing: 3px; color: #c5a358; margin-top: 10px;">JUST ARRIVED</p>
+    </div>
+    
+    <div style="padding: 60px 40px; text-align: center;">
+      <h2 style="font-size: 28px; margin-bottom: 15px;">THE NEW SEASON</h2>
+      <p style="color: #666; line-height: 1.6;">Discover the latest additions to our luxury collection. Exceptional craftsmanship meets timeless design.</p>
+    </div>
+
+    <!-- Product Showcase (Simulated Grid) -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="padding: 0 40px;">
+      <tr>
+        <td width="50%" style="padding: 10px;">
+          <div class="product-card">
+            <img src="https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&h=400" class="product-img" alt="Watch 1">
+            <h3 style="font-size: 14px; margin-top: 15px; text-transform: uppercase;">Rolex Submariner</h3>
+            <p style="font-size: 12px; color: #c5a358; font-weight: 700;">AED 45,000</p>
+            <a href="#" class="btn">VIEW DETAILS</a>
+          </div>
+        </td>
+        <td width="50%" style="padding: 10px;">
+          <div class="product-card">
+            <img src="https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&w=400&h=400" class="product-img" alt="Watch 2">
+            <h3 style="font-size: 14px; margin-top: 15px; text-transform: uppercase;">Patek Philippe</h3>
+            <p style="font-size: 12px; color: #c5a358; font-weight: 700;">AED 120,000</p>
+            <a href="#" class="btn">VIEW DETAILS</a>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <div style="text-align: center; padding: 40px;">
+      <a href="https://www.montres.ae/new-arrivals" style="text-decoration: underline; color: #1a1a1a; font-weight: 700; letter-spacing: 1px;">BROWSE ALL NEW ARRIVALS</a>
+    </div>
+
+    <div class="footer">
+      <p>&copy; ${new Date().getFullYear()} MONTRES LUXURY MARKETPLACE</p>
+      <p>Dubai, UAE &bull; Global Shipping Available</p>
+      <p><a href="#" style="color: #999;">Unsubscribe</a></p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
 
 // For CommonJS export
 module.exports = {
@@ -791,5 +955,9 @@ module.exports = {
   sendCounterOfferEmail,
   sendAdminOfferNotification,
   sendManualOfferEmail,
-  sendOfferExpiredEmail
+  sendOfferExpiredEmail,
+  sendNewsletterEmail,
+  getWelcomeTemplate,
+  getDiscountTemplate,
+  getNewArrivalTemplate
 };

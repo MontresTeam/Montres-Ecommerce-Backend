@@ -103,7 +103,8 @@ const userSchema = new mongoose.Schema(
     shippingAddress: { type: addressSchema, default: {} },
     billingAddress: { type: addressSchema, default: {} }, // ✅ NEW
     myOrders: [orderSchema],
-    lastSeen: { type: Date, default: Date.now }
+    lastSeen: { type: Date, default: Date.now },
+    isSubscribed: { type: Boolean, default: false }
   },
   { timestamps: true }
 );

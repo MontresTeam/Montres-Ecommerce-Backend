@@ -539,7 +539,7 @@ const getProducts = async (req, res) => {
     // ✅ Query products
     const products = await Product.find(filterQuery)
       .select(
-        "brand name regularPrice salePrice stockQuantity inStock sku " +
+        "brand name slug regularPrice salePrice stockQuantity inStock sku " +
         "condition category leatherMainCategory subCategory " +
         "images limitedEdition badges featured createdAt updatedAt publishSchedule " +
         "make_offer_enabled minimum_offer_type minimum_offer_percentage minimum_offer_amount " +
@@ -558,6 +558,7 @@ const getProducts = async (req, res) => {
       _id: p._id,
       brand: p.brand || "",
       name: p.name,
+      slug: p.slug || "",
       sku: p.sku || "",
       regularPrice: p.regularPrice ?? 0,
       salePrice: p.salePrice ?? 0,
