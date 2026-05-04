@@ -38,7 +38,7 @@ const createCustomerNotification = async (app, { userId, message, type, offerId 
 const createAdminNotification = async (app, { message, type, offerId, actionLink }) => {
     try {
         const notification = await AdminNotification.create({
-            adminEmail: "admin@montres.ae",
+            adminEmail: "farhan.dev24@gmail.com",
             message,
             type,
             offerId,

@@ -354,7 +354,7 @@ const sendOrderConfirmation = async (orderId) => {
                 <p style="color:#6b7280;font-size:13px;margin:0 0 16px;">
                   Questions about your order?
                 </p>
-                <a href="mailto:admin@montres.ae"
+                <a href="mailto:${process.env.ADMIN_EMAIL || "info@montres.ae"}"
                    style="background:#000000;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;display:inline-block;">
                   Contact Support
                 </a>
@@ -387,7 +387,7 @@ const sendOrderConfirmation = async (orderId) => {
 
         // ─── Send to Customer ──────────────────────────────────────
         if (customerEmail) {
-            const customerText = `Order Confirmation #${order._id}\n\nHi ${firstName},\nYour payment via ${paymentMethodName} has been verified.\nTotal Paid: ${displayCurrency} ${displayTotal}\n\nThank you for shopping with Montres!\nadmin@montres.ae`;
+            const customerText = `Order Confirmation #${order._id}\n\nHi ${firstName},\nYour payment via ${paymentMethodName} has been verified.\nTotal Paid: ${displayCurrency} ${displayTotal}\n\nThank you for shopping with Montres!\n${process.env.ADMIN_EMAIL || ""}`;
             await sendEmail(
                 customerEmail,
                 `✅ Order Confirmation — #${order._id}`,

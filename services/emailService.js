@@ -124,7 +124,7 @@ const sendWelcomeEmail = async (email, name) => {
               <div style="text-align:center;padding-top:24px;border-top:1px solid #f3f4f6;">
                 <p style="color:#9ca3af;font-size:13px;line-height:1.6;margin:0;">
                   If you did not create this account, please ignore this email.<br>
-                  Need assistance? Contact us at <a href="mailto:admin@montres.ae" style="color:#c5a059;text-decoration:none;font-weight:600;">admin@montres.ae</a>
+                  Need assistance? Contact us at <a href="mailto:${process.env.ADMIN_EMAIL || "info@montres.ae"}" style="color:#c5a059;text-decoration:none;font-weight:600;">${process.env.ADMIN_EMAIL || "info@montres.ae"}</a>
                 </p>
               </div>
             </td>
@@ -677,7 +677,7 @@ const sendOrderConfirmationEmail = async (order) => {
                 </tr>
                 <tr>
                   <td style="background-color: #f9f9f9; padding: 30px; text-align: center; border-top: 1px solid #eee;">
-                    <p style="color: #888; font-size: 14px; margin: 0;">Questions? Contact us at admin@montres.ae</p>
+                    <p style="color: #888; font-size: 14px; margin: 0;">Questions? Contact us at ${process.env.ADMIN_EMAIL || "info@montres.ae"}</p>
                   </td>
                 </tr>
               </table>

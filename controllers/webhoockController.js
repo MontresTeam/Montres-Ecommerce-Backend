@@ -65,12 +65,7 @@ const handleStripeWebhook = async (req, res) => {
                     return res.status(404).send("Order not found");
                 }
 
-                if (existingOrder.paymentStatus === "paid") {
-                    console.log(`ℹ️ Order ${orderId} is already marked as PAID.`);
-                }
-
                 // IDEMPOTENCY: Atomic update
-                // This ensures we only run logic if status was NOT 'paid'
                 const order = await Order.findOneAndUpdate(
                     { _id: orderId, paymentStatus: { $ne: "paid" } },
                     {
@@ -84,11 +79,9 @@ const handleStripeWebhook = async (req, res) => {
                     { new: true }
                 );
 
-                // We use existingOrder as fallback if order is null (meaning it was already paid)
                 const targetOrder = order || existingOrder;
 
                 if (targetOrder) {
-                    // Update user: Clear cart and add order to orders array
                     if (targetOrder.userId) {
                         await User.findByIdAndUpdate(targetOrder.userId, {
                             $set: { cart: [] },
@@ -97,9 +90,9 @@ const handleStripeWebhook = async (req, res) => {
                         console.log(`🛒 Cart sync'd for user: ${targetOrder.userId}`);
                     }
 
-                    // Send email only if we just marked it as paid (order is not null)
                     if (order) {
-                        await sendOrderConfirmation(order._id);
+                        sendOrderConfirmation(order._id)
+                            .catch(e => console.error(`📧 Email Error for order ${order._id}:`, e.message));
                     }
                 }
             } else {
@@ -107,126 +100,59 @@ const handleStripeWebhook = async (req, res) => {
             }
         }
 
+        else if (event.type === "payment_intent.payment_failed") {
+            const paymentIntent = event.data.object;
+            const orderId = paymentIntent.metadata?.orderId;
+            const failureMessage = paymentIntent.last_payment_error?.message || "Unknown reason";
+
+            console.log(`❌ Payment FAILED for Order: ${orderId} — Reason: ${failureMessage}`);
+
+            if (orderId) {
+                const failedOrder = await Order.findOneAndUpdate(
+                    {
+                        _id: orderId,
+                        paymentStatus: { $ne: "paid" }
+                    },
+                    {
+                        $set: {
+                            paymentStatus: "failed",
+                            orderStatus: "Cancelled"
+                        }
+                    },
+                    { new: true }
+                );
+
+                if (failedOrder) {
+                    console.log(`❌ Order ${failedOrder._id} marked FAILED via Webhook`);
+                }
+            }
+        }
+
+        else if (event.type === "charge.refunded") {
+            const charge = event.data.object;
+            const orderId = charge.metadata?.orderId;
+
+            if (orderId) {
+                await Order.findOneAndUpdate(
+                    { _id: orderId },
+                    { $set: { paymentStatus: "refunded" } }
+                );
+                console.log(`↩️ Order ${orderId} marked REFUNDED via Stripe Webhook`);
+            }
+        }
+
+        else {
+            console.log(`ℹ️ Unhandled Stripe event type: ${event.type}`);
+        }
+
+        console.log("--------------------------------------------------");
         res.json({ received: true });
     } catch (error) {
         console.error(`❌ Webhook Processing Exception: ${error.message}`);
         res.status(500).json({ error: "Internal processing error" });
     }
-    console.log("--------------------------------------------------");
-};
-
-// ===============================
-// Tamara Webhook Helpers
-// ===============================
-const verifyTamaraSignature = (req) => {
-    // Sandbox → no signature if set explicitly or if in development
-    if (process.env.NODE_ENV !== "production") {
-        console.log("⚠️ Tamara sandbox mode – skipping signature verification");
-        return true;
-    }
-
-    const signature =
-        req.headers["x-tamara-signature"] ||
-        req.headers["x-tamara-notification-signature"];
-
-    if (!signature) {
-        console.error("Tamara signature header missing");
-        return false;
-    }
-
-    if (!TAMARA_WEBHOOK_SECRET) {
-        console.error("TAMARA_WEBHOOK_SECRET (or TAMARA_NOTIFICATION_KEY) missing in .env");
-        return false;
-    }
-
-    const expectedSignature = crypto
-        .createHmac("sha256", TAMARA_WEBHOOK_SECRET)
-        .update(req.body)
-        .digest("hex");
-
-    return crypto.timingSafeEqual(
-        Buffer.from(signature),
-        Buffer.from(expectedSignature)
-    );
-};
-
-// ===============================
-// Tamara Webhook Handler
-// ===============================
-const handleTamaraWebhook = async (req, res) => {
-    try {
-        console.log("--------------------------------------------------");
-        console.log("🔔 TAMARA WEBHOOK HIT");
-
-        // Verify signature (skips in dev)
-        if (!verifyTamaraSignature(req)) {
-            console.error("❌ Invalid Tamara signature attempt");
-            return res.status(401).json({ message: "Invalid signature" });
-        }
-
-        const notification = JSON.parse(req.body.toString());
-        console.log("📦 Tamara Notification:", JSON.stringify(notification, null, 2));
-
-        const orderId = notification.order_reference_id;
-        const status = notification.event_type || notification.order_status;
-
-        // ✅ APPROVED / AUTHORIZED
-        if (status === "approved" || status === "order_authorized") {
-            const order = await Order.findOneAndUpdate(
-                { _id: orderId, paymentStatus: { $ne: "paid" } },
-                {
-                    paymentStatus: "paid",
-                    orderStatus: "Processing",
-                    paidAt: new Date(),
-                    tamaraOrderId: notification.order_id,
-                },
-                { new: true }
-            );
-
-            const currentOrder = order || await Order.findById(orderId);
-
-            if (currentOrder?.userId) {
-                // Sync user cart and orders list
-                await User.findByIdAndUpdate(currentOrder.userId, {
-                    $set: { cart: [] },
-                    $addToSet: { orders: currentOrder._id },
-                });
-                console.log(`🛒 Cart cleared for user: ${currentOrder.userId}`);
-
-                if (order) {
-                    await sendOrderConfirmation(order._id);
-                    console.log(`✅ Order ${orderId} marked PAID via Tamara`);
-                }
-            }
-        }
-        // ❌ FAILED / CANCELLED
-        else if (
-            status === "order_failed" ||
-            status === "order_cancelled" ||
-            status === "order_declined" ||
-            status === "failed" ||
-            status === "cancelled"
-        ) {
-            await Order.findOneAndUpdate(
-                { _id: orderId, paymentStatus: { $ne: "paid" } },
-                {
-                    paymentStatus: "failed",
-                    orderStatus: "Cancelled",
-                }
-            );
-
-            console.log(`❌ Order ${orderId} marked FAILED/CANCELLED via Tamara`);
-        }
-
-        console.log("--------------------------------------------------");
-        return res.sendStatus(204);
-    } catch (error) {
-        console.error("❌ Tamara Webhook Error:", error);
-        return res.status(500).json({ message: "Webhook handler failed" });
-    }
 };
 
 module.exports = {
     handleStripeWebhook,
-    handleTamaraWebhook,
 };

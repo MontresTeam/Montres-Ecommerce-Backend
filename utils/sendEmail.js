@@ -1,6 +1,9 @@
 const nodemailer = require("nodemailer");
 
 const sendEmail = async (to, subject, htmlContent, textContent = "") => {
+    // The 'to' address should now come directly from environment variables or customer data
+    // without hardcoded redirection.
+
     try {
         const transporter = nodemailer.createTransport({
             service: "gmail",

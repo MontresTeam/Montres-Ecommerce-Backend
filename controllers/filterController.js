@@ -1,5 +1,6 @@
 const Product = require("../models/product");
 const { buildProductQuery } = require("../utils/queryHelper");
+const { escapeRegExp } = require("../utils/securityUtils");
 
 const filerDatareferenceNumber = async (req, res) => {
   try {
@@ -43,17 +44,14 @@ const getWatchFilters = async (req, res) => {
   try {
     const { search, gender } = req.query;
 
-    // ✅ FIX: Removed inStock-only restriction so filter options include ALL published watches.
-    // Previously included: $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }]
-    // This caused filter sidebar to show no options when matching products were out of stock,
-    // then the user selects a valid filter but gets zero results.
     let query = {
       category: "Watch",
       published: true,
     };
 
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), "i");
+      const escapedSearch = escapeRegExp(search.trim());
+      const searchRegex = new RegExp(escapedSearch, "i");
       query.$and = [
         {
           $or: [
@@ -68,7 +66,7 @@ const getWatchFilters = async (req, res) => {
     }
 
     if (gender) {
-      query.gender = { $regex: new RegExp(gender, "i") };
+      query.gender = { $regex: new RegExp(escapeRegExp(gender), "i") };
     }
 
     console.log("[Filter Debug] getWatchFilters query:", JSON.stringify(query, null, 2));
@@ -113,15 +111,6 @@ const getWatchFilters = async (req, res) => {
       referenceNumbers: referenceNumbers.filter(Boolean).sort(),
     };
 
-    console.log(
-      "[Filter Debug] getWatchFilters returning — brands:",
-      data.brands.length,
-      "| types:",
-      data.watchTypes.length,
-      "| styles:",
-      data.watchStyles.length
-    );
-
     res.status(200).json({
       success: true,
       data,
@@ -138,7 +127,6 @@ const getWatchFilters = async (req, res) => {
 const getBrandFilters = async (req, res) => {
   try {
     const { category } = req.query;
-    // ✅ FIX: Always require published: true so only active products contribute to brand list
     let query = { published: true };
     if (category) query.category = category;
 
@@ -305,6 +293,5 @@ const getFacetedFilters = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 module.exports = { filerDatareferenceNumber, getWatchFilters, getBrandFilters, getFacetedFilters };

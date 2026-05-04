@@ -858,7 +858,12 @@ const createTabbyOrder = async (req, res) => {
       console.error("  [8] ❌ No checkout URL in Tabby response — status:", response.data?.status);
       console.error("       Full response:", JSON.stringify(response.data, null, 2));
       console.log("══════════════════════════════════════════════════\n");
-      await Order.findByIdAndDelete(order._id);
+
+      // FIX Priority 2: Soft-fail — preserve the order record (especially critical
+      // for existingOrderId / offer orders). Never hard-delete here.
+      await Order.findByIdAndUpdate(order._id, {
+        $set: { paymentStatus: "failed", orderStatus: "Cancelled" }
+      });
 
       const installments = response.data?.configuration?.available_products?.installments?.[0];
       const rawReason = response.data?.rejection_reason_code
@@ -1044,10 +1049,21 @@ const handleTabbyWebhook = async (req, res) => {
       console.log(`✅ Order created successfully from webhook: ${order._id}`);
     }
 
-    // QA CHECKLIST: Match amount with order
-    if (Math.abs(amount - order.total) > 0.01) {
-      console.error(`❌ Amount mismatch! Tabby: ${amount}, DB: ${order.total}`);
+    // FIX Priority 4: Amount mismatch — log with context, do NOT silently abandon.
+    // Use a 0.05 tolerance to absorb Tabby rounding differences.
+    if (Math.abs(amount - order.total) > 0.05) {
+      console.error(
+        `❌ AMOUNT MISMATCH — Order ${referenceId} | Tabby: ${amount} ${payment.currency} | DB: ${order.total} ${order.currency}` +
+        ` | Diff: ${Math.abs(amount - order.total).toFixed(3)} — halting webhook processing for manual review.`
+      );
+      // Do NOT return silently — this needs visibility. The order stays pending
+      // so an admin can reconcile. A monitoring alert should be set on this log pattern.
       return;
+    }
+    if (Math.abs(amount - order.total) > 0.01) {
+      console.warn(
+        `⚠️ Minor amount diff on Order ${referenceId}: Tabby ${amount} vs DB ${order.total} — within tolerance, continuing.`
+      );
     }
 
     /* =================================================
@@ -1102,13 +1118,15 @@ const handleTabbyWebhook = async (req, res) => {
       }
 
       // Atomic update for idempotency
+      // FIX Priority 5: Include paidAt so all payment methods record the same field
       const updatedOrder = await Order.findOneAndUpdate(
         { _id: order._id, paymentStatus: { $ne: "paid" } },
         {
           $set: {
             paymentStatus: "paid",
             orderStatus: "Processing",
-            tabbySessionId: paymentId
+            tabbySessionId: paymentId,
+            paidAt: new Date()
           }
         },
         { new: true }
@@ -1124,13 +1142,11 @@ const handleTabbyWebhook = async (req, res) => {
           console.log(`🛒 Cart cleared for user: ${updatedOrder.userId}`);
         }
 
-        // Send Confirmation
-        try {
-          await sendOrderConfirmation(updatedOrder._id);
-          console.log(`✅ Order ${referenceId} finalized and marked PAID`);
-        } catch (mailErr) {
-          console.error("📧 Failed to send confirmation email:", mailErr.message);
-        }
+        // FIX Priority 3: Fire-and-forget — do NOT await email inside webhook.
+        // Awaiting blocks the event loop and delays future webhook processing.
+        console.log(`✅ Order ${referenceId} finalized and marked PAID`);
+        sendOrderConfirmation(updatedOrder._id)
+          .catch(mailErr => console.error(`📧 Email error for order ${updatedOrder._id}:`, mailErr.message));
       }
       return;
     }
@@ -1178,8 +1194,33 @@ const handleTabbyWebhook = async (req, res) => {
 
 
 
+const refundTabbyPayment = async (paymentId, amount, currency = "AED") => {
+  try {
+    console.log(`🚀 Refunding Tabby Payment: ${paymentId} (${amount} ${currency})`);
+    
+    const decimals = ["KWD", "BHD", "OMR"].includes(currency.toUpperCase()) ? 3 : 2;
+    const headers = {
+      Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+      "Content-Type": "application/json",
+    };
+
+    const response = await axios.post(
+      `${TABBY_BASE}/payments/${paymentId}/refunds`,
+      { amount: String(amount.toFixed(decimals)) },
+      { headers }
+    );
+
+    console.log(`✅ Tabby Refund Success for ${paymentId}`);
+    return true;
+  } catch (err) {
+    console.error("❌ Tabby Refund Error:", err.response?.data || err.message);
+    return false;
+  }
+};
+
 module.exports = {
   preScoring,
   createTabbyOrder,
   handleTabbyWebhook,
+  refundTabbyPayment,
 };
