@@ -539,7 +539,7 @@ const getProducts = async (req, res) => {
     // ✅ Query products
     const products = await Product.find(filterQuery)
       .select(
-        "brand name regularPrice salePrice stockQuantity inStock sku " +
+        "brand name slug regularPrice salePrice stockQuantity inStock sku " +
         "condition category leatherMainCategory subCategory " +
         "images limitedEdition badges featured createdAt updatedAt publishSchedule " +
         "make_offer_enabled minimum_offer_type minimum_offer_percentage minimum_offer_amount " +
@@ -558,6 +558,7 @@ const getProducts = async (req, res) => {
       _id: p._id,
       brand: p.brand || "",
       name: p.name,
+      slug: p.slug || "",
       sku: p.sku || "",
       regularPrice: p.regularPrice ?? 0,
       salePrice: p.salePrice ?? 0,
@@ -777,7 +778,7 @@ const getProductBySlug = async (req, res) => {
 
     // ✅ STEP 1: Get ALL products with same slug
     const products = await Product.find({
-      slug: slug,
+      slug: { $regex: new RegExp(`^${slug}$`, "i") },
       published: true
     })
       .sort({
@@ -915,7 +916,10 @@ const addServiceForm = async (req, res) => {
     await newBooking.save();
 
     // 📩 Send Email Notification to Admin & Sales
-    const adminEmails = ["admin@montres.ae", "sales@montres.ae"];
+    const adminEmails = [
+      process.env.ADMIN_EMAIL || "farhan.dev24@gmail.com",
+      process.env.SALES_EMAIL || "farhan.dev24@gmail.com"
+    ];
     const adminSubject = `New Watch Service Booking: ${selectedService}`;
     const adminHtml = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -1351,7 +1355,10 @@ const restockSubscribe = async (req, res) => {
     await subscription.save();
 
     // 📩 Send Email Notification to Admin & Sales
-    const adminEmails = ["admin@montres.ae", "sales@montres.ae"];
+    const adminEmails = [
+      process.env.ADMIN_EMAIL || "farhan.dev24@gmail.com",
+      process.env.SALES_EMAIL || "farhan.dev24@gmail.com"
+    ];
     const emailSubject = `Restock Request: ${product.name}`;
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">

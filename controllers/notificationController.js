@@ -28,7 +28,11 @@ const getCustomerNotifications = async (req, res) => {
 // @route   GET /api/notifications/admin
 const getAdminNotifications = async (req, res) => {
     try {
-        const notifications = await AdminNotification.find({ adminEmail: "admin@montres.ae" })
+        const adminEmail = process.env.ADMIN_EMAIL;
+        if (!adminEmail) {
+            return res.status(400).json({ success: false, message: "ADMIN_EMAIL not configured" });
+        }
+        const notifications = await AdminNotification.find({ adminEmail })
             .sort({ createdAt: -1 })
             .limit(100);
 
@@ -102,7 +106,11 @@ const markAllCustomerAsRead = async (req, res) => {
 // @route   PATCH /api/notifications/admin/read-all
 const markAllAdminAsRead = async (req, res) => {
     try {
-        await AdminNotification.updateMany({ adminEmail: "admin@montres.ae", read: false }, { read: true });
+        const adminEmail = process.env.ADMIN_EMAIL;
+        if (!adminEmail) {
+            return res.status(400).json({ success: false, message: "ADMIN_EMAIL not configured" });
+        }
+        await AdminNotification.updateMany({ adminEmail, read: false }, { read: true });
         res.status(200).json({ success: true, message: "All admin notifications marked as read" });
     } catch (error) {
         res.status(500).json({ success: false, message: "Error updating notifications", error: error.message });

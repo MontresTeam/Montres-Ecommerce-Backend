@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { escapeRegExp } = require("./securityUtils");
 
 /**
  * Builds a MongoDB query object from request query parameters.
@@ -52,15 +53,17 @@ const buildProductQuery = (queryParams) => {
     const normalizeArray = (value) => {
         if (!value) return [];
         if (Array.isArray(value)) return value;
+        if (typeof value !== "string") return [value];
         return value
             .split(",")
             .map((v) => v.trim())
             .filter(Boolean);
     };
 
-    // Search
+    // Search - Sanitize input to prevent ReDoS
     if (search && search.trim()) {
-        const searchRegex = new RegExp(search.trim(), "i");
+        const escapedSearch = escapeRegExp(search.trim());
+        const searchRegex = new RegExp(escapedSearch, "i");
         andConditions.push({
             $or: [
                 { name: searchRegex },
@@ -83,7 +86,7 @@ const buildProductQuery = (queryParams) => {
 
     if (categoryList.length > 0) {
         andConditions.push({
-            category: { $in: categoryList.map((cat) => new RegExp(`^${cat}$`, "i")) },
+            category: { $in: categoryList.map((cat) => new RegExp(`^${escapeRegExp(cat)}$`, "i")) },
         });
     }
 
@@ -91,7 +94,7 @@ const buildProductQuery = (queryParams) => {
     const selectedBrands = normalizeArray(brand);
     if (selectedBrands.length > 0) {
         andConditions.push({
-            brand: { $in: selectedBrands.map((br) => new RegExp(`^${br.trim()}$`, "i")) },
+            brand: { $in: selectedBrands.map((br) => new RegExp(`^${escapeRegExp(br.trim())}$`, "i")) },
         });
     }
 
@@ -99,7 +102,7 @@ const buildProductQuery = (queryParams) => {
     const modelList = normalizeArray(model);
     if (modelList.length > 0) {
         andConditions.push({
-            model: { $in: modelList.map((m) => new RegExp(m, "i")) },
+            model: { $in: modelList.map((m) => new RegExp(escapeRegExp(m), "i")) },
         });
     }
 
@@ -108,7 +111,7 @@ const buildProductQuery = (queryParams) => {
     if (referenceNumberList.length > 0) {
         andConditions.push({
             referenceNumber: {
-                $in: referenceNumberList.map((ref) => new RegExp(ref, "i")),
+                $in: referenceNumberList.map((ref) => new RegExp(escapeRegExp(ref), "i")),
             },
         });
     }
@@ -117,7 +120,7 @@ const buildProductQuery = (queryParams) => {
     const typeList = normalizeArray(type);
     if (typeList.length > 0) {
         andConditions.push({
-            watchType: { $in: typeList.map((t) => new RegExp(t, "i")) },
+            watchType: { $in: typeList.map((t) => new RegExp(escapeRegExp(t), "i")) },
         });
     }
 
@@ -168,7 +171,7 @@ const buildProductQuery = (queryParams) => {
     const genderList = normalizeArray(gender);
     if (genderList.length > 0) {
         andConditions.push({
-            gender: { $in: genderList.map((g) => new RegExp(g, "i")) },
+            gender: { $in: genderList.map((g) => new RegExp(escapeRegExp(g), "i")) },
         });
     }
 
@@ -176,7 +179,7 @@ const buildProductQuery = (queryParams) => {
     const conditionList = normalizeArray(condition);
     if (conditionList.length > 0) {
         andConditions.push({
-            condition: { $in: conditionList.map((c) => new RegExp(c, "i")) },
+            condition: { $in: conditionList.map((c) => new RegExp(escapeRegExp(c), "i")) },
         });
     }
 
@@ -185,7 +188,7 @@ const buildProductQuery = (queryParams) => {
     if (itemConditionList.length > 0) {
         andConditions.push({
             itemCondition: {
-                $in: itemConditionList.map((ic) => new RegExp(ic, "i")),
+                $in: itemConditionList.map((ic) => new RegExp(escapeRegExp(ic), "i")),
             },
         });
     }
@@ -193,17 +196,17 @@ const buildProductQuery = (queryParams) => {
     // Watch Specific
     const dialColorList = normalizeArray(dialColor);
     if (dialColorList.length > 0) {
-        andConditions.push({ dialColor: { $in: dialColorList.map(c => new RegExp(c, "i")) } });
+        andConditions.push({ dialColor: { $in: dialColorList.map(c => new RegExp(escapeRegExp(c), "i")) } });
     }
 
     const caseMaterialList = normalizeArray(caseMaterial);
     if (caseMaterialList.length > 0) {
-        andConditions.push({ caseMaterial: { $in: caseMaterialList.map(m => new RegExp(m, "i")) } });
+        andConditions.push({ caseMaterial: { $in: caseMaterialList.map(m => new RegExp(escapeRegExp(m), "i")) } });
     }
 
     const movementList = normalizeArray(movement);
     if (movementList.length > 0) {
-        andConditions.push({ movement: { $in: movementList.map(m => new RegExp(m, "i")) } });
+        andConditions.push({ movement: { $in: movementList.map(m => new RegExp(escapeRegExp(m), "i")) } });
     }
 
     // Leather Goods & Accessories Specific
@@ -211,9 +214,9 @@ const buildProductQuery = (queryParams) => {
     if (colorList.length > 0) {
         andConditions.push({
             $or: [
-                { color: { $in: colorList.map(c => new RegExp(c, "i")) } },
-                { dialColor: { $in: colorList.map(c => new RegExp(c, "i")) } },
-                { accessoryColor: { $in: colorList.map(c => new RegExp(c, "i")) } }
+                { color: { $in: colorList.map(c => new RegExp(escapeRegExp(c), "i")) } },
+                { dialColor: { $in: colorList.map(c => new RegExp(escapeRegExp(c), "i")) } },
+                { accessoryColor: { $in: colorList.map(c => new RegExp(escapeRegExp(c), "i")) } }
             ]
         });
     }
@@ -222,36 +225,36 @@ const buildProductQuery = (queryParams) => {
     if (materialList.length > 0) {
         andConditions.push({
             $or: [
-                { leatherMaterial: { $in: materialList.map(m => new RegExp(m, "i")) } },
-                { accessoryMaterial: { $in: materialList.map(m => new RegExp(m, "i")) } },
-                { caseMaterial: { $in: materialList.map(m => new RegExp(m, "i")) } }
+                { leatherMaterial: { $in: materialList.map(m => new RegExp(escapeRegExp(m), "i")) } },
+                { accessoryMaterial: { $in: materialList.map(m => new RegExp(escapeRegExp(m), "i")) } },
+                { caseMaterial: { $in: materialList.map(m => new RegExp(escapeRegExp(m), "i")) } }
             ]
         });
     }
 
     const hardwareList = normalizeArray(hardware);
     if (hardwareList.length > 0) {
-        andConditions.push({ hardwareColor: { $in: hardwareList.map(h => new RegExp(h, "i")) } });
+        andConditions.push({ hardwareColor: { $in: hardwareList.map(h => new RegExp(escapeRegExp(h), "i")) } });
     }
 
     const interiorList = normalizeArray(interiorMaterial);
     if (interiorList.length > 0) {
-        andConditions.push({ interiorMaterial: { $in: interiorList.map(i => new RegExp(i, "i")) } });
+        andConditions.push({ interiorMaterial: { $in: interiorList.map(i => new RegExp(escapeRegExp(i), "i")) } });
     }
 
     const leatherMainList = normalizeArray(leatherMainCategory);
     if (leatherMainList.length > 0) {
-        andConditions.push({ leatherMainCategory: { $in: leatherMainList.map(c => new RegExp(`^${c}$`, "i")) } });
+        andConditions.push({ leatherMainCategory: { $in: leatherMainList.map(c => new RegExp(`^${escapeRegExp(c)}$`, "i")) } });
     }
 
     const leatherSubList = normalizeArray(leatherSubCategory);
     if (leatherSubList.length > 0) {
-        andConditions.push({ leatherSubCategory: { $in: leatherSubList.map(c => new RegExp(`^${c}$`, "i")) } });
+        andConditions.push({ leatherSubCategory: { $in: leatherSubList.map(c => new RegExp(`^${escapeRegExp(c)}$`, "i")) } });
     }
 
     const accessorySubList = normalizeArray(accessorySubCategory);
     if (accessorySubList.length > 0) {
-        andConditions.push({ accessorySubCategory: { $in: accessorySubList.map(c => new RegExp(`^${c}$`, "i")) } });
+        andConditions.push({ accessorySubCategory: { $in: accessorySubList.map(c => new RegExp(`^${escapeRegExp(c)}$`, "i")) } });
     }
 
     // Merge

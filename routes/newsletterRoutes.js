@@ -18,5 +18,20 @@ router.get("/", adminProtect, newsletterController.getAllSubscribers);
 // @access  Private (Admin)
 router.delete("/:id", adminProtect, newsletterController.deleteSubscriber);
 
+// @route   POST /api/newsletter/send
+// @desc    Send newsletter to audience
+// @access  Private (Admin)
+router.post("/send", adminProtect, newsletterController.sendNewsletter);
+
+// @route   GET /api/newsletter/logs
+// @desc    Get newsletter sending logs
+// @access  Private (Admin)
+router.get("/logs", adminProtect, newsletterController.getNewsletterLogs);
+
+// @route   POST /api/newsletter/test
+// @desc    Send test newsletter email
+// @access  Private (Admin)
+router.post("/test", adminProtect, newsletterController.sendTestNewsletter);
+
 module.exports = router;
 

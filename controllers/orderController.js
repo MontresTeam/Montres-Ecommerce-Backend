@@ -3,7 +3,14 @@ const ShippingAddress = require('../models/ShippingAddress')
 const BillingAddress = require('../models/BillingAddress')
 const Product = require("../models/product");
 const { calculateShippingFee } = require("../utils/shippingCalculator");
+const { getTamaraOrderStatus, captureTamaraPayment, refundTamaraPayment } = require("./tamaraController");
+const { refundTabbyPayment } = require("./tabbyController");
+const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
+const User = require("../models/UserModel");
 const stripePkg = require("stripe");
+const axios = require("axios");
+
+const TABBY_BASE = process.env.TABBY_BASE_URL || "https://api.tabby.ai/api/v2";
 
 
 const stripe = process.env.STRIPE_SECRET_KEY
@@ -105,16 +112,30 @@ const createStripeOrder = async (req, res) => {
     }
 
     if (paymentMethod === "stripe" && stripe) {
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        line_items: populatedItems.map(item => ({
+      const line_items = populatedItems.map(item => ({
+        price_data: {
+          currency: "aed",
+          product_data: { name: item.name, images: item.image ? [item.image] : [] },
+          unit_amount: Math.round(item.price * 100),
+        },
+        quantity: item.quantity,
+      }));
+
+      // Add shipping fee as a line item if applicable
+      if (shippingFee > 0) {
+        line_items.push({
           price_data: {
             currency: "aed",
-            product_data: { name: item.name, images: item.image ? [item.image] : [] },
-            unit_amount: Math.round(item.price * 100),
+            product_data: { name: "Shipping Fee" },
+            unit_amount: Math.round(shippingFee * 100),
           },
-          quantity: item.quantity,
-        })),
+          quantity: 1,
+        });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items,
         mode: "payment",
         success_url: `${process.env.CLIENT_URL || "https://www.montres.ae"}/checkout/verify?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}&payment=stripe`,
         cancel_url: `${process.env.CLIENT_URL || "https://www.montres.ae"}/checkout/cancel?orderId=${order._id}&payment=stripe`,
@@ -239,6 +260,182 @@ const getOrderById = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
+    // ✅ SECURITY CHECK: Only allow the owner or an admin to view the order
+    const isAdmin = req.admin || (req.user && req.user.isAdmin);
+    const isOwner = req.user && order.userId && order.userId.toString() === req.user.userId.toString();
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ message: "You are not authorized to view this order" });
+    }
+
+    // ==================================================
+    // SELF-HEALING: If pending Tamara, check live status
+    // ==================================================
+    if (order.paymentMethod === "tamara" && order.paymentStatus === "pending" && order.tamaraOrderId) {
+      console.log(`🔍 Self-healing: Checking live status for Tamara Order ${order.tamaraOrderId}`);
+      const tamaraData = await getTamaraOrderStatus(order.tamaraOrderId);
+      
+      if (tamaraData) {
+        const tamaraStatus = tamaraData.status?.toLowerCase();
+        const isAuthorised = ["approved", "authorised", "fully_authorised", "authorized"].includes(tamaraStatus);
+        
+        if (isAuthorised) {
+          console.log(`✅ Tamara order ${order.tamaraOrderId} is AUTHORISED. Syncing DB...`);
+          
+          // Atomic update to avoid race with late webhook
+          const updatedOrder = await Order.findOneAndUpdate(
+            { _id: order._id, paymentStatus: "pending" },
+            {
+              $set: {
+                paymentStatus: "paid",
+                orderStatus: "Processing",
+                paidAt: new Date()
+              }
+            },
+            { new: true }
+          ).lean();
+
+          if (updatedOrder) {
+            order = updatedOrder;
+            // Background tasks
+            if (order.userId) {
+              await User.findByIdAndUpdate(order.userId, { 
+                $set: { cart: [] },
+                $addToSet: { orders: order._id } 
+              }).catch(e => console.error("User sync error:", e.message));
+            }
+            sendOrderConfirmation(order._id).catch(e => console.error("Email error:", e.message));
+            
+            // Trigger capture
+            captureTamaraPayment(order.tamaraOrderId, order.total, order.currency || "AED");
+          }
+        } else if (["failed", "canceled", "expired", "declined"].includes(tamaraStatus)) {
+          console.log(`❌ Tamara order ${order.tamaraOrderId} is ${tamaraStatus}. Marking FAILED.`);
+          await Order.findByIdAndUpdate(order._id, { $set: { paymentStatus: "failed", orderStatus: "Cancelled" } });
+          order.paymentStatus = "failed";
+          order.orderStatus = "Cancelled";
+        }
+      }
+    }
+
+    // ==================================================
+    // SELF-HEALING: If pending Stripe, check live session
+    // ==================================================
+    else if (order.paymentMethod === "stripe" && order.paymentStatus === "pending" && order.stripeSessionId && stripe) {
+      console.log(`🔍 Self-healing: Checking live Stripe session ${order.stripeSessionId}`);
+      try {
+        const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId);
+        const stripePaymentStatus = session?.payment_status;
+
+        if (stripePaymentStatus === "paid") {
+          console.log(`✅ Stripe session ${order.stripeSessionId} is PAID. Syncing DB...`);
+
+          const updatedOrder = await Order.findOneAndUpdate(
+            { _id: order._id, paymentStatus: "pending" },
+            {
+              $set: {
+                paymentStatus: "paid",
+                orderStatus: "Processing",
+                stripePaymentIntentId: session.payment_intent,
+                paidAt: new Date()
+              }
+            },
+            { new: true }
+          ).lean();
+
+          if (updatedOrder) {
+            order = updatedOrder;
+            if (order.userId) {
+              User.findByIdAndUpdate(order.userId, {
+                $set: { cart: [] },
+                $addToSet: { orders: order._id }
+              }).catch(e => console.error("User sync error:", e.message));
+            }
+            sendOrderConfirmation(order._id)
+              .catch(e => console.error("Email error:", e.message));
+          } else {
+            const freshOrder = await Order.findById(order._id).lean();
+            if (freshOrder) order = freshOrder;
+          }
+
+        } else if (session?.status === "expired" || stripePaymentStatus === "unpaid") {
+          console.log(`❌ Stripe session ${order.stripeSessionId} is ${session.status}. Marking FAILED.`);
+          await Order.findByIdAndUpdate(order._id, { $set: { paymentStatus: "failed", orderStatus: "Cancelled" } });
+          order.paymentStatus = "failed";
+          order.orderStatus = "Cancelled";
+        }
+      } catch (stripeErr) {
+        console.error(`⚠️ Stripe self-healing lookup failed for session ${order.stripeSessionId}:`, stripeErr.message);
+      }
+    }
+
+    // ==================================================
+    // SELF-HEALING: If pending Tabby, check live payment
+    // ==================================================
+    else if (order.paymentMethod === "tabby" && order.paymentStatus === "pending" && order.tabbySessionId) {
+      console.log(`🔍 Self-healing: Checking live Tabby payment ${order.tabbySessionId}`);
+      try {
+        const tabbyRes = await axios.get(
+          `${TABBY_BASE}/payments/${order.tabbySessionId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+              "Content-Type": "application/json"
+            },
+            timeout: 8000
+          }
+        );
+
+        const tabbyStatus = (tabbyRes.data?.status || "").toLowerCase();
+        const isConfirmed = ["closed", "captured", "authorized"].includes(tabbyStatus);
+
+        if (isConfirmed) {
+          console.log(`✅ Tabby payment ${order.tabbySessionId} is ${tabbyStatus}. Syncing DB...`);
+
+          // Atomic update — safe if webhook arrives simultaneously
+          const updatedOrder = await Order.findOneAndUpdate(
+            { _id: order._id, paymentStatus: "pending" },
+            {
+              $set: {
+                paymentStatus: tabbyStatus === "authorized" ? "authorized" : "paid",
+                orderStatus: "Processing",
+                paidAt: tabbyStatus !== "authorized" ? new Date() : undefined
+              }
+            },
+            { new: true }
+          ).lean();
+
+          if (updatedOrder) {
+            order = updatedOrder;
+            // Background tasks — fire-and-forget
+            if (order.userId) {
+              User.findByIdAndUpdate(order.userId, {
+                $set: { cart: [] },
+                $addToSet: { orders: order._id }
+              }).catch(e => console.error("User sync error:", e.message));
+            }
+            if (tabbyStatus !== "authorized") {
+              sendOrderConfirmation(order._id)
+                .catch(e => console.error("Email error:", e.message));
+            }
+          } else {
+            // Webhook already processed this — re-read fresh state
+            const freshOrder = await Order.findById(order._id).lean();
+            if (freshOrder) order = freshOrder;
+          }
+
+        } else if (["failed", "expired", "rejected", "canceled", "cancelled"].includes(tabbyStatus)) {
+          console.log(`❌ Tabby payment ${order.tabbySessionId} is ${tabbyStatus}. Marking FAILED.`);
+          await Order.findByIdAndUpdate(order._id, { $set: { paymentStatus: "failed", orderStatus: "Cancelled" } });
+          order.paymentStatus = "failed";
+          order.orderStatus = "Cancelled";
+        }
+      } catch (tabbyErr) {
+        // Never crash the order lookup if Tabby API is temporarily unavailable
+        console.error(`⚠️ Tabby self-healing lookup failed for payment ${order.tabbySessionId}:`, tabbyErr.message);
+      }
+    }
+
     return res.json({ order });
   } catch (error) {
     console.error("Get Order Error:", error);
@@ -323,6 +520,69 @@ const deleteOrder = async (req, res) => {
   }
 };
 
+const refundOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount: manualAmount } = req.body; // Optional partial refund amount
+
+    const order = await Order.findById(id);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    if (order.paymentStatus !== "paid" && order.paymentStatus !== "authorized") {
+      return res.status(400).json({ message: `Cannot refund order with status: ${order.paymentStatus}` });
+    }
+
+    const refundAmount = manualAmount || order.total;
+    let refundSuccess = false;
+
+    // 1. Stripe Refund
+    if (order.paymentMethod === "stripe" && stripe) {
+      if (!order.stripePaymentIntentId) {
+        return res.status(400).json({ message: "Stripe Payment Intent ID missing" });
+      }
+      try {
+        await stripe.refunds.create({
+          payment_intent: order.stripePaymentIntentId,
+          amount: Math.round(refundAmount * 100),
+        });
+        refundSuccess = true;
+      } catch (err) {
+        console.error("Stripe Refund Error:", err.message);
+        return res.status(500).json({ message: `Stripe Refund Failed: ${err.message}` });
+      }
+    }
+
+    // 2. Tamara Refund
+    else if (order.paymentMethod === "tamara") {
+      if (!order.tamaraOrderId) {
+        return res.status(400).json({ message: "Tamara Order ID missing" });
+      }
+      refundSuccess = await refundTamaraPayment(order.tamaraOrderId, refundAmount, order.currency || "AED");
+    }
+
+    // 3. Tabby Refund
+    else if (order.paymentMethod === "tabby") {
+      if (!order.tabbySessionId) {
+        return res.status(400).json({ message: "Tabby Session ID missing" });
+      }
+      refundSuccess = await refundTabbyPayment(order.tabbySessionId, refundAmount, order.currency || "AED");
+    }
+
+    if (refundSuccess) {
+      order.paymentStatus = "refunded";
+      order.orderStatus = "Cancelled";
+      await order.save();
+      return res.json({ success: true, message: "Order refunded successfully", order });
+    } else {
+      return res.status(500).json({ message: "Refund processing failed at the gateway" });
+    }
+
+  } catch (error) {
+    console.error("Refund Order Error:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 module.exports = {
   createStripeOrder,
   getOrderById,
@@ -338,4 +598,5 @@ module.exports = {
   updateShippingAddress,
   calculateShipping,
   deleteOrder,
+  refundOrder,
 };

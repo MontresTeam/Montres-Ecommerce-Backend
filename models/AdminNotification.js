@@ -4,7 +4,7 @@ const adminNotificationSchema = new mongoose.Schema(
     {
         adminEmail: {
             type: String,
-            default: "admin@montres.ae",
+            default: "farhan.dev24@gmail.com",
             required: true,
         },
         type: {

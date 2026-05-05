@@ -1,5 +1,8 @@
 const axios = require("axios");
 const Newsletter = require("../models/NewsletterModel");
+const User = require("../models/UserModel");
+const NewsletterLog = require("../models/NewsletterLog");
+const emailService = require("../services/emailService");
 
 /**
  * 📩 Subscribe to Newsletter via Klaviyo & Save locally
@@ -158,4 +161,166 @@ exports.deleteSubscriber = async (req, res) => {
         });
     }
 };
+/**
+ * 🚀 Send Newsletter to Audience
+ * Endpoint: POST /api/newsletter/send
+ */
+exports.sendNewsletter = async (req, res) => {
+    try {
+        const { subject, content, audience } = req.body;
 
+        if (!subject || !content || !audience) {
+            return res.status(400).json({
+                success: false,
+                message: "Subject, content, and audience are required.",
+            });
+        }
+
+        // 1. Fetch Recipients
+        let recipients = [];
+        if (audience === "all") {
+            // Get all users and all newsletter subscribers, then unique by email
+            const users = await User.find({}, "email name");
+            const subs = await Newsletter.find({}, "email name");
+            
+            const combined = [...users, ...subs];
+            const uniqueMap = new Map();
+            combined.forEach(u => uniqueMap.set(u.email, u.name || "Valued Customer"));
+            recipients = Array.from(uniqueMap.entries()).map(([email, name]) => ({ email, name }));
+        } else if (audience === "subscribers") {
+            // Get newsletter subscribers + users with isSubscribed: true
+            const users = await User.find({ isSubscribed: true }, "email name");
+            const subs = await Newsletter.find({}, "email name");
+            
+            const combined = [...users, ...subs];
+            const uniqueMap = new Map();
+            combined.forEach(u => uniqueMap.set(u.email, u.name || "Valued Customer"));
+            recipients = Array.from(uniqueMap.entries()).map(([email, name]) => ({ email, name }));
+        }
+
+        if (recipients.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "No recipients found for the selected audience.",
+            });
+        }
+
+        // 2. Create Initial Log
+        const newsletterLog = await NewsletterLog.create({
+            subject,
+            content,
+            audience,
+            recipientsCount: recipients.length,
+            status: "sending",
+        });
+
+        // 3. Start Sending Process (Background)
+        // We respond to the client immediately to avoid timeouts
+        res.status(202).json({
+            success: true,
+            message: `Newsletter sending started for ${recipients.length} recipients.`,
+            logId: newsletterLog._id,
+        });
+
+        // Process in background
+        const processSending = async () => {
+            let sent = 0;
+            let failed = 0;
+            const logs = [];
+
+            for (const recipient of recipients) {
+                try {
+                    // Inject name into content if placeholder exists (Bonus)
+                    const personalizedContent = content.replace(/{{name}}/g, recipient.name);
+                    
+                    await emailService.sendNewsletterEmail(recipient.email, subject, personalizedContent);
+                    sent++;
+                    logs.push({ email: recipient.email, status: "sent" });
+                } catch (err) {
+                    failed++;
+                    logs.push({ email: recipient.email, status: "failed", error: err.message });
+                }
+
+                // Update progress every 5 emails or at the end
+                if ((sent + failed) % 5 === 0 || (sent + failed) === recipients.length) {
+                    await NewsletterLog.findByIdAndUpdate(newsletterLog._id, {
+                        sentCount: sent,
+                        failedCount: failed,
+                        logs: logs
+                    });
+                }
+
+                // Delay to prevent spam / rate limits (1.5 seconds)
+                await new Promise(resolve => setTimeout(resolve, 1500));
+            }
+
+            // Final Update
+            await NewsletterLog.findByIdAndUpdate(newsletterLog._id, {
+                status: "completed",
+                sentCount: sent,
+                failedCount: failed,
+                logs: logs,
+                sentAt: new Date(),
+            });
+        };
+
+        processSending();
+
+    } catch (error) {
+        console.error("Error sending newsletter:", error.message);
+        res.status(500).json({
+            success: false,
+            message: "Failed to initiate newsletter sending.",
+        });
+    }
+};
+
+/**
+ * 📊 Get Newsletter Logs
+ * Endpoint: GET /api/newsletter/logs
+ */
+exports.getNewsletterLogs = async (req, res) => {
+    try {
+        const logs = await NewsletterLog.find().sort({ createdAt: -1 });
+        res.status(200).json({
+            success: true,
+            data: logs,
+        });
+    } catch (error) {
+        console.error("Error fetching newsletter logs:", error.message);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch newsletter logs.",
+        });
+    }
+};
+
+/**
+ * 🧪 Send Test Email
+ * Endpoint: POST /api/newsletter/test
+ */
+exports.sendTestNewsletter = async (req, res) => {
+    try {
+        const { email, subject, content } = req.body;
+
+        if (!email || !subject || !content) {
+            return res.status(400).json({
+                success: false,
+                message: "Email, subject, and content are required.",
+            });
+        }
+
+        await emailService.sendNewsletterEmail(email, subject, content);
+
+        res.status(200).json({
+            success: true,
+            message: "Test email sent successfully!",
+        });
+    } catch (error) {
+        console.error("Error sending test newsletter:", error.message);
+        res.status(500).json({
+            success: false,
+            message: "Failed to send test email.",
+        });
+    }
+};

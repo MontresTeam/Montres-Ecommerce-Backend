@@ -332,12 +332,12 @@ const verifyTamaraSignature = (req) => {
 // ==================================================
 // CAPTURE TAMARA PAYMENT
 // ==================================================
-const captureTamaraPayment = async (orderId, totalAmount, currency = "AED") => {
+const captureTamaraPayment = async (tamaraOrderId, totalAmount, currency = "AED") => {
     try {
-        console.log(`🚀 Capturing Tamara Payment: ${orderId} (${totalAmount} ${currency})`);
+        console.log(`🚀 Capturing Tamara Payment: ${tamaraOrderId} (${totalAmount} ${currency})`);
         const capturePayload = {
-            order_id: orderId,
-            total_amount: { amount: totalAmount, currency: currency },
+            order_id: tamaraOrderId,
+            total_amount: { amount: Number(totalAmount.toFixed(2)), currency: currency },
             shipping_info: {
                 shipping_company: "Shipping",
                 tracking_number: "N/A",
@@ -345,16 +345,42 @@ const captureTamaraPayment = async (orderId, totalAmount, currency = "AED") => {
             }
         };
 
-        await axios.post(`${process.env.TAMARA_API_BASE}/payments/capture`, capturePayload, {
+        const response = await axios.post(`${process.env.TAMARA_API_BASE}/payments/capture`, capturePayload, {
             headers: {
                 Authorization: `Bearer ${process.env.TAMARA_SECRET_KEY}`,
                 "Content-Type": "application/json",
             },
         });
+
+        console.log(`✅ Tamara Capture Success for ${tamaraOrderId}`);
         return true;
     } catch (err) {
-        console.error("❌ Tamara Capture Error:", err.response?.data || err.message);
+        const errorData = err.response?.data;
+        // If already captured, don't treat as a total failure
+        if (errorData?.errors?.some(e => e.error_code === "transition_not_allowed")) {
+            console.warn(`⚠️ Tamara Capture: Transition not allowed (possibly already captured) for ${tamaraOrderId}`);
+            return true;
+        }
+        console.error("❌ Tamara Capture Error:", JSON.stringify(errorData || err.message));
         return false;
+    }
+};
+
+// ==================================================
+// GET TAMARA ORDER STATUS (FOR SYNC FALLBACK)
+// ==================================================
+const getTamaraOrderStatus = async (tamaraOrderId) => {
+    try {
+        const response = await axios.get(`${process.env.TAMARA_API_BASE}/orders/${tamaraOrderId}`, {
+            headers: {
+                Authorization: `Bearer ${process.env.TAMARA_SECRET_KEY}`,
+                "Content-Type": "application/json",
+            },
+        });
+        return response.data;
+    } catch (err) {
+        console.error("❌ Tamara Get Order Error:", err.response?.data || err.message);
+        return null;
     }
 };
 
@@ -415,6 +441,13 @@ const handleTamaraWebhook = async (req, res) => {
 
             const activeOrder = updatedOrder || order;
 
+            // Security check: Verify amount matches to prevent tampering/rounding issues
+            const tamaraAmount = Number(payload.total_amount?.amount || payload.amount?.amount || 0);
+            if (tamaraAmount > 0 && Math.abs(tamaraAmount - activeOrder.total) > 0.1) {
+                console.error(`❌ Tamara Amount Mismatch: Received ${tamaraAmount}, Expected ${activeOrder.total}. Halting.`);
+                return res.status(200).send("Amount mismatch");
+            }
+
             // Run these actions if it's the first time processing success
             if (updatedOrder) {
                 if (activeOrder.userId) {
@@ -472,8 +505,38 @@ const handleTamaraWebhook = async (req, res) => {
     }
 };
 
+// ==================================================
+// REFUND TAMARA PAYMENT
+// ==================================================
+const refundTamaraPayment = async (tamaraOrderId, amount, currency = "AED") => {
+    try {
+        console.log(`🚀 Refunding Tamara Order: ${tamaraOrderId} (${amount} ${currency})`);
+        const refundPayload = {
+            order_id: tamaraOrderId,
+            refund_amount: { amount: Number(amount.toFixed(2)), currency: currency },
+            comment: "Admin initiated refund"
+        };
+
+        const response = await axios.post(`${process.env.TAMARA_API_BASE}/payments/refund`, refundPayload, {
+            headers: {
+                Authorization: `Bearer ${process.env.TAMARA_SECRET_KEY}`,
+                "Content-Type": "application/json",
+            },
+        });
+
+        console.log(`✅ Tamara Refund Success for ${tamaraOrderId}`);
+        return true;
+    } catch (err) {
+        console.error("❌ Tamara Refund Error:", err.response?.data || err.message);
+        return false;
+    }
+};
+
 module.exports = {
     createTamaraOrder,
     normalizeCountryCode,
-    handleTamaraWebhook
+    handleTamaraWebhook,
+    getTamaraOrderStatus,
+    captureTamaraPayment,
+    refundTamaraPayment
 };
