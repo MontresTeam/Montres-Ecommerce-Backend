@@ -904,28 +904,59 @@ const getAllAccessories = async (req, res) => {
     limit = parseInt(limit);
 
     // Base filter
-    const filter = {};
+    const filter = { category: "Accessories" };
     if (req.query.categorisOne) {
       filter.categorisOne = req.query.categorisOne;
-    } else {
-      filter.category = "Accessories";
     }
-    if (brand) filter.brand = brand;
-    if (gender) filter.gender = gender;
-    if (material) filter.material = material;
-    if (color) filter.color = color;
-    if (condition) filter.condition = condition;
 
-    // Price filter
+    if (subcategory) {
+      filter.$or = [
+        { accessoryCategory: { $regex: subcategory, $options: "i" } },
+        { accessorySubCategory: { $regex: subcategory, $options: "i" } },
+        { subcategory: { $regex: subcategory, $options: "i" } },
+      ];
+    }
+
+    if (brand) filter.brand = { $regex: brand, $options: "i" };
+    if (gender) filter.gender = { $regex: gender, $options: "i" };
+    if (condition) filter.condition = { $regex: condition, $options: "i" };
+
+    if (material) {
+      const materialList = Array.isArray(material) ? material : [material];
+      filter.accessoryMaterial = { $in: materialList };
+    }
+
+    if (color) {
+      const colorList = Array.isArray(color) ? color : [color];
+      filter.accessoryColor = { $in: colorList };
+    }
+
+    // Price filter - match whichever price field exists
     if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = Number(minPrice);
-      if (maxPrice) filter.price.$lte = Number(maxPrice);
+      const min = minPrice ? Number(minPrice) : 0;
+      const max = maxPrice ? Number(maxPrice) : Number.MAX_VALUE;
+      filter.$and = filter.$and || [];
+      filter.$and.push({
+        $or: [
+          { salePrice: { $gte: min, $lte: max } },
+          { sellingPrice: { $gte: min, $lte: max } },
+          { regularPrice: { $gte: min, $lte: max } },
+          { retailPrice: { $gte: min, $lte: max } },
+        ],
+      });
     }
 
     // Search filter
     if (search) {
-      filter.name = { $regex: search, $options: "i" };
+      filter.$and = filter.$and || [];
+      filter.$and.push({
+        $or: [
+          { name: { $regex: search, $options: "i" } },
+          { accessoryName: { $regex: search, $options: "i" } },
+          { brand: { $regex: search, $options: "i" } },
+          { model: { $regex: search, $options: "i" } },
+        ],
+      });
     }
 
     // Sorting

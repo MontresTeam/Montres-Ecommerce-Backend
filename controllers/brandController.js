@@ -21,10 +21,11 @@ const getAllBrands = async (req, res) => {
 
             if (categoryLower === 'watches' || categoryLower === 'watch') {
                 matchCondition.category = "Watch";
-            } else if (categoryLower === 'bags' || categoryLower === 'handbags' || categoryLower === 'leather-bags') {
+            } else if (categoryLower === 'bags' || categoryLower === 'handbags' || categoryLower === 'leather-bags' || categoryLower === 'leather goods' || categoryLower === 'leather-goods') {
                 matchCondition.$or = [
                     { category: "Leather Bags" },
-                    { category: "Leather Goods", leatherMainCategory: "Bag" }
+                    { category: "Leather Goods" },
+                    { categorisOne: "leather" }
                 ];
             } else if (categoryLower === 'accessories') {
                 matchCondition.category = "Accessories";
@@ -115,10 +116,11 @@ const getBrandDetails = async (req, res) => {
 
             if (categoryLower === 'watches' || categoryLower === 'watch') {
                 matchCondition.category = "Watch";
-            } else if (categoryLower === 'bags' || categoryLower === 'handbags' || categoryLower === 'leather-bags') {
+            } else if (categoryLower === 'bags' || categoryLower === 'handbags' || categoryLower === 'leather-bags' || categoryLower === 'leather goods' || categoryLower === 'leather-goods') {
                 matchCondition.$or = [
                     { category: "Leather Bags" },
-                    { category: "Leather Goods", leatherMainCategory: "Bag" }
+                    { category: "Leather Goods" },
+                    { categorisOne: "leather" }
                 ];
             } else if (categoryLower === 'accessories') {
                 matchCondition.category = "Accessories";
@@ -200,10 +202,11 @@ const getBrandsWithStats = async (req, res) => {
 
             if (categoryLower === 'watches' || categoryLower === 'watch') {
                 matchCondition.category = "Watch";
-            } else if (categoryLower === 'bags' || categoryLower === 'handbags' || categoryLower === 'leather-bags') {
+            } else if (categoryLower === 'bags' || categoryLower === 'handbags' || categoryLower === 'leather-bags' || categoryLower === 'leather goods' || categoryLower === 'leather-goods') {
                 matchCondition.$or = [
                     { category: "Leather Bags" },
-                    { category: "Leather Goods", leatherMainCategory: "Bag" }
+                    { category: "Leather Goods" },
+                    { categorisOne: "leather" }
                 ];
             } else if (categoryLower === 'accessories') {
                 matchCondition.category = "Accessories";
@@ -314,12 +317,13 @@ const getAvailableBrands = async (req, res) => {
 
             if (categoryLower === 'watches' || categoryLower === 'watch') {
                 matchCondition.category = "Watch";
-            } else if (categoryLower === 'bags' || categoryLower === 'handbags' || categoryLower === 'leather-bags') {
+            } else if (categoryLower === 'bags' || categoryLower === 'handbags' || categoryLower === 'leather-bags' || categoryLower === 'leather goods' || categoryLower === 'leather-goods') {
                 // Ensure we don't overwrite the stock availability $or filter
                 const bagCondition = {
                     $or: [
                         { category: "Leather Bags" },
-                        { category: "Leather Goods", leatherMainCategory: "Bag" }
+                        { category: "Leather Goods" },
+                        { categorisOne: "leather" }
                     ]
                 };
 

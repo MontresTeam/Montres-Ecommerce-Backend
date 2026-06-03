@@ -13,6 +13,8 @@ const getAllLeatherGoods = async (req, res) => {
       // Filter parameters
       category,
       subCategory,
+      leatherMainCategory,
+      leatherSubCategory,
       brand,
       color,
       material,
@@ -51,6 +53,24 @@ const getAllLeatherGoods = async (req, res) => {
         filter.subcategory = { $in: subCategory };
       } else {
         filter.subcategory = subCategory;
+      }
+    }
+
+    // ✅ leatherMainCategory filter
+    if (leatherMainCategory) {
+      if (Array.isArray(leatherMainCategory)) {
+        filter.leatherMainCategory = { $in: leatherMainCategory };
+      } else {
+        filter.leatherMainCategory = leatherMainCategory;
+      }
+    }
+
+    // ✅ leatherSubCategory filter
+    if (leatherSubCategory) {
+      if (Array.isArray(leatherSubCategory)) {
+        filter.leatherSubCategory = { $in: leatherSubCategory };
+      } else {
+        filter.leatherSubCategory = leatherSubCategory;
       }
     }
 

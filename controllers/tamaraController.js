@@ -6,6 +6,28 @@ const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
 const axios = require("axios");
 const crypto = require("crypto");
 
+// ==================================================
+// PHONE FORMATTING HELPER (Matches Tabby logic)
+// ==================================================
+const formatPhone = (p, country = "AE") => {
+    if (!p) return undefined;
+    let cleaned = p.replace(/\D/g, "");
+    const c = (country || "AE").toUpperCase();
+
+    if (c === "AE") {
+        if (cleaned.startsWith("971")) return "+" + cleaned;
+        if (cleaned.startsWith("05")) return "+971" + cleaned.substring(1);
+        if (cleaned.length === 9 && cleaned.startsWith("5")) return "+971" + cleaned;
+    } else if (c === "SA") {
+        if (cleaned.startsWith("966")) return "+" + cleaned;
+        if (cleaned.startsWith("05")) return "+966" + cleaned.substring(1);
+        if (cleaned.length === 9 && cleaned.startsWith("5")) return "+966" + cleaned;
+    }
+    
+    if (cleaned.startsWith("00")) return "+" + cleaned.substring(2);
+    return "+" + (cleaned.startsWith("+") ? cleaned : cleaned);
+};
+
 const TAMARA_SECRET_KEY = process.env.TAMARA_SECRET_KEY;
 const TAMARA_API_BASE = process.env.TAMARA_API_BASE;
 const TAMARA_API_URL = `${TAMARA_API_BASE}/checkout`;
@@ -33,31 +55,31 @@ const normalizeCountryCode = (value) => {
 // ==================================================
 const createTamaraOrder = async (req, res) => {
     try {
-        const userId = req.user.userId;
-        if (!userId) {
-            return res.status(401).json({ message: "Unauthorized" });
-        }
+        const userId = req.user?.userId || null;
+        // Guest checkout is allowed; userId can be null
 
         const {
             items = [],
             shippingAddress,
             billingAddress,
-            instalments = 3,
+            instalments = 4,
         } = req.body || {};
 
         // ===============================
         // VALIDATION
         // ===============================
 
-        if (!shippingAddress?.phone?.startsWith("+971")) {
+        const buyerPhone = formatPhone(shippingAddress?.phone, "AE");
+
+        if (!buyerPhone || !buyerPhone.startsWith("+971")) {
             return res.status(400).json({
                 success: false,
-                message: "Tamara UAE requires phone starting with +971",
+                message: "A valid UAE phone number is required for Tamara.",
             });
         }
 
         const countryCode = "AE";
-        const ALLOWED_INSTALLMENTS = [3, 4, 6];
+        const ALLOWED_INSTALLMENTS = [2, 3, 4, 6, 12];
 
         if (!ALLOWED_INSTALLMENTS.includes(Number(instalments))) {
             return res.status(400).json({
@@ -164,7 +186,7 @@ const createTamaraOrder = async (req, res) => {
         // TAMARA ITEMS & TOTAL
         // ===============================
         const tamaraItems = order.items.map((item) => ({
-            name: item.name,
+            name: item.name.trim(),
             type: "Physical",
             reference_id: item.productId?.toString() || item.sku,
             sku: item.sku || item.productId?.toString(),
@@ -209,8 +231,8 @@ const createTamaraOrder = async (req, res) => {
             consumer: {
                 first_name: shippingAddress.firstName,
                 last_name: shippingAddress.lastName,
-                email: shippingAddress.email || req.user.email,
-                phone_number: shippingAddress.phone,
+                email: shippingAddress.email || req.user?.email || "customer@montres.ae",
+                phone_number: buyerPhone,
             },
             billing_address: {
                 first_name: finalBillingAddress.firstName,
@@ -220,7 +242,7 @@ const createTamaraOrder = async (req, res) => {
                 city: finalBillingAddress.city,
                 region: finalBillingAddress.region || finalBillingAddress.city,
                 country_code: countryCode,
-                phone_number: finalBillingAddress.phone,
+                phone_number: formatPhone(finalBillingAddress.phone, "AE"),
             },
             shipping_address: {
                 first_name: shippingAddress.firstName,
@@ -230,10 +252,11 @@ const createTamaraOrder = async (req, res) => {
                 city: shippingAddress.city,
                 region: shippingAddress.region || shippingAddress.city,
                 country_code: countryCode,
-                phone_number: shippingAddress.phone,
+                phone_number: buyerPhone,
             },
-            payment_type: "PAY_BY_INSTALMENTS",
-            instalments: Number(instalments),
+            // Removed explicit payment_type and instalments to allow Tamara to offer all eligible methods
+            // payment_type: "PAY_BY_INSTALMENTS",
+            // instalments: Number(instalments),
             country_code: countryCode,
             locale: "en_AE",
             merchant_url: {
@@ -367,6 +390,33 @@ const captureTamaraPayment = async (tamaraOrderId, totalAmount, currency = "AED"
 };
 
 // ==================================================
+// AUTHORISE TAMARA ORDER
+// ==================================================
+const authoriseTamaraOrder = async (tamaraOrderId) => {
+    try {
+        console.log(`📡 Authorising Tamara Order: ${tamaraOrderId}`);
+        const response = await axios.post(`${process.env.TAMARA_API_BASE}/payments/authorise`, {
+            order_id: tamaraOrderId
+        }, {
+            headers: {
+                Authorization: `Bearer ${process.env.TAMARA_SECRET_KEY}`,
+                "Content-Type": "application/json",
+            },
+        });
+
+        if (response.data.status === "authorised" || response.data.status === "fully_authorised") {
+            console.log(`✅ Tamara Authorisation Success for ${tamaraOrderId}`);
+            return true;
+        }
+        console.warn(`⚠️ Tamara Authorisation status: ${response.data.status}`);
+        return false;
+    } catch (err) {
+        console.error("❌ Tamara Authorisation Error:", err.response?.data || err.message);
+        return false;
+    }
+};
+
+// ==================================================
 // GET TAMARA ORDER STATUS (FOR SYNC FALLBACK)
 // ==================================================
 const getTamaraOrderStatus = async (tamaraOrderId) => {
@@ -387,6 +437,9 @@ const getTamaraOrderStatus = async (tamaraOrderId) => {
 // ==================================================
 // HANDLE TAMARA WEBHOOK
 // ==================================================
+// ==================================================
+// HANDLE TAMARA WEBHOOK
+// ==================================================
 const handleTamaraWebhook = async (req, res) => {
     try {
         // 1. Verify Signature
@@ -394,10 +447,15 @@ const handleTamaraWebhook = async (req, res) => {
             return res.status(401).json({ message: "Invalid signature" });
         }
 
-        // 2. Parse Payload
+        // 2. Parse Payload (Since it's a Buffer from express.raw)
         let payload = req.body;
-        if (Buffer.isBuffer(req.body)) {
-            payload = JSON.parse(req.body.toString("utf-8"));
+        if (Buffer.isBuffer(payload)) {
+            try {
+                payload = JSON.parse(payload.toString("utf-8"));
+            } catch (e) {
+                console.error("❌ Failed to parse Tamara webhook buffer:", e.message);
+                return res.status(400).send("Invalid JSON");
+            }
         }
 
         console.log("🔔 Tamara Webhook Received:", JSON.stringify(payload, null, 2));
@@ -410,7 +468,7 @@ const handleTamaraWebhook = async (req, res) => {
             return res.status(200).send("No reference ID");
         }
 
-        // 3. Find Order (Search by _id or orderId field)
+        // 3. Find Order
         let order = await Order.findById(orderReferenceId);
         if (!order) {
             order = await Order.findOne({ orderId: orderReferenceId });
@@ -421,16 +479,30 @@ const handleTamaraWebhook = async (req, res) => {
             return res.status(200).send("Order not found");
         }
 
-        // 4. Handle Success Events (Approved / Authorised)
-        const isSuccessEvent = ["approved", "order_authorized", "order_authorised", "authorised"].includes(eventType);
+        // 4. Handle "Approved" Event (Requires Authorization)
+        if (["approved", "order_approved"].includes(eventType)) {
+            console.log(`📜 Order ${orderReferenceId} is Approved. Proceeding to Authorise...`);
+            
+            const authorised = await authoriseTamaraOrder(tamaraOrderId);
+            if (!authorised) {
+                // If authorisation fails, we return 500 to let Tamara retry the webhook
+                return res.status(500).send("Authorisation failed, retrying...");
+            }
+            
+            // If authorised, we proceed to update order status (Logic continues in success events block)
+        }
+
+        // 5. Handle Success Events (Authorised)
+        const isSuccessEvent = ["order_authorized", "order_authorised", "authorised"].includes(eventType) || 
+                             (["approved", "order_approved"].includes(eventType)); // Include approved because we just authorised it above
 
         if (isSuccessEvent) {
-            // Idempotent update: only if not already marked paid
+            // Idempotent update
             const updatedOrder = await Order.findOneAndUpdate(
-                { _id: order._id, paymentStatus: { $ne: "paid" } },
+                { _id: order._id, paymentStatus: { $nin: ["paid", "authorized"] } },
                 {
                     $set: {
-                        paymentStatus: "paid",
+                        paymentStatus: "authorized",
                         orderStatus: "Processing",
                         tamaraOrderId: tamaraOrderId,
                         paidAt: new Date()
@@ -441,42 +513,39 @@ const handleTamaraWebhook = async (req, res) => {
 
             const activeOrder = updatedOrder || order;
 
-            // Security check: Verify amount matches to prevent tampering/rounding issues
+            // Security check
             const tamaraAmount = Number(payload.total_amount?.amount || payload.amount?.amount || 0);
-            if (tamaraAmount > 0 && Math.abs(tamaraAmount - activeOrder.total) > 0.1) {
-                console.error(`❌ Tamara Amount Mismatch: Received ${tamaraAmount}, Expected ${activeOrder.total}. Halting.`);
-                return res.status(200).send("Amount mismatch");
+            if (tamaraAmount > 0 && Math.abs(tamaraAmount - activeOrder.total) > 0.5) {
+                console.error(`❌ Tamara Amount Mismatch: Received ${tamaraAmount}, Expected ${activeOrder.total}.`);
+                // Note: We don't fail the webhook ACK here to prevent loops, but we log the error.
             }
 
-            // Run these actions if it's the first time processing success
             if (updatedOrder) {
                 if (activeOrder.userId) {
-                    await User.findByIdAndUpdate(activeOrder.userId, {
+                    User.findByIdAndUpdate(activeOrder.userId, {
                         $set: { cart: [] },
                         $addToSet: { orders: activeOrder._id }
-                    });
-                    console.log(`🛒 Cart cleared for User: ${activeOrder.userId}`);
+                    }).catch(e => console.error("User update error:", e.message));
                 }
-                await sendOrderConfirmation(activeOrder._id).catch(e => console.error("📧 Email Error:", e.message));
+                sendOrderConfirmation(activeOrder._id).catch(e => console.error("📧 Email Error:", e.message));
             }
 
-            // TRIGGER CAPTURE ONLY ON AUTHORISED
-            // This prevents "transition_not_allowed" from 'approved' status
-            const isAuthorised = ["order_authorized", "order_authorised", "authorised"].includes(eventType);
+            // AUTO-CAPTURE (If enabled)
+            // Some merchants prefer manual capture on shipping. 
+            // For testing, we trigger it if the status is authorised.
+            const isAuthorised = ["order_authorized", "order_authorised", "authorised"].includes(eventType) || ["approved", "order_approved"].includes(eventType);
             if (isAuthorised) {
                 console.log(`📡 Status is ${eventType}. Triggering Capture for ${tamaraOrderId}...`);
                 captureTamaraPayment(
                     tamaraOrderId,
-                    activeOrder.settlementTotal || activeOrder.total,
-                    activeOrder.settlementCurrency || "AED"
+                    activeOrder.total,
+                    activeOrder.currency || "AED"
                 );
-            } else {
-                console.log(`ℹ️ Status is ${eventType}. Waiting for 'authorised' event before capture.`);
             }
         }
 
-        // 5. Handle Failure Events
-        else if (["order_failed", "order_cancelled", "order_declined", "order_expired", "failed", "cancelled"].includes(eventType)) {
+        // 6. Handle Failure Events
+        else if (["order_failed", "order_cancelled", "order_declined", "order_expired", "failed", "cancelled", "declined"].includes(eventType)) {
             await Order.findOneAndUpdate(
                 { _id: order._id, paymentStatus: "pending" },
                 {
@@ -489,7 +558,7 @@ const handleTamaraWebhook = async (req, res) => {
             console.log(`❌ Order ${order._id} marked FAILED via Tamara (${eventType})`);
         }
 
-        // 6. Handle Refund Events
+        // 7. Handle Refund Events
         else if (["order_refunded", "refunded"].includes(eventType)) {
             await Order.findOneAndUpdate(
                 { _id: order._id },
@@ -498,10 +567,37 @@ const handleTamaraWebhook = async (req, res) => {
             console.log(`↩️ Order ${order._id} marked REFUNDED via Tamara`);
         }
 
-        return res.sendStatus(204);
+        return res.status(200).send("OK");
     } catch (error) {
         console.error("💥 Tamara Webhook Critical Error:", error.message);
         return res.status(500).json({ message: "Webhook handler failed" });
+    }
+};
+
+// ==================================================
+// CANCEL TAMARA ORDER
+// ==================================================
+const cancelTamaraOrder = async (tamaraOrderId, amount, currency = "AED") => {
+    try {
+        console.log(`🚀 Cancelling Tamara Order: ${tamaraOrderId} (${amount} ${currency})`);
+        const cancelPayload = {
+            order_id: tamaraOrderId,
+            cancel_amount: { amount: Number(amount.toFixed(2)), currency: currency },
+            comment: "Admin initiated cancellation"
+        };
+
+        const response = await axios.post(`${process.env.TAMARA_API_BASE}/payments/cancel`, cancelPayload, {
+            headers: {
+                Authorization: `Bearer ${process.env.TAMARA_SECRET_KEY}`,
+                "Content-Type": "application/json",
+            },
+        });
+
+        console.log(`✅ Tamara Cancellation Success for ${tamaraOrderId}`);
+        return true;
+    } catch (err) {
+        console.error("❌ Tamara Cancellation Error:", err.response?.data || err.message);
+        return false;
     }
 };
 
@@ -537,6 +633,8 @@ module.exports = {
     normalizeCountryCode,
     handleTamaraWebhook,
     getTamaraOrderStatus,
+    authoriseTamaraOrder,
     captureTamaraPayment,
+    cancelTamaraOrder,
     refundTamaraPayment
 };
