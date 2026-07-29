@@ -21,10 +21,15 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 const createStripeOrder = async (req, res) => {
   try {
-    const { userId } = req.user;
-    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    // ✅ optionalProtect: req.user may be null for offer checkout flow
+    const userId = req.user?.userId || null;
 
     const { items, shippingAddress, billingAddress, paymentMethod = "stripe", calculateOnly = false, existingOrderId } = req.body;
+
+    // For fresh orders (no existingOrderId), authentication is required
+    if (!existingOrderId && !userId) {
+      return res.status(401).json({ message: "Unauthorized. Please log in to place an order." });
+    }
 
     if (!items?.length) return res.status(400).json({ message: "Cart items are required" });
     if (!shippingAddress?.address1 || !shippingAddress?.city) return res.status(400).json({ message: "Valid shipping address is required" });
@@ -288,7 +293,7 @@ const getOrderById = async (req, res) => {
             {
               $set: {
                 paymentStatus: "paid",
-                orderStatus: "Processing",
+                orderStatus: "Paid / Awaiting Shipment",
                 paidAt: new Date()
               }
             },
@@ -335,7 +340,7 @@ const getOrderById = async (req, res) => {
             {
               $set: {
                 paymentStatus: "paid",
-                orderStatus: "Processing",
+                orderStatus: "Paid / Awaiting Shipment",
                 stripePaymentIntentId: session.payment_intent,
                 paidAt: new Date()
               }
@@ -398,7 +403,7 @@ const getOrderById = async (req, res) => {
             {
               $set: {
                 paymentStatus: tabbyStatus === "authorized" ? "authorized" : "paid",
-                orderStatus: "Processing",
+                orderStatus: "Paid / Awaiting Shipment",
                 paidAt: tabbyStatus !== "authorized" ? new Date() : undefined
               }
             },

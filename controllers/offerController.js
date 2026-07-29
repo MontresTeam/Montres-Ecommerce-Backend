@@ -441,7 +441,12 @@ const verifyOfferToken = async (req, res) => {
             return res.status(404).json({ success: false, message: "Offer not found or already used." });
         }
 
-        if (offer.status === "expired" || (offer.expiresAt && new Date() > offer.expiresAt)) {
+        // ✅ Only expire offers that are still pending/countered — never expire accepted offers.
+        // An accepted offer must remain accessible so the customer can complete checkout.
+        const isAlreadyFinalized = ["accepted", "rejected", "expired"].includes(offer.status);
+        const isTimedOut = offer.expiresAt && new Date() > offer.expiresAt;
+
+        if (!isAlreadyFinalized && isTimedOut) {
             offer.status = "expired";
             await offer.save();
 
@@ -451,10 +456,9 @@ const verifyOfferToken = async (req, res) => {
             } catch (err) {
                 console.error("Link Expiry Email Failed:", err);
             }
-
-            return res.status(400).json({ success: false, message: "This offer has expired." });
         }
 
+        // Always return the offer data so the frontend can display the correct status screen
         res.status(200).json({
             success: true,
             data: offer,

@@ -72,7 +72,7 @@ const handleStripeWebhook = async (req, res) => {
                         $set: {
                             paymentStatus: "paid",
                             stripePaymentIntentId: session.payment_intent,
-                            orderStatus: "Processing",
+                            orderStatus: "Paid / Awaiting Shipment",
                             paidAt: new Date()
                         }
                     },

@@ -127,6 +127,11 @@ const Login = async (req, res) => {
     const user = await userModel.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    // Handle social logins that might not have a password
+    if (!user.password) {
+      return res.status(401).json({ message: "Please log in using your social media account." });
+    }
+
     const isMatch = await user.matchPassword(password);
     if (!isMatch)
       return res.status(401).json({ message: "Invalid credentials" });
@@ -179,10 +184,13 @@ const logout = async (req, res) => {
     const token = req.cookies.refreshToken;
     if (token) {
       try {
-        const decoded = jwt.verify(token, process.env.USER_REFRESH_TOKEN_SECRET);
-        await userModel.findByIdAndUpdate(decoded.id, { $unset: { refreshToken: 1 } });
+        // Use decode instead of verify so we can still clear it if it's expired
+        const decoded = jwt.decode(token);
+        if (decoded && decoded.id) {
+          await userModel.findByIdAndUpdate(decoded.id, { $unset: { refreshToken: 1 } });
+        }
       } catch (err) {
-        // Token might be expired, just ignore
+        // Token might be malformed, just ignore
       }
     }
 
@@ -1137,19 +1145,52 @@ const getWishlistCount = async (req, res) => {
 // Google Auth (Signup + Login)
 const googleSignup = async (req, res) => {
   try {
-    const { name, email, avatar } = req.body;
+    const { idToken, name: fallbackName, email: fallbackEmail, avatar: fallbackAvatar, googleId: fallbackGoogleId } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({ message: "Google idToken is required for secure authentication" });
+    }
+
+    // Securely verify the token with Google (allowing both backend and frontend Client IDs)
+    const ticket = await client.verifyIdToken({
+      idToken: idToken,
+      audience: [
+        process.env.GOOGLE_CLIENT_ID,
+        "794972722050-8qtfgg9esahsprlqpvg0jm6n55r5qdc1.apps.googleusercontent.com" // Frontend Google Client ID
+      ],
+    });
+    
+    const payload = ticket.getPayload();
+    
+    // Extract verified user data
+    const email = payload.email;
+    const name = payload.name || fallbackName;
+    const avatar = payload.picture || fallbackAvatar;
+    const googleId = payload.sub || fallbackGoogleId;
 
     let user = await userModel.findOne({ email });
 
     if (!user) {
+      // Generate a secure random password as a failsafe so validation NEVER fails
+      const crypto = require("crypto");
+      const secureRandomPassword = crypto.randomBytes(32).toString("hex");
+
       user = await userModel.create({
         name,
         email,
         avatar,
         provider: "google",
+        googleId: googleId || `google_${Date.now()}_${secureRandomPassword.slice(0, 10)}`,
+        password: secureRandomPassword, // This will be automatically hashed by our pre-save hook!
       });
 
       sendWelcomeEmail(user.email, user.name).catch(console.log);
+    } else {
+      // If user exists but googleId is not linked, link it now
+      if (!user.googleId && googleId) {
+        user.googleId = googleId;
+        await user.save();
+      }
     }
 
     const accessToken = generateAccessToken(user._id, user.email);
@@ -1184,7 +1225,8 @@ const googleSignup = async (req, res) => {
         },
       });
   } catch (err) {
-    res.status(500).json({ message: "Google login failed" });
+    console.error("Google Signup Error:", err);
+    res.status(500).json({ message: "Google login failed", error: err.message });
   }
 };
 

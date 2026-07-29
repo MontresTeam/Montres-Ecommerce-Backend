@@ -92,8 +92,8 @@ const verifyTabbySignature = (req) => {
   const secret = process.env.TABBY_WEBHOOK_SECRET;
 
   if (!secret) {
-    console.warn("⚠️ TABBY_WEBHOOK_SECRET is not defined. Skipping signature verification.");
-    return false; // Or true if you want to allow in dev, but safer to fail
+    console.error("❌ CRITICAL: TABBY_WEBHOOK_SECRET is not defined. Webhook signature verification failed.");
+    return false;
   }
 
   if (!signature) {
@@ -101,35 +101,16 @@ const verifyTabbySignature = (req) => {
     return false;
   }
 
-  // If in sandbox/dev, you might want to log but allow. 
-  // For strict security, we fail if invalid.
   try {
-    const hmac = crypto.createHmac("sha256", secret);
-    hmac.update(req.body); // req.body must be the RAW buffer
-    const calculatedSignature = hmac.digest("base64"); // Tabby references often use base64 or hex. 
-    // Correction: Tabby docs usually don't specify, but standard is often hex. 
-    // However, if the previous code was checking equality, maybe it was a simple token?
-    // Let's assume standard HMAC Hex first, as passing a raw token is rare. 
-    // Actually, looking at other integrations (e.g. Tamara uses Hex), let's try Hex.
-    // If it fails, we might need to adjust.
-    // NOTE: Some docs say Tabby sends the token as is? No, let's stick to HMAC.
-
-    // Changing to simple token check behavior if that's what was intended, 
-    // BUT user asked for "Security", so I'll implement HMAC.
-
-    // Wait, if I change to HMAC and the dashboard is just a token, it will break.
-    // I will support BOTH: 
-    // 1. Direct equality (Legacy/Token mode)
-    // 2. HMAC Hex
-
-    if (signature === secret) return true;
-
+    // Tabby signatures are typically HMAC SHA256 Hex
     const calculatedSignatureHex = crypto.createHmac("sha256", secret).update(req.body).digest("hex");
-    if (signature === calculatedSignatureHex) return true;
+    
+    // Some older integrations might use Base64, we'll check both for robustness during transition
+    const calculatedSignatureBase64 = crypto.createHmac("sha256", secret).update(req.body).digest("base64");
 
-    // Try Base64 just in case
-    // const calculatedSignatureBase64 = crypto.createHmac("sha256", secret).update(req.body).digest("base64");
-    // if (signature === calculatedSignatureBase64) return true;
+    if (signature === calculatedSignatureHex || signature === calculatedSignatureBase64) {
+      return true;
+    }
 
     console.warn(`❌ Tabby Signature Mismatch. Received: ${signature}`);
     return false;
@@ -940,22 +921,16 @@ const handleTabbyWebhook = async (req, res) => {
 
   try {
     /* =================================================
-       1️⃣ ACK immediately (Tabby standard)
-    ================================================= */
-    res.status(200).send("ok");
-
-    /* =================================================
-       2️⃣ Verify Signature
+       1️⃣ Verify Signature FIRST
     ================================================= */
     const isValidSignature = verifyTabbySignature(req);
     if (!isValidSignature) {
-      // Since we already sent 200 OK, we just stop processing
       console.warn("⚠️ Cancelling webhook processing due to invalid signature.");
-      return;
+      return res.status(401).send("Invalid signature");
     }
 
     /* =================================================
-       3️⃣ Parse payload
+       2️⃣ Parse payload
     ================================================= */
     let payload = req.body;
     if (Buffer.isBuffer(payload)) {
@@ -974,7 +949,7 @@ const handleTabbyWebhook = async (req, res) => {
     console.log(`📦 Tabby Payload - ID: ${paymentId}, Ref: ${referenceId}`);
 
     /* =================================================
-       4️⃣ VERIFY payment with Tabby API (Source of Truth)
+       3️⃣ VERIFY payment with Tabby API (Source of Truth)
     ================================================= */
     const headers = {
       Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
@@ -993,7 +968,7 @@ const handleTabbyWebhook = async (req, res) => {
     console.log(`🔍 Tabby Verified State: ${status} for Ref: ${referenceId}`);
 
     /* =================================================
-       5️⃣ Find order in DB & Validate
+       4️⃣ Find order in DB & Validate
     ================================================= */
     let order = await Order.findOne({
       $or: [
@@ -1030,8 +1005,8 @@ const handleTabbyWebhook = async (req, res) => {
         shippingFee: shippingAmount,
         total: totalAmount,
         paymentMethod: "tabby",
-        paymentStatus: "paid",
-        orderStatus: "Processing",
+        paymentStatus: "pending",
+        orderStatus: "Pending",
         currency: payment.currency || "AED",
         tabbySessionId: paymentId,
         shippingAddress: {
@@ -1056,9 +1031,9 @@ const handleTabbyWebhook = async (req, res) => {
         `❌ AMOUNT MISMATCH — Order ${referenceId} | Tabby: ${amount} ${payment.currency} | DB: ${order.total} ${order.currency}` +
         ` | Diff: ${Math.abs(amount - order.total).toFixed(3)} — halting webhook processing for manual review.`
       );
-      // Do NOT return silently — this needs visibility. The order stays pending
-      // so an admin can reconcile. A monitoring alert should be set on this log pattern.
-      return;
+      // Mark as manual review required if you have a status for it, or just keep pending.
+      // We will return 400 so Tabby retries, giving time for admin to check if it's a rounding error.
+      return res.status(400).send("Amount mismatch");
     }
     if (Math.abs(amount - order.total) > 0.01) {
       console.warn(
@@ -1076,16 +1051,23 @@ const handleTabbyWebhook = async (req, res) => {
         return;
       }
 
-      await Order.updateOne(
-        { _id: order._id },
+      // Atomic update to prevent status regression
+      const updatedToAuth = await Order.findOneAndUpdate(
+        { _id: order._id, paymentStatus: { $nin: ["paid", "authorized"] } },
         {
           $set: {
             paymentStatus: "authorized",
             tabbySessionId: paymentId
           }
-        }
+        },
+        { new: true }
       );
-      console.log(`📝 Order ${referenceId} updated to AUTHORIZED`);
+
+      if (!updatedToAuth && order.paymentStatus !== "paid" && order.paymentStatus !== "authorized") {
+         console.warn(`⚠️ Could not update Order ${referenceId} to AUTHORIZED (possibly already updated)`);
+      }
+
+      console.log(`📝 Order ${referenceId} status check for capture...`);
 
       console.log("💳 Triggering capture...");
       try {
@@ -1124,7 +1106,7 @@ const handleTabbyWebhook = async (req, res) => {
         {
           $set: {
             paymentStatus: "paid",
-            orderStatus: "Processing",
+            orderStatus: "Paid / Awaiting Shipment",
             tabbySessionId: paymentId,
             paidAt: new Date()
           }
@@ -1184,8 +1166,17 @@ const handleTabbyWebhook = async (req, res) => {
       return;
     }
 
+    /* =================================================
+       6️⃣ Success! Send ACK at the very end
+    ================================================= */
+    return res.status(200).send("ok");
+
   } catch (err) {
     console.error("❌ Tabby webhook processing error:", err.response?.data || err.message);
+    // Return 500 so Tabby knows to retry later
+    if (!res.headersSent) {
+      return res.status(500).send("Internal Server Error");
+    }
   } finally {
     console.log("--------------------------------------------------");
   }
@@ -1193,6 +1184,113 @@ const handleTabbyWebhook = async (req, res) => {
 
 
 
+
+/**
+ * 🔄 RECONCILIATION: Sync "Pending" orders with Tabby API
+ * Can be called via cron or manually for specific orders.
+ */
+const syncTabbyOrders = async (req, res) => {
+  try {
+    const { orderId } = req.query;
+    let query = { paymentMethod: "tabby", paymentStatus: "pending" };
+    
+    // If specific orderId provided, just sync that one
+    if (orderId) {
+      query = { 
+        $or: [
+          { orderId: orderId },
+          { tabbySessionId: orderId }
+        ]
+      };
+    } else {
+      // Otherwise, sync all pending orders from the last 24 hours
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      query.createdAt = { $gte: twentyFourHoursAgo };
+    }
+
+    const pendingOrders = await Order.find(query);
+    console.log(`🔍 Reconciliation: Found ${pendingOrders.length} Tabby orders to sync.`);
+
+    const results = {
+      processed: 0,
+      updated: 0,
+      failed: 0,
+      errors: []
+    };
+
+    const headers = {
+      Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+      "Content-Type": "application/json",
+    };
+
+    for (const order of pendingOrders) {
+      results.processed++;
+      const sessionId = order.tabbySessionId;
+
+      if (!sessionId) {
+        console.warn(`⚠️ Order ${order.orderId} has no Tabby Session ID. Skipping.`);
+        continue;
+      }
+
+      try {
+        const response = await axios.get(`${TABBY_BASE}/payments/${sessionId}`, { headers, timeout: 5000 });
+        const tabbyStatus = (response.data.status || "").toLowerCase();
+
+        if (["closed", "captured", "authorized"].includes(tabbyStatus)) {
+          console.log(`✅ Order ${order.orderId} found as ${tabbyStatus} in Tabby. Syncing...`);
+          
+          const isPaid = ["closed", "captured"].includes(tabbyStatus);
+          
+          const updated = await Order.findOneAndUpdate(
+            { _id: order._id, paymentStatus: "pending" },
+            {
+              $set: {
+                paymentStatus: isPaid ? "paid" : "authorized",
+                orderStatus: "Paid / Awaiting Shipment",
+                paidAt: isPaid ? new Date() : undefined
+              }
+            },
+            { new: true }
+          );
+
+          if (updated) {
+            results.updated++;
+            // Background tasks
+            if (updated.userId) {
+              userModel.findByIdAndUpdate(updated.userId, {
+                $set: { cart: [] },
+                $addToSet: { orders: updated._id }
+              }).catch(e => console.error(`Sync error for user ${updated.userId}:`, e.message));
+            }
+            
+            if (isPaid) {
+              sendOrderConfirmation(updated._id)
+                .catch(e => console.error(`Sync email error for order ${updated._id}:`, e.message));
+            }
+          }
+        } else if (["expired", "rejected", "canceled", "failed"].includes(tabbyStatus)) {
+           await Order.findByIdAndUpdate(order._id, { 
+             $set: { paymentStatus: "failed", orderStatus: "Cancelled" } 
+           });
+           results.updated++;
+        }
+      } catch (err) {
+        results.failed++;
+        results.errors.push({ orderId: order.orderId, error: err.message });
+      }
+    }
+
+    if (res) {
+      return res.json({ success: true, results });
+    }
+    return results;
+
+  } catch (err) {
+    console.error("❌ Reconciliation failed:", err.message);
+    if (res) return res.status(500).json({ success: false, error: err.message });
+    throw err;
+  }
+};
 
 const refundTabbyPayment = async (paymentId, amount, currency = "AED") => {
   try {
@@ -1222,5 +1320,6 @@ module.exports = {
   preScoring,
   createTabbyOrder,
   handleTabbyWebhook,
+  syncTabbyOrders,
   refundTabbyPayment,
 };

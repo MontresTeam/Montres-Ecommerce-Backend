@@ -24,8 +24,8 @@ const {
 router.get("/myorders", protect, getMyOrders);
 
 // Specific routes FIRST
-router.post("/stripe/create-checkout", protect, createStripeOrder);
-router.post("/calculate-shipping", protect, calculateShipping);
+router.post("/stripe/create-checkout", optionalProtect, createStripeOrder);
+router.post("/calculate-shipping", optionalProtect, calculateShipping);
 router.post("/:id/refund", adminProtect, refundOrder);
 
 // Shipping

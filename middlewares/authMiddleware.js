@@ -3,26 +3,38 @@ const jwt = require("jsonwebtoken");
 // Optional auth: populates req.user if a valid token exists, but never blocks the request.
 // Use this for routes that work for both guests and logged-in users (e.g. Tabby checkout).
 exports.optionalProtect = (req, res, next) => {
-  let token = req.cookies.accessToken;
+  let userToken = req.cookies.accessToken;
+  let adminToken = req.cookies.adminToken;
 
-  if (!token) {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer")) {
-      token = authHeader.split(" ")[1];
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer")) {
+    const headerToken = authHeader.split(" ")[1];
+    if (!userToken) userToken = headerToken;
+    if (!adminToken) adminToken = headerToken;
+  }
+
+  if (userToken) {
+    try {
+      const decoded = jwt.verify(userToken, process.env.USER_ACCESS_TOKEN_SECRET);
+      req.user = { userId: decoded.id, isAdmin: decoded.isAdmin };
+    } catch (err) {
+      req.user = null;
     }
   }
 
-  if (!token) {
-    // No token — guest user, allow through without req.user
-    return next();
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.USER_ACCESS_TOKEN_SECRET);
-    req.user = { userId: decoded.id };
-  } catch (err) {
-    // Invalid/expired token — treat as guest, don't block
-    req.user = null;
+  if (adminToken) {
+    try {
+      const decodedAdmin = jwt.verify(adminToken, process.env.ADMIN_JWT_SECRET);
+      if (decodedAdmin.isAdmin && decodedAdmin.role) {
+        req.admin = {
+          id: decodedAdmin.id,
+          username: decodedAdmin.username,
+          role: decodedAdmin.role
+        };
+      }
+    } catch (err) {
+      req.admin = null;
+    }
   }
 
   return next();
