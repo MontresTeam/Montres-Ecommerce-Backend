@@ -8,9 +8,11 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
+  if (err?.code === 'ECONNRESET' || err?.code === 'ETIMEDOUT') {
+    console.warn(`⚠️ Background network socket drop (${err.code}) - ignored safely`);
+    return;
+  }
   console.error('Uncaught Exception:', err);
-  // For safety, you might want to restart the process in production
-  // but for now, we just log it to see where it comes from.
 });
 const express = require('express');
 const connectDB = require("./config/db");
@@ -117,6 +119,7 @@ app.use("/api/tamara", tamaraRouter);
 app.use("/api/contact", contactRoutes);
 app.use("/api/admin/order", orderRoute);
 app.use("/api/admin/orders", orderRoute);
+
 app.use("/api/address", addressRoutes);
 app.use("/api/payment", orderRoute);
 app.use("/api/order", orderRoute);

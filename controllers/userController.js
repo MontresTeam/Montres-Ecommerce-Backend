@@ -127,6 +127,11 @@ const Login = async (req, res) => {
     const user = await userModel.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    // Handle social logins that might not have a password
+    if (!user.password) {
+      return res.status(401).json({ message: "Please log in using your social media account." });
+    }
+
     const isMatch = await user.matchPassword(password);
     if (!isMatch)
       return res.status(401).json({ message: "Invalid credentials" });
@@ -179,10 +184,13 @@ const logout = async (req, res) => {
     const token = req.cookies.refreshToken;
     if (token) {
       try {
-        const decoded = jwt.verify(token, process.env.USER_REFRESH_TOKEN_SECRET);
-        await userModel.findByIdAndUpdate(decoded.id, { $unset: { refreshToken: 1 } });
+        // Use decode instead of verify so we can still clear it if it's expired
+        const decoded = jwt.decode(token);
+        if (decoded && decoded.id) {
+          await userModel.findByIdAndUpdate(decoded.id, { $unset: { refreshToken: 1 } });
+        }
       } catch (err) {
-        // Token might be expired, just ignore
+        // Token might be malformed, just ignore
       }
     }
 

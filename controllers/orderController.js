@@ -293,7 +293,7 @@ const getOrderById = async (req, res) => {
             {
               $set: {
                 paymentStatus: "paid",
-                orderStatus: "Processing",
+                orderStatus: "Paid / Awaiting Shipment",
                 paidAt: new Date()
               }
             },
@@ -340,7 +340,7 @@ const getOrderById = async (req, res) => {
             {
               $set: {
                 paymentStatus: "paid",
-                orderStatus: "Processing",
+                orderStatus: "Paid / Awaiting Shipment",
                 stripePaymentIntentId: session.payment_intent,
                 paidAt: new Date()
               }
@@ -403,7 +403,7 @@ const getOrderById = async (req, res) => {
             {
               $set: {
                 paymentStatus: tabbyStatus === "authorized" ? "authorized" : "paid",
-                orderStatus: "Processing",
+                orderStatus: "Paid / Awaiting Shipment",
                 paidAt: tabbyStatus !== "authorized" ? new Date() : undefined
               }
             },

@@ -1106,7 +1106,7 @@ const handleTabbyWebhook = async (req, res) => {
         {
           $set: {
             paymentStatus: "paid",
-            orderStatus: "Processing",
+            orderStatus: "Paid / Awaiting Shipment",
             tabbySessionId: paymentId,
             paidAt: new Date()
           }
@@ -1246,7 +1246,7 @@ const syncTabbyOrders = async (req, res) => {
             {
               $set: {
                 paymentStatus: isPaid ? "paid" : "authorized",
-                orderStatus: "Processing",
+                orderStatus: "Paid / Awaiting Shipment",
                 paidAt: isPaid ? new Date() : undefined
               }
             },

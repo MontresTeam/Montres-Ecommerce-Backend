@@ -6,6 +6,7 @@ const connectDB = async function () {
       family: 4, // Use IPv4 to avoid common ECONNRESET issues on Windows with Atlas
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      maxPoolSize: 10,
     });
     console.log("DB connected successfully");
   } catch (error) {
@@ -16,6 +17,10 @@ const connectDB = async function () {
 
 // Handle connection errors after initial connection
 mongoose.connection.on('error', (err) => {
+  if (err.code === 'ECONNRESET') {
+    console.warn('⚠️ Mongoose connection reset by peer (ECONNRESET) - reconnecting automatically');
+    return;
+  }
   console.error('Mongoose connection error (background):', err);
 });
 

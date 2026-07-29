@@ -503,7 +503,7 @@ const handleTamaraWebhook = async (req, res) => {
                 {
                     $set: {
                         paymentStatus: "authorized",
-                        orderStatus: "Processing",
+                        orderStatus: "Paid / Awaiting Shipment",
                         tamaraOrderId: tamaraOrderId,
                         paidAt: new Date()
                     }
@@ -544,7 +544,22 @@ const handleTamaraWebhook = async (req, res) => {
             }
         }
 
-        // 6. Handle Failure Events
+        // 6. Handle Captured Events
+        else if (["order_captured", "captured", "fully_captured"].includes(eventType)) {
+            await Order.findOneAndUpdate(
+                { _id: order._id, paymentStatus: { $ne: "paid" } },
+                {
+                    $set: {
+                        paymentStatus: "paid",
+                        orderStatus: "Paid / Awaiting Shipment",
+                        paidAt: new Date()
+                    }
+                }
+            );
+            console.log(`✅ Order ${order._id} marked PAID via Tamara (Captured)`);
+        }
+
+        // 7. Handle Failure Events
         else if (["order_failed", "order_cancelled", "order_declined", "order_expired", "failed", "cancelled", "declined"].includes(eventType)) {
             await Order.findOneAndUpdate(
                 { _id: order._id, paymentStatus: "pending" },
