@@ -1,9 +1,10 @@
 const Order = require("../models/OrderModel");
 const User = require("../models/UserModel");
 const sendEmail = require("../utils/sendEmail");
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY, {
-    telemetry: false, // Disable background requests often causing ECONNRESET on Windows
-});
+const stripePkg = require("stripe");
+const stripe = process.env.STRIPE_SECRET_KEY
+    ? stripePkg(process.env.STRIPE_SECRET_KEY, { telemetry: false })
+    : null;
 const crypto = require("crypto");
 
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -27,9 +28,9 @@ const handleStripeWebhook = async (req, res) => {
     // If not buffer, and we can't construct event, we might need to rely on the raw-body middleware in routes
 
     try {
-        if (!STRIPE_WEBHOOK_SECRET) {
-            console.error("❌ CRITICAL: STRIPE_WEBHOOK_SECRET is not defined in .env!");
-            return res.status(500).send("Webhook secret not configured");
+        if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+            console.error("❌ CRITICAL: STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET is not defined in .env!");
+            return res.status(500).send("Webhook secret or key not configured");
         }
 
         console.log(`🔑 Loaded Secret Prefix: ${STRIPE_WEBHOOK_SECRET.substring(0, 10)}...`);

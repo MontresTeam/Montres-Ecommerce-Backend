@@ -152,7 +152,7 @@ const buildWatchFilter = (query) => {
   if (availList.length > 0) {
     const availabilityConditions = [];
     if (availList.some(a => a.toLowerCase() === 'in stock' || a.toLowerCase() === 'in_stock')) {
-      availabilityConditions.push({ $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }] });
+      availabilityConditions.push({ inStock: true, stockQuantity: { $gt: 0 } });
     }
     if (availList.some(a => a.toLowerCase() === 'sold out' || a.toLowerCase() === 'out_of_stock')) {
       availabilityConditions.push({ $or: [{ stockQuantity: { $lte: 0 } }, { inStock: false }] });
@@ -201,16 +201,16 @@ const getAllWatches = async (req, res) => {
     console.log("[Watch Filter Debug] Generated MongoDB filter:", JSON.stringify(filter, null, 2));
 
     const sortOptions = {
-      newest: { createdAt: -1 },
-      oldest: { createdAt: 1 },
-      price_low_high: { salePrice: 1 },
-      price_high_low: { salePrice: -1 },
-      name_asc: { name: 1 },
-      name_desc: { name: -1 },
-      featured: { featured: -1, createdAt: -1 },
-      'best-seller': { sold: -1, createdAt: -1 },
-      rating: { rating: -1 },
-      discount: { discountPercentage: -1 }
+      newest: { inStock: -1, stockQuantity: -1, createdAt: -1 },
+      oldest: { inStock: -1, stockQuantity: -1, createdAt: 1 },
+      price_low_high: { inStock: -1, stockQuantity: -1, salePrice: 1 },
+      price_high_low: { inStock: -1, stockQuantity: -1, salePrice: -1 },
+      name_asc: { inStock: -1, stockQuantity: -1, name: 1 },
+      name_desc: { inStock: -1, stockQuantity: -1, name: -1 },
+      featured: { inStock: -1, stockQuantity: -1, featured: -1, createdAt: -1 },
+      'best-seller': { inStock: -1, stockQuantity: -1, sold: -1, createdAt: -1 },
+      rating: { inStock: -1, stockQuantity: -1, rating: -1 },
+      discount: { inStock: -1, stockQuantity: -1, discountPercentage: -1 }
     };
 
     const sort = sortOptions[sortBy] || sortOptions.newest;
@@ -267,16 +267,16 @@ const getWatchesByStyle = async (req, res) => {
     }
 
     const sortOptions = {
-      newest: { createdAt: -1 },
-      oldest: { createdAt: 1 },
-      price_low_high: { salePrice: 1 },
-      price_high_low: { salePrice: -1 },
-      name_asc: { name: 1 },
-      name_desc: { name: -1 },
-      featured: { featured: -1, createdAt: -1 },
-      'best-seller': { sold: -1, createdAt: -1 },
-      rating: { rating: -1 },
-      discount: { discountPercentage: -1 }
+      newest: { inStock: -1, stockQuantity: -1, createdAt: -1 },
+      oldest: { inStock: -1, stockQuantity: -1, createdAt: 1 },
+      price_low_high: { inStock: -1, stockQuantity: -1, salePrice: 1 },
+      price_high_low: { inStock: -1, stockQuantity: -1, salePrice: -1 },
+      name_asc: { inStock: -1, stockQuantity: -1, name: 1 },
+      name_desc: { inStock: -1, stockQuantity: -1, name: -1 },
+      featured: { inStock: -1, stockQuantity: -1, featured: -1, createdAt: -1 },
+      'best-seller': { inStock: -1, stockQuantity: -1, sold: -1, createdAt: -1 },
+      rating: { inStock: -1, stockQuantity: -1, rating: -1 },
+      discount: { inStock: -1, stockQuantity: -1, discountPercentage: -1 }
     };
 
     const sort = sortOptions[sortBy] || sortOptions.newest;
