@@ -21,6 +21,8 @@ const buildProductQuery = (queryParams) => {
         maxPrice,
         referenceNumber,
         type,
+        watchType,
+        watchStyle,
         dialColor,
         caseColor,
         strapColor,
@@ -117,7 +119,7 @@ const buildProductQuery = (queryParams) => {
     }
 
     // Type (Watch Type)
-    const typeList = normalizeArray(type);
+    const typeList = normalizeArray(type || watchType);
     if (typeList.length > 0) {
         andConditions.push({
             watchType: { $in: typeList.map((t) => new RegExp(escapeRegExp(t), "i")) },
@@ -207,6 +209,11 @@ const buildProductQuery = (queryParams) => {
     const movementList = normalizeArray(movement);
     if (movementList.length > 0) {
         andConditions.push({ movement: { $in: movementList.map(m => new RegExp(escapeRegExp(m), "i")) } });
+    }
+
+    const watchStyleList = normalizeArray(watchStyle);
+    if (watchStyleList.length > 0) {
+        andConditions.push({ watchStyle: { $in: watchStyleList.map(s => new RegExp(escapeRegExp(s), "i")) } });
     }
 
     // Leather Goods & Accessories Specific

@@ -144,7 +144,7 @@ const createStripeOrder = async (req, res) => {
         mode: "payment",
         success_url: `${process.env.CLIENT_URL || "https://www.montres.ae"}/checkout/verify?session_id={CHECKOUT_SESSION_ID}&orderId=${order._id}&payment=stripe`,
         cancel_url: `${process.env.CLIENT_URL || "https://www.montres.ae"}/checkout/cancel?orderId=${order._id}&payment=stripe`,
-        metadata: { orderId: order._id.toString(), userId: userId.toString() },
+        metadata: { orderId: order._id.toString(), userId: userId ? userId.toString() : "" },
       });
 
       order.stripeSessionId = session.id;
@@ -265,9 +265,10 @@ const getOrderById = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // ✅ SECURITY CHECK: Only allow the owner or an admin to view the order
+    // ✅ SECURITY CHECK: Allow owner, admin, or guest orders (order.userId is null/undefined)
     const isAdmin = req.admin || (req.user && req.user.isAdmin);
-    const isOwner = req.user && order.userId && order.userId.toString() === req.user.userId.toString();
+    const isGuestOrder = !order.userId;
+    const isOwner = isGuestOrder || (req.user && order.userId.toString() === req.user.userId.toString());
 
     if (!isOwner && !isAdmin) {
       return res.status(403).json({ message: "You are not authorized to view this order" });

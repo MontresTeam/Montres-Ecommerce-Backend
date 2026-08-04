@@ -112,6 +112,8 @@ const getProducts = async (req, res) => {
       isAdmin,
       // Advanced filters
       type,
+      watchType,
+      watchStyle,
       dialColor,
       caseColor,
       strapColor,
@@ -230,7 +232,7 @@ const getProducts = async (req, res) => {
     }
 
     // ✅ Type Filter (Watch Type)
-    const typeList = normalizeArray(type);
+    const typeList = normalizeArray(type || watchType);
     if (typeList.length > 0) {
       andConditions.push({
         watchType: { $in: typeList.map((t) => new RegExp(t, "i")) },
@@ -463,6 +465,14 @@ const getProducts = async (req, res) => {
     if (movementList.length > 0) {
       andConditions.push({
         movement: { $in: movementList.map((mov) => new RegExp(mov, "i")) },
+      });
+    }
+
+    // Watch Style Filter
+    const watchStyleList = normalizeArray(watchStyle);
+    if (watchStyleList.length > 0) {
+      andConditions.push({
+        watchStyle: { $in: watchStyleList.map((st) => new RegExp(st, "i")) },
       });
     }
 
@@ -714,10 +724,18 @@ const getProductById = async (req, res) => {
     } else {
       // Replace hyphens with a regex that matches spaces or hyphens
       const regexStr = id.replace(/-+/g, '[\\s-]+');
-      query = { name: { $regex: new RegExp(`^${regexStr}$`, 'i') } };
+      const slugBase = id.replace(/-[0-9a-f]{6}$/i, '');
+      query = {
+        $or: [
+          { slug: { $regex: new RegExp(`^${id}$`, 'i') } },
+          { slug: { $regex: new RegExp(`^${slugBase}(-[0-9a-f]{6})?$`, 'i') } },
+          { slug: { $regex: new RegExp(`^${slugBase}-`, 'i') } },
+          { name: { $regex: new RegExp(`^${regexStr}$`, 'i') } }
+        ]
+      };
     }
 
-    const product = await Product.findOne(query)
+    const products = await Product.find(query)
       .select(
         "brand model name sku referenceNumber serialNumber watchType watchStyle " +
         "scopeOfDelivery scopeOfDeliveryWatch productionYear gender movement " +
@@ -730,7 +748,16 @@ const getProductById = async (req, res) => {
         "suggested_offer_percentages acceptance_probability_rules auto_counter_offer_threshold " +
         "offer_expiration_time"
       )
+      .sort({ inStock: -1, stockQuantity: -1, createdAt: -1 })
       .lean();
+
+    if (!products || !products.length) {
+      return res.status(404).json({
+        message: "❌ Product not found",
+      });
+    }
+
+    const product = products.find((p) => (p.inStock === true || p.stockQuantity > 0)) || products[0];
 
     if (!product || !product.published) {
       return res.status(404).json({
@@ -746,7 +773,7 @@ const getProductById = async (req, res) => {
         product.images?.find((img) => img.type === "main")?.url ||
         product.images?.[0]?.url ||
         "",
-      available: product.stockQuantity > 0 || product.inStock,
+      available: (product.stockQuantity > 0 || product.inStock) && product.stockQuantity !== 0,
       discount:
         product.regularPrice &&
           product.salePrice &&
@@ -776,9 +803,15 @@ const getProductBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
 
-    // ✅ STEP 1: Get ALL products with same slug
+    // ✅ STEP 1: Get ALL products with same slug or matching base slug (handling auto-appended -ad5209 suffixes)
+    const slugBase = slug.replace(/-[0-9a-f]{6}$/i, "");
+
     const products = await Product.find({
-      slug: { $regex: new RegExp(`^${slug}$`, "i") },
+      $or: [
+        { slug: { $regex: new RegExp(`^${slug}$`, "i") } },
+        { slug: { $regex: new RegExp(`^${slugBase}(-[0-9a-f]{6})?$`, "i") } },
+        { slug: { $regex: new RegExp(`^${slugBase}-`, "i") } }
+      ],
       published: true
     })
       .sort({
@@ -794,18 +827,15 @@ const getProductBySlug = async (req, res) => {
       });
     }
 
-    // ✅ STEP 2: Smart selection
-    let selectedProduct = null;
-
-    // 1. Try in-stock first
-    selectedProduct = products.find(p => p.inStock || p.stockQuantity > 0);
+    // ✅ STEP 2: Smart selection - prioritize in-stock product
+    let selectedProduct = products.find(p => (p.inStock === true || p.stockQuantity > 0));
 
     // 2. If none in stock → fallback to first
     if (!selectedProduct) {
       selectedProduct = products[0];
     }
 
-    console.log("✅ Selected:", selectedProduct.referenceNumber || selectedProduct.sku);
+    console.log("✅ Selected:", selectedProduct.referenceNumber || selectedProduct.sku || selectedProduct.name);
 
     // ✅ STEP 3: Format
     const formattedProduct = {
@@ -815,7 +845,7 @@ const getProductBySlug = async (req, res) => {
         selectedProduct.images?.[0]?.url ||
         "",
       available:
-        selectedProduct.stockQuantity > 0 || selectedProduct.inStock,
+        (selectedProduct.stockQuantity > 0 || selectedProduct.inStock) && selectedProduct.stockQuantity !== 0,
     };
 
     return res.status(200).json({
@@ -828,7 +858,8 @@ const getProductBySlug = async (req, res) => {
         sku: p.sku,
         price: p.salePrice,
         inStock: p.inStock,
-        stockQuantity: p.stockQuantity
+        stockQuantity: p.stockQuantity,
+        slug: p.slug
       }))
     });
 
