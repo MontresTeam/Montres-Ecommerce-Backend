@@ -9,7 +9,7 @@ module.exports = function verifyToken (req,res, next) {
         return res.status(403).send({error:"No token Provided 🙆🏻‍♂️"})
     }
    
-    jwt.verify(token, process.env.USER_ACCES_TOKEN_SECRET,(err, decode) => {
+    jwt.verify(token, process.env.USER_ACCESS_TOKEN_SECRET, (err, decode) => {
                     // console.log(err,"hau");
         if(err) {    
            

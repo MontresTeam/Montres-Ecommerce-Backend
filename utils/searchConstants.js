@@ -20,6 +20,7 @@ const SEARCH_SELECT_FIELDS = [
   // Extra fields used by the frontend scorer / router
   "regularPrice",
   "salePrice",
+  "slug",
   "images",
   "leatherMainCategory",
   "subcategory",

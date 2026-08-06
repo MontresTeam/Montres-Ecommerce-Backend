@@ -2,13 +2,14 @@
 const Product = require('../models/product');
 const UserActivity = require('../models/UserActivity');
 
-const CARD_SELECT = "brand name regularPrice salePrice images category leatherMainCategory subcategory";
+const CARD_SELECT = "brand name slug regularPrice salePrice images category leatherMainCategory subcategory";
 const STOCK_FILTER = { published: true, $or: [{ stockQuantity: { $gt: 0 } }, { inStock: true }] };
 
 const toCard = (p) => ({
   _id: p._id,
   brand: p.brand ?? null,
   name: p.name,
+  slug: p.slug ?? null,
   regularPrice: p.regularPrice ?? 0,
   salePrice: p.salePrice ?? 0,
   image: p.images?.find((i) => i.type === "main")?.url ?? p.images?.[0]?.url ?? null,

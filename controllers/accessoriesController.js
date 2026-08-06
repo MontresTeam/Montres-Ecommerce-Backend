@@ -149,7 +149,7 @@ const getAccessoriesProducts = async (req, res) => {
     // Fetch products
     const products = await Product.find(filter)
       .select(
-        "name accessoryName accessoryCategory accessorySubCategory brand model images salePrice regularPrice retailPrice sellingPrice stockQuantity inStock condition itemCondition badges featured published createdAt updatedAt"
+        "name slug accessoryName accessoryCategory accessorySubCategory brand model images salePrice regularPrice retailPrice sellingPrice stockQuantity inStock condition itemCondition badges featured published createdAt updatedAt"
       )
       .skip(skip)
       .limit(limitNum)
