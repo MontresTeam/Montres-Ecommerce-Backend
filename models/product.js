@@ -831,13 +831,32 @@ productSchema.pre("save", async function () {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '');
 
-    // Ensure uniqueness internally, if a product with the same slug exists, append internal db ID fragment
+    // Ensure uniqueness internally, if a product with the same slug exists, append internal db ID fragment / ref number
     let targetSlug = slugBase;
     try {
-      const existing = await this.constructor.findOne({ slug: targetSlug, _id: { $ne: this._id } });
+      let existing = await this.constructor.findOne({ slug: targetSlug, _id: { $ne: this._id } });
       if (existing) {
-        targetSlug = `${slugBase}-${this._id.toString().substring(18)}`; // append last 6 chars of ID for internal uniqueness
+        const idSuffix = this._id ? this._id.toString().slice(-6) : Math.random().toString(36).slice(-6);
+        if (this.referenceNumber) {
+          const cleanRef = this.referenceNumber.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+          if (cleanRef && !slugBase.includes(cleanRef)) {
+            targetSlug = `${slugBase}-${cleanRef}-${idSuffix}`;
+          } else {
+            targetSlug = `${slugBase}-${idSuffix}`;
+          }
+        } else {
+          targetSlug = `${slugBase}-${idSuffix}`;
+        }
       }
+
+      // Ensure ultimate uniqueness
+      let counter = 1;
+      let checkSlug = targetSlug;
+      while (await this.constructor.findOne({ slug: checkSlug, _id: { $ne: this._id } })) {
+        checkSlug = `${targetSlug}-${counter}`;
+        counter++;
+      }
+      targetSlug = checkSlug;
     } catch (e) {
       console.error("Slug generation error", e);
     }

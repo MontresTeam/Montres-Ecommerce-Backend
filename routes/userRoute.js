@@ -11,6 +11,7 @@ const {
   googleLogin,
   googleSignup,
   facebookSignup,
+  getMe,
 } = require("../controllers/userController");
 const imageUploadUpdate = require("../config/ProfileUploadin");
 const {
@@ -44,6 +45,7 @@ router.get("/CurrencyAPI", currencyConver);
 router.post("/logout", logout);
 
 router.post("/profile/create", protect, imageUploadUpdate, createUserProfile);
+router.get("/me", protect, getMe);
 router.get("/profile/get", protect, getUserProfile);
 
 

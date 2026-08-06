@@ -1199,24 +1199,27 @@ const googleSignup = async (req, res) => {
     user.refreshToken = refreshToken;
     await user.save();
 
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+    };
+
     res
       .cookie("accessToken", accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        ...cookieOptions,
         maxAge: 15 * 60 * 1000,
-        path: "/",
       })
       .cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        ...cookieOptions,
         maxAge: 7 * 24 * 60 * 60 * 1000,
-        path: "/",
       })
       .status(200)
       .json({
         message: "Google login successful",
+        accessToken,
+        refreshToken,
         user: {
           id: user._id,
           name: user.name,
@@ -1278,24 +1281,27 @@ const facebookSignup = async (req, res) => {
     user.refreshToken = refreshToken;
     await user.save();
 
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+    };
+
     res
       .cookie("accessToken", newAccessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        ...cookieOptions,
         maxAge: 15 * 60 * 1000,
-        path: "/",
       })
       .cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        ...cookieOptions,
         maxAge: 7 * 24 * 60 * 60 * 1000,
-        path: "/",
       })
       .status(200)
       .json({
         message: "Facebook login/signup successful",
+        accessToken: newAccessToken,
+        refreshToken,
         user: {
           id: user._id,
           name: user.name,
@@ -1313,6 +1319,31 @@ const facebookSignup = async (req, res) => {
       .json({ message: "Facebook signup failed", error: error.message });
   }
 };
+
+const getMe = async (req, res) => {
+  try {
+    const user = await userModel.findById(req.user.userId).select("-password -refreshToken");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    return res.status(200).json({
+      message: "User fetched successfully",
+      user: {
+        id: user._id,
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        provider: user.provider,
+        shippingAddress: user.shippingAddress,
+        billingAddress: user.billingAddress,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
 // 🧹 Clear Cart
 const clearCart = async (req, res) => {
   try {
@@ -1358,5 +1389,6 @@ module.exports = {
   currencyConver,
   googleSignup,
   facebookSignup,
-  clearCart
+  clearCart,
+  getMe
 };

@@ -717,49 +717,46 @@ const getAllBrands = async (req, res) => {
 const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    let query;
-    if (mongoose.Types.ObjectId.isValid(id)) {
-      query = { _id: id };
-    } else {
-      // Replace hyphens with a regex that matches spaces or hyphens
-      const regexStr = id.replace(/-+/g, '[\\s-]+');
-      const slugBase = id.replace(/-[0-9a-f]{6}$/i, '');
-      query = {
-        $or: [
-          { slug: { $regex: new RegExp(`^${id}$`, 'i') } },
-          { slug: { $regex: new RegExp(`^${slugBase}(-[0-9a-f]{6})?$`, 'i') } },
-          { slug: { $regex: new RegExp(`^${slugBase}-`, 'i') } },
-          { name: { $regex: new RegExp(`^${regexStr}$`, 'i') } }
-        ]
-      };
+    if (!id) {
+      return res.status(400).json({ message: "❌ Product ID or slug required" });
     }
 
-    const products = await Product.find(query)
-      .select(
-        "brand model name sku referenceNumber serialNumber watchType watchStyle " +
-        "scopeOfDelivery scopeOfDeliveryWatch productionYear gender movement " +
-        "dialColor caseMaterial strapMaterial strapColor dialNumerals " +
-        "salePrice regularPrice stockQuantity taxStatus strapSize caseSize " +
-        "includedAccessories condition itemCondition category description " +
-        "slug visibility published featured inStock badges images createdAt updatedAt " +
-        "waterResistance complications crystal limitedEdition " +
-        "make_offer_enabled minimum_offer_type minimum_offer_percentage minimum_offer_amount " +
-        "suggested_offer_percentages acceptance_probability_rules auto_counter_offer_threshold " +
-        "offer_expiration_time"
-      )
-      .sort({ inStock: -1, stockQuantity: -1, createdAt: -1 })
-      .lean();
+    const cleanId = id.trim();
+    let product = null;
 
-    if (!products || !products.length) {
-      return res.status(404).json({
-        message: "❌ Product not found",
-      });
+    // STEP 1: ObjectId lookup
+    if (mongoose.Types.ObjectId.isValid(cleanId)) {
+      product = await Product.findOne({ _id: cleanId, published: true }).lean();
     }
 
-    const product = products.find((p) => (p.inStock === true || p.stockQuantity > 0)) || products[0];
+    // STEP 2: Exact slug lookup
+    if (!product) {
+      const escapedSlug = cleanId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      product = await Product.findOne({
+        slug: { $regex: new RegExp(`^${escapedSlug}$`, 'i') },
+        published: true
+      }).lean();
+    }
 
-    if (!product || !product.published) {
+    // STEP 3: Mongo ObjectId embedded in slug (24 hex chars)
+    if (!product) {
+      const mongoIdMatch = cleanId.match(/([a-fA-F0-9]{24})/);
+      if (mongoIdMatch && mongoose.Types.ObjectId.isValid(mongoIdMatch[1])) {
+        product = await Product.findOne({ _id: mongoIdMatch[1], published: true }).lean();
+      }
+    }
+
+    // STEP 4: 6-char hex ID suffix match (e.g. -7473d6)
+    if (!product) {
+      const hexSuffixMatch = cleanId.match(/-([a-fA-F0-9]{6})$/i);
+      if (hexSuffixMatch) {
+        const hexSuffix = hexSuffixMatch[1].toLowerCase();
+        const candidates = await Product.find({ published: true }).lean();
+        product = candidates.find(p => p._id.toString().toLowerCase().endsWith(hexSuffix));
+      }
+    }
+
+    if (!product) {
       return res.status(404).json({
         message: "❌ Product not found",
       });
@@ -802,57 +799,74 @@ const getProductById = async (req, res) => {
 const getProductBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
+    if (!slug) {
+      return res.status(400).json({ message: "❌ Slug parameter required" });
+    }
 
-    // ✅ STEP 1: Get ALL products with same slug or matching base slug (handling auto-appended -ad5209 suffixes)
-    const slugBase = slug.replace(/-[0-9a-f]{6}$/i, "");
+    const cleanSlug = slug.trim();
+    const escapedSlug = cleanSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    const products = await Product.find({
-      $or: [
-        { slug: { $regex: new RegExp(`^${slug}$`, "i") } },
-        { slug: { $regex: new RegExp(`^${slugBase}(-[0-9a-f]{6})?$`, "i") } },
-        { slug: { $regex: new RegExp(`^${slugBase}-`, "i") } }
-      ],
+    // STEP 1: Exact slug lookup (case-insensitive)
+    let product = await Product.findOne({
+      slug: { $regex: new RegExp(`^${escapedSlug}$`, "i") },
       published: true
-    })
-      .sort({
-        inStock: -1,       // ✅ available first
-        stockQuantity: -1, // ✅ extra safety
-        createdAt: -1      // ✅ newest first
-      })
-      .lean();
+    }).lean();
 
-    if (!products.length) {
+    // STEP 2: Mongo ObjectId lookup fallback if slug is/contains 24-char ObjectId
+    if (!product) {
+      const mongoIdMatch = cleanSlug.match(/([a-fA-F0-9]{24})/);
+      if (mongoIdMatch && mongoose.Types.ObjectId.isValid(mongoIdMatch[1])) {
+        product = await Product.findOne({ _id: mongoIdMatch[1], published: true }).lean();
+      }
+    }
+
+    // STEP 3: If slug ends with 6-char hex ID suffix (e.g. -7473d6), match product _id ending
+    if (!product) {
+      const hexSuffixMatch = cleanSlug.match(/-([a-fA-F0-9]{6})$/i);
+      if (hexSuffixMatch) {
+        const hexSuffix = hexSuffixMatch[1].toLowerCase();
+        const candidates = await Product.find({ published: true }).lean();
+        product = candidates.find(p => p._id.toString().toLowerCase().endsWith(hexSuffix));
+      }
+    }
+
+    // STEP 4: Case-exact DB slug fallback
+    if (!product) {
+      product = await Product.findOne({ slug: cleanSlug }).lean();
+    }
+
+    if (!product) {
       return res.status(404).json({
         message: "❌ Product not found"
       });
     }
 
-    // ✅ STEP 2: Smart selection - prioritize in-stock product
-    let selectedProduct = products.find(p => (p.inStock === true || p.stockQuantity > 0));
+    console.log("✅ getProductBySlug matched product:", product._id, product.name, "Ref:", product.referenceNumber);
 
-    // 2. If none in stock → fallback to first
-    if (!selectedProduct) {
-      selectedProduct = products[0];
-    }
-
-    console.log("✅ Selected:", selectedProduct.referenceNumber || selectedProduct.sku || selectedProduct.name);
-
-    // ✅ STEP 3: Format
+    // STEP 5: Format response
     const formattedProduct = {
-      ...selectedProduct,
+      ...product,
       image:
-        selectedProduct.images?.find(img => img.type === "main")?.url ||
-        selectedProduct.images?.[0]?.url ||
+        product.images?.find(img => img.type === "main")?.url ||
+        product.images?.[0]?.url ||
         "",
       available:
-        (selectedProduct.stockQuantity > 0 || selectedProduct.inStock) && selectedProduct.stockQuantity !== 0,
+        (product.stockQuantity > 0 || product.inStock) && product.stockQuantity !== 0,
     };
+
+    // Find other variants with same brand/model if applicable
+    const variants = await Product.find({
+      brand: product.brand,
+      model: product.model,
+      _id: { $ne: product._id },
+      published: true
+    })
+      .limit(10)
+      .lean();
 
     return res.status(200).json({
       product: formattedProduct,
-
-      // 🔥 IMPORTANT: send all variants
-      variants: products.map(p => ({
+      variants: [product, ...variants].map(p => ({
         _id: p._id,
         referenceNumber: p.referenceNumber,
         sku: p.sku,
@@ -864,7 +878,7 @@ const getProductBySlug = async (req, res) => {
     });
 
   } catch (err) {
-    console.error(err);
+    console.error("❌ Error fetching product by slug:", err);
     return res.status(500).json({
       message: "❌ Server error"
     });
@@ -1072,7 +1086,7 @@ const getBrandWatches = async (req, res) => {
 
     const products = await Product.find(filterQuery)
       .select(
-        "brand model name sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery scopeOfDeliveryWatch " +
+        "brand model name slug sku referenceNumber serialNumber watchType watchStyle scopeOfDelivery scopeOfDeliveryWatch " +
         "productionYear gender movement dialColor caseMaterial strapMaterial strapColor dialNumerals " +
         "salePrice regularPrice stockQuantity taxStatus strapSize caseSize includedAccessories " +
         "condition itemCondition category description visibility published featured inStock " +
@@ -1532,12 +1546,27 @@ const getRecommendations = async (cartItems, limit = 4) => {
   try {
     const cartProductIds = cartItems.map((item) => item.productId);
 
+    const projectFields = {
+      name: 1,
+      brand: 1,
+      slug: 1,
+      category: 1,
+      subCategory: 1,
+      subcategory: 1,
+      leatherMainCategory: 1,
+      images: 1,
+      salePrice: 1,
+      regularPrice: 1,
+      inStock: 1,
+      stockQuantity: 1,
+    };
+
     if (cartProductIds.length === 0) {
       // Fallback: random watches
       return Product.aggregate([
         { $match: { categorisOne: "watch" } },
         { $sample: { size: limit } },
-        { $project: { name: 1, images: 1, salePrice: 1, regularPrice: 1 } },
+        { $project: projectFields },
       ]);
     }
 
@@ -1566,7 +1595,7 @@ const getRecommendations = async (cartItems, limit = 4) => {
         },
       },
       { $sample: { size: limit } }, // random selection for variety
-      { $project: { name: 1, images: 1, salePrice: 1, regularPrice: 1 } },
+      { $project: projectFields },
     ]);
 
     // If not enough recommendations, fallback to random watches
@@ -1574,7 +1603,7 @@ const getRecommendations = async (cartItems, limit = 4) => {
       return Product.aggregate([
         { $match: { categorisOne: "watch" } },
         { $sample: { size: limit } },
-        { $project: { name: 1, images: 1, salePrice: 1, regularPrice: 1 } },
+        { $project: projectFields },
       ]);
     }
 
@@ -1754,7 +1783,7 @@ const getLimitedEditionProducts = async (req, res) => {
       stockQuantity: { $gt: 0 },
     })
       .select(
-        "brand name regularPrice salePrice images category leatherMainCategory subCategory inStock stockQuantity"
+        "brand name slug regularPrice salePrice images category leatherMainCategory subCategory inStock stockQuantity"
       )
       .lean();
 
@@ -1762,6 +1791,7 @@ const getLimitedEditionProducts = async (req, res) => {
       _id: p._id,
       brand: p.brand ?? null,
       name: p.name,
+      slug: p.slug ?? null,
       regularPrice: p.regularPrice ?? 0,
       salePrice: p.salePrice ?? 0,
       image: p.images?.[0]?.url ?? null,

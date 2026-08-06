@@ -43,12 +43,28 @@ const getUserProfile = async (req, res) => {
   try {
     const { userId } = req.user;
 
-    const profile = await ProfileModal.findById(userId);
+    let profile = await ProfileModal.findById(userId);
     if (!profile) {
+      const User = require("../models/UserModel");
+      const userDoc = await User.findById(userId);
+      if (!userDoc) {
+        return res.status(404).json({
+          message: "User not found",
+          user: null,
+          orderCount: 0
+        });
+      }
       return res.status(200).json({
-        message: "Profile not found",
-        user: null,
-        orderCount: 0
+        message: "Profile fetched successfully",
+        user: {
+          _id: userDoc._id,
+          name: userDoc.name,
+          email: userDoc.email,
+          profilePicture: userDoc.avatar || "",
+          phone: userDoc.shippingAddress?.phone || "",
+          address: userDoc.shippingAddress?.address1 || ""
+        },
+        orderCount: userDoc.myOrders ? userDoc.myOrders.length : 0
       });
     }
 
