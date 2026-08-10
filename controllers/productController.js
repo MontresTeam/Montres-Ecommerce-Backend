@@ -155,28 +155,99 @@ const getProducts = async (req, res) => {
     const filterQuery = (isAdmin === "true" || isAdmin === true) ? {} : { published: true };
     const andConditions = [];
 
-    // ✅ Search Filter
-    if (search) {
-      const searchRegex = new RegExp(search.trim(), "i");
-      if (searchField && searchField !== "all") {
+    // ✅ Smart Multi-Token Search Filter
+    if (search && String(search).trim()) {
+      const escapeRegExp = (string) =>
+        string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      const cleanSearch = String(search).trim();
+      const tokens = cleanSearch
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0)
+        .map((t) => escapeRegExp(t));
+
+      if (searchField === "price") {
+        const clean = cleanSearch.replace(/,/g, "").replace(/aed/gi, "").trim();
+        if (clean.includes("-")) {
+          const [minStr, maxStr] = clean.split("-");
+          const min = parseFloat(minStr ? minStr.trim() : "");
+          const max = parseFloat(maxStr ? maxStr.trim() : "");
+          const cond = {};
+          if (!isNaN(min)) cond.$gte = min;
+          if (!isNaN(max)) cond.$lte = max;
+          if (Object.keys(cond).length > 0) {
+            andConditions.push({
+              $or: [{ salePrice: cond }, { regularPrice: cond }],
+            });
+          }
+        } else if (clean.startsWith("<") || clean.toLowerCase().startsWith("under") || clean.toLowerCase().startsWith("below")) {
+          const val = parseFloat(clean.replace(/[<a-zA-Z]/g, "").trim());
+          if (!isNaN(val)) {
+            andConditions.push({
+              $or: [{ salePrice: { $lte: val } }, { regularPrice: { $lte: val } }],
+            });
+          }
+        } else if (clean.startsWith(">") || clean.toLowerCase().startsWith("above") || clean.toLowerCase().startsWith("over")) {
+          const val = parseFloat(clean.replace(/[>a-zA-Z]/g, "").trim());
+          if (!isNaN(val)) {
+            andConditions.push({
+              $or: [{ salePrice: { $gte: val } }, { regularPrice: { $gte: val } }],
+            });
+          }
+        } else {
+          const val = parseFloat(clean);
+          if (!isNaN(val)) {
+            const min = Math.max(0, Math.floor(val * 0.85));
+            const max = Math.ceil(val * 1.15);
+            andConditions.push({
+              $or: [
+                { salePrice: { $gte: min, $lte: max } },
+                { regularPrice: { $gte: min, $lte: max } },
+              ],
+            });
+          }
+        }
+      } else if (searchField && searchField !== "all") {
         const fieldMap = {
           name: "name",
           sku: "sku",
           brand: "brand",
           model: "model",
           ref: "referenceNumber",
+          referenceNumber: "referenceNumber",
+          serialNumber: "serialNumber",
         };
         const targetField = fieldMap[searchField] || searchField;
-        andConditions.push({ [targetField]: searchRegex });
+
+        // Each token must match the specified field
+        tokens.forEach((tok) => {
+          andConditions.push({ [targetField]: new RegExp(tok, "i") });
+        });
       } else {
-        andConditions.push({
-          $or: [
-            { name: searchRegex },
-            { sku: searchRegex },
-            { brand: searchRegex },
-            { model: searchRegex },
-            { referenceNumber: searchRegex },
-          ],
+        // Universal search: Each token must match AT LEAST ONE product attribute
+        tokens.forEach((tok) => {
+          const tokenRegex = new RegExp(tok, "i");
+          andConditions.push({
+            $or: [
+              { name: tokenRegex },
+              { brand: tokenRegex },
+              { model: tokenRegex },
+              { additionalTitle: tokenRegex },
+              { sku: tokenRegex },
+              { referenceNumber: tokenRegex },
+              { serialNumber: tokenRegex },
+              { category: tokenRegex },
+              { watchType: tokenRegex },
+              { watchStyle: tokenRegex },
+              { accessoryCategory: tokenRegex },
+              { accessorySubCategory: tokenRegex },
+              { leatherMainCategory: tokenRegex },
+              { leatherSubCategory: tokenRegex },
+              { description: tokenRegex },
+              { seoKeywords: tokenRegex },
+            ],
+          });
         });
       }
     }

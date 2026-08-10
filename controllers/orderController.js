@@ -6,6 +6,7 @@ const { calculateShippingFee } = require("../utils/shippingCalculator");
 const { getTamaraOrderStatus, captureTamaraPayment, refundTamaraPayment } = require("./tamaraController");
 const { refundTabbyPayment } = require("./tabbyController");
 const sendOrderConfirmation = require("../utils/sendOrderConfirmation");
+const { sendShipmentTrackingEmail } = require("../services/emailService");
 const User = require("../models/UserModel");
 const stripePkg = require("stripe");
 const axios = require("axios");
@@ -265,10 +266,15 @@ const getOrderById = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // ✅ SECURITY CHECK: Allow owner, admin, or guest orders (order.userId is null/undefined)
+    // ✅ SECURITY CHECK: Allow lookup by custom reference orderId (e.g. tabby_..., tamara_..., checkout success pages),
+    // or if the requester is the owner, admin, or if it's a guest order
+    const isReferenceIdLookup = !!(order.orderId && order.orderId === id) ||
+      !!(order.tabbySessionId && order.tabbySessionId === id) ||
+      !!(order.stripeSessionId && order.stripeSessionId === id) ||
+      !!(order.tamaraOrderId && order.tamaraOrderId === id);
     const isAdmin = req.admin || (req.user && req.user.isAdmin);
     const isGuestOrder = !order.userId;
-    const isOwner = isGuestOrder || (req.user && order.userId.toString() === req.user.userId.toString());
+    const isOwner = isGuestOrder || isReferenceIdLookup || (req.user && order.userId && order.userId.toString() === req.user.userId.toString());
 
     if (!isOwner && !isAdmin) {
       return res.status(403).json({ message: "You are not authorized to view this order" });
@@ -277,7 +283,7 @@ const getOrderById = async (req, res) => {
     // ==================================================
     // SELF-HEALING: If pending Tamara, check live status
     // ==================================================
-    if (order.paymentMethod === "tamara" && order.paymentStatus === "pending" && order.tamaraOrderId) {
+    if (order.paymentMethod === "tamara" && (order.paymentStatus === "pending" || order.paymentStatus === "authorized") && order.tamaraOrderId) {
       console.log(`🔍 Self-healing: Checking live status for Tamara Order ${order.tamaraOrderId}`);
       const tamaraData = await getTamaraOrderStatus(order.tamaraOrderId);
       
@@ -381,60 +387,116 @@ const getOrderById = async (req, res) => {
     else if (order.paymentMethod === "tabby" && order.paymentStatus === "pending" && order.tabbySessionId) {
       console.log(`🔍 Self-healing: Checking live Tabby payment ${order.tabbySessionId}`);
       try {
-        const tabbyRes = await axios.get(
-          `${TABBY_BASE}/payments/${order.tabbySessionId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
-              "Content-Type": "application/json"
-            },
-            timeout: 8000
-          }
-        );
+        let tabbyData = null;
+        let paymentId = order.tabbySessionId;
 
-        const tabbyStatus = (tabbyRes.data?.status || "").toLowerCase();
-        const isConfirmed = ["closed", "captured", "authorized"].includes(tabbyStatus);
-
-        if (isConfirmed) {
-          console.log(`✅ Tabby payment ${order.tabbySessionId} is ${tabbyStatus}. Syncing DB...`);
-
-          // Atomic update — safe if webhook arrives simultaneously
-          const updatedOrder = await Order.findOneAndUpdate(
-            { _id: order._id, paymentStatus: "pending" },
+        // Try /payments/{id} first
+        try {
+          const tabbyRes = await axios.get(
+            `${TABBY_BASE}/payments/${order.tabbySessionId}`,
             {
-              $set: {
-                paymentStatus: tabbyStatus === "authorized" ? "authorized" : "paid",
-                orderStatus: "Paid / Awaiting Shipment",
-                paidAt: tabbyStatus !== "authorized" ? new Date() : undefined
-              }
-            },
-            { new: true }
-          ).lean();
-
-          if (updatedOrder) {
-            order = updatedOrder;
-            // Background tasks — fire-and-forget
-            if (order.userId) {
-              User.findByIdAndUpdate(order.userId, {
-                $set: { cart: [] },
-                $addToSet: { orders: order._id }
-              }).catch(e => console.error("User sync error:", e.message));
+              headers: {
+                Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+                "Content-Type": "application/json"
+              },
+              timeout: 8000
             }
-            if (tabbyStatus !== "authorized") {
+          );
+          tabbyData = tabbyRes.data;
+        } catch (payErr) {
+          // If 404, try /checkout/{id} in case tabbySessionId is a checkout session id
+          if (payErr.response?.status === 404) {
+            try {
+              const chkRes = await axios.get(
+                `${TABBY_BASE}/checkout/${order.tabbySessionId}`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+                    "Content-Type": "application/json"
+                  },
+                  timeout: 8000
+                }
+              );
+              tabbyData = chkRes.data?.payment || chkRes.data;
+              if (chkRes.data?.payment?.id) {
+                paymentId = chkRes.data.payment.id;
+              }
+            } catch (chkErr) {
+              console.warn(`⚠️ Tabby checkout lookup fallback failed: ${chkErr.message}`);
+            }
+          }
+        }
+
+        if (tabbyData) {
+          const tabbyStatus = (tabbyData.status || "").toLowerCase();
+          const isConfirmed = ["closed", "captured", "authorized"].includes(tabbyStatus);
+
+          if (isConfirmed) {
+            console.log(`✅ Tabby payment ${order.tabbySessionId} is ${tabbyStatus}. Syncing DB to PAID...`);
+
+            let captureId = null;
+            // If authorized, trigger capture
+            if (tabbyStatus === "authorized" && paymentId) {
+              try {
+                const captureDecimals = ["KWD", "BHD", "OMR"].includes(order.currency?.toUpperCase()) ? 3 : 2;
+                const capRes = await axios.post(
+                  `${TABBY_BASE}/payments/${paymentId}/captures`,
+                  { amount: String(Number(order.total || 0).toFixed(captureDecimals)) },
+                  {
+                    headers: {
+                      Authorization: `Bearer ${process.env.TABBY_SECRET_KEY}`,
+                      "Content-Type": "application/json"
+                    },
+                    timeout: 8000
+                  }
+                );
+                captureId = capRes.data?.id;
+                console.log(`✅ Tabby payment captured: ${captureId}`);
+              } catch (capErr) {
+                console.warn(`Self-healing capture note: ${capErr.message}`);
+              }
+            }
+
+            // Atomic update to PAID
+            const updatedOrder = await Order.findOneAndUpdate(
+              { _id: order._id, paymentStatus: "pending" },
+              {
+                $set: {
+                  paymentStatus: "paid",
+                  orderStatus: "Paid / Awaiting Shipment",
+                  tabbySessionId: paymentId,
+                  ...(captureId ? { tabbyCaptureId: captureId } : {}),
+                  paidAt: new Date()
+                }
+              },
+              { new: true }
+            ).lean();
+
+            if (updatedOrder) {
+              order = updatedOrder;
+              // Background tasks — fire-and-forget
+              if (order.userId) {
+                User.findByIdAndUpdate(order.userId, {
+                  $set: { cart: [] },
+                  $addToSet: { orders: order._id }
+                }).catch(e => console.error("User sync error:", e.message));
+              }
               sendOrderConfirmation(order._id)
                 .catch(e => console.error("Email error:", e.message));
+            } else {
+              // Webhook already processed this — re-read fresh state
+              const freshOrder = await Order.findById(order._id).lean();
+              if (freshOrder) order = freshOrder;
             }
-          } else {
-            // Webhook already processed this — re-read fresh state
-            const freshOrder = await Order.findById(order._id).lean();
-            if (freshOrder) order = freshOrder;
-          }
 
-        } else if (["failed", "expired", "rejected", "canceled", "cancelled"].includes(tabbyStatus)) {
-          console.log(`❌ Tabby payment ${order.tabbySessionId} is ${tabbyStatus}. Marking FAILED.`);
-          await Order.findByIdAndUpdate(order._id, { $set: { paymentStatus: "failed", orderStatus: "Cancelled" } });
-          order.paymentStatus = "failed";
-          order.orderStatus = "Cancelled";
+          } else if (["failed", "expired", "rejected", "canceled", "cancelled"].includes(tabbyStatus)) {
+            if (!tabbyData.payment || ["failed", "expired", "rejected", "canceled", "cancelled"].includes((tabbyData.payment?.status || "").toLowerCase())) {
+              console.log(`❌ Tabby payment ${order.tabbySessionId} is ${tabbyStatus}. Marking FAILED.`);
+              await Order.findByIdAndUpdate(order._id, { $set: { paymentStatus: "failed", orderStatus: "Cancelled" } });
+              order.paymentStatus = "failed";
+              order.orderStatus = "Cancelled";
+            }
+          }
         }
       } catch (tabbyErr) {
         // Never crash the order lookup if Tabby API is temporarily unavailable
@@ -589,6 +651,136 @@ const refundOrder = async (req, res) => {
   }
 };
 
+/**
+ * 🚚 Update Order Logistics (Status, Tracking Number, Delivery Date, Courier)
+ * Supports automated email notification trigger to customer
+ */
+const updateOrderLogistics = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      orderStatus,
+      trackingNumber,
+      courierName,
+      trackingUrl,
+      estimatedDeliveryDate,
+      deliveryNotes,
+      sendEmailNotification = false,
+      customNote = "",
+      shippedAt,
+      delivered_at,
+      deliveredAt
+    } = req.body;
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    if (orderStatus !== undefined) {
+      order.orderStatus = orderStatus;
+      if ((orderStatus === "Shipped" || orderStatus === "shipped" || orderStatus === "In Transit") && !order.shippedAt) {
+        order.shippedAt = shippedAt || new Date();
+      }
+      if ((orderStatus === "Delivered" || orderStatus === "delivered" || orderStatus === "Completed") && !order.delivered_at) {
+        order.delivered_at = delivered_at || deliveredAt || new Date();
+      }
+    }
+
+    if (trackingNumber !== undefined) order.trackingNumber = trackingNumber;
+    if (courierName !== undefined) order.courierName = courierName;
+    if (trackingUrl !== undefined) order.trackingUrl = trackingUrl;
+    if (estimatedDeliveryDate !== undefined) order.estimatedDeliveryDate = estimatedDeliveryDate;
+    if (deliveryNotes !== undefined) order.deliveryNotes = deliveryNotes;
+    if (shippedAt !== undefined) order.shippedAt = shippedAt;
+    if (delivered_at !== undefined || deliveredAt !== undefined) {
+      order.delivered_at = delivered_at || deliveredAt;
+    }
+
+    let emailResult = null;
+    // Send email notification if requested
+    if (sendEmailNotification) {
+      try {
+        emailResult = await sendShipmentTrackingEmail(order, {
+          trackingNumber: order.trackingNumber,
+          courierName: order.courierName,
+          trackingUrl: order.trackingUrl,
+          estimatedDeliveryDate: order.estimatedDeliveryDate,
+          customNote,
+          status: order.orderStatus,
+        });
+        order.emailNotificationSent = true;
+        order.lastNotificationSentAt = new Date();
+      } catch (emailErr) {
+        console.error("⚠️ Failed to send shipment tracking email:", emailErr.message);
+      }
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Order logistics updated successfully",
+      order,
+      emailSent: !!emailResult?.success
+    });
+  } catch (error) {
+    console.error("Update Order Logistics Error:", error);
+    return res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+/**
+ * 📧 Send / Resend Tracking Notification Email on Demand
+ */
+const sendOrderTrackingEmail = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      trackingNumber,
+      courierName,
+      trackingUrl,
+      estimatedDeliveryDate,
+      customNote = "",
+      status
+    } = req.body;
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    // Update fields if provided in email payload
+    if (trackingNumber) order.trackingNumber = trackingNumber;
+    if (courierName) order.courierName = courierName;
+    if (trackingUrl) order.trackingUrl = trackingUrl;
+    if (estimatedDeliveryDate) order.estimatedDeliveryDate = estimatedDeliveryDate;
+
+    const emailResult = await sendShipmentTrackingEmail(order, {
+      trackingNumber: order.trackingNumber,
+      courierName: order.courierName,
+      trackingUrl: order.trackingUrl,
+      estimatedDeliveryDate: order.estimatedDeliveryDate,
+      customNote,
+      status: status || order.orderStatus,
+    });
+
+    order.emailNotificationSent = true;
+    order.lastNotificationSentAt = new Date();
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Shipment tracking notification email sent successfully",
+      emailResult,
+      order
+    });
+  } catch (error) {
+    console.error("Send Order Tracking Email Error:", error);
+    return res.status(500).json({ success: false, message: "Failed to send tracking email", error: error.message });
+  }
+};
+
 module.exports = {
   createStripeOrder,
   getOrderById,
@@ -605,4 +797,6 @@ module.exports = {
   calculateShipping,
   deleteOrder,
   refundOrder,
+  updateOrderLogistics,
+  sendOrderTrackingEmail,
 };

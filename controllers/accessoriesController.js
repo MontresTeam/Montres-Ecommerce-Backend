@@ -433,19 +433,9 @@ const createAccessory = async (req, res) => {
 
 
 
-    if (!data.brand || data.brand.trim() === "") {
-      return res.status(400).json({
-        success: false,
-        message: "Brand is required.",
-      });
-    }
-
-    if (!data.model || data.model.trim() === "") {
-      return res.status(400).json({
-        success: false,
-        message: "Model is required.",
-      });
-    }
+    // Brand and Model are optional for accessories
+    const brandValue = data.brand ? data.brand.trim() : "";
+    const modelValue = data.model ? data.model.trim() : "";
 
     // -----------------------------
     // 2. SKU VALIDATION (unique inside category)
@@ -469,7 +459,7 @@ const createAccessory = async (req, res) => {
     // -----------------------------
     const productName = data.name?.trim()
       ? data.name.trim()
-      : `${data.brand.trim()} ${data.model.trim()}`.trim();
+      : `${brandValue} ${modelValue}`.trim() || data.accessoryCategory || "Luxury Accessory";
 
     // -----------------------------
     // 4. PRODUCTION YEAR LOGIC
@@ -504,8 +494,8 @@ const createAccessory = async (req, res) => {
     const newAccessory = new Product({
       // BASIC
       name: productName,
-      brand: data.brand.trim(),
-      model: data.model.trim(),
+      brand: brandValue,
+      model: modelValue,
       sku: data.sku ? data.sku.trim() : "",
       category: "Accessories",
 
@@ -610,20 +600,12 @@ const updateAccessory = async (req, res) => {
       });
     }
 
-    if (existingProduct.category !== "Accessories") {
-      return res.status(400).json({
-        success: false,
-        message: "Product is not an accessory",
-      });
-    }
-
     // Handle FormData or JSON body
     let updateData = {};
 
-    // Check if it's FormData (has 'data' field with JSON string)
     if (req.body.data) {
       try {
-        updateData = JSON.parse(req.body.data);
+        updateData = typeof req.body.data === 'string' ? JSON.parse(req.body.data) : req.body.data;
       } catch (parseError) {
         return res.status(400).json({
           success: false,
@@ -632,10 +614,25 @@ const updateAccessory = async (req, res) => {
       }
     } else {
       // Regular JSON request
-      updateData = req.body;
+      updateData = req.body || {};
     }
 
-    console.log("Update data received:", updateData);
+    // Ensure category is set to Accessories
+    updateData.category = "Accessories";
+
+    console.log("Update accessory data received:", updateData);
+
+    // ============================================
+    // CLEAN EMPTY ENUM FIELDS (to avoid Mongoose ValidationError)
+    // ============================================
+    const enumFields = [
+      'accessoryCategory', 'accessorySubCategory', 'condition', 'itemCondition', 'gender', 'taxStatus'
+    ];
+    enumFields.forEach(field => {
+      if (updateData[field] === "" || updateData[field] === null || updateData[field] === undefined) {
+        delete updateData[field];
+      }
+    });
 
     // ============================================
     // IMAGE HANDLING (AWS S3)
@@ -679,16 +676,17 @@ const updateAccessory = async (req, res) => {
     });
 
     // Convert numeric fields
-    if (updateData.regularPrice) {
-      updateData.regularPrice = parseFloat(updateData.regularPrice);
+    if (updateData.regularPrice !== undefined && updateData.regularPrice !== null && updateData.regularPrice !== "") {
+      updateData.regularPrice = parseFloat(updateData.regularPrice) || 0;
     }
 
-    if (updateData.salePrice) {
-      updateData.salePrice = parseFloat(updateData.salePrice);
+    if (updateData.salePrice !== undefined && updateData.salePrice !== null && updateData.salePrice !== "") {
+      updateData.salePrice = parseFloat(updateData.salePrice) || 0;
     }
 
-    if (updateData.stockQuantity) {
-      updateData.stockQuantity = parseInt(updateData.stockQuantity);
+    if (updateData.stockQuantity !== undefined && updateData.stockQuantity !== null && updateData.stockQuantity !== "") {
+      const parsedStock = parseInt(updateData.stockQuantity, 10);
+      updateData.stockQuantity = isNaN(parsedStock) ? 0 : Math.max(0, parsedStock);
     }
 
     // Set default sale price if not provided
@@ -724,6 +722,8 @@ const updateAccessory = async (req, res) => {
     // STOCK STATUS
     // ============================================
     if ('stockQuantity' in updateData) {
+      const sq = parseInt(updateData.stockQuantity, 10);
+      updateData.stockQuantity = isNaN(sq) ? 0 : Math.max(0, sq);
       updateData.inStock = updateData.stockQuantity > 0;
     }
 
@@ -767,7 +767,6 @@ const updateAccessory = async (req, res) => {
       { $set: updateData },
       {
         new: true,
-        runValidators: true,
       }
     );
 
@@ -791,7 +790,7 @@ const updateAccessory = async (req, res) => {
 
     // Duplicate key error
     if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern)[0];
+      const field = Object.keys(error.keyPattern || {})[0] || "Field";
       return res.status(400).json({
         success: false,
         message: `Duplicate entry found. ${field} already exists.`,
@@ -800,10 +799,11 @@ const updateAccessory = async (req, res) => {
 
     // Validation errors
     if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err) => err.message);
+      const errors = Object.values(error.errors || {}).map((err) => err.message);
       return res.status(400).json({
         success: false,
-        message: "Validation error",
+        message: errors.join(", ") || "Validation error",
+        error: errors.join(", ") || "Validation error",
         errors,
       });
     }
@@ -811,7 +811,7 @@ const updateAccessory = async (req, res) => {
     // Server error
     res.status(500).json({
       success: false,
-      message: "Server error, could not update accessory",
+      message: error.message || "Server error, could not update accessory",
       error: error.message,
     });
   }

@@ -49,6 +49,7 @@ const pushRoutes = require("./routes/pushRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const categoryRoutes = require('./routes/categoryRoutes');
 const engagementRoutes = require('./routes/engagementRoutes');
+const shipmentRoute = require('./routes/ShippmentRoute');
 
 
 const http = require('http');
@@ -119,6 +120,7 @@ app.use("/api/tamara", tamaraRouter);
 app.use("/api/contact", contactRoutes);
 app.use("/api/admin/order", orderRoute);
 app.use("/api/admin/orders", orderRoute);
+app.use("/api/admin/shipments", shipmentRoute);
 
 app.use("/api/address", addressRoutes);
 app.use("/api/payment", orderRoute);
@@ -177,5 +179,13 @@ const io = new Server(server, {
 
 app.set('socketio', io);
 socketHandler(io);
+
+// ✅ Periodic Tabby Auto-Reconciliation (Runs every 10 mins to catch any dropped webhooks)
+const { syncTabbyOrders } = require('./controllers/tabbyController');
+setInterval(() => {
+  syncTabbyOrders().catch((err) => {
+    console.error("⚠️ Background Tabby Sync Warning:", err.message);
+  });
+}, 10 * 60 * 1000);
 
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

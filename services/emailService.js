@@ -943,6 +943,291 @@ const getNewArrivalTemplate = (products = []) => `
 </html>
 `;
 
+/**
+ * 📦 Shipment & Tracking Notification Email (To Customer)
+ */
+const sendShipmentTrackingEmail = async (order, options = {}) => {
+  const {
+    trackingNumber = order.trackingNumber || "",
+    courierName = order.courierName || "DHL Express",
+    trackingUrl: customTrackingUrl = order.trackingUrl || "",
+    estimatedDeliveryDate = order.estimatedDeliveryDate || null,
+    customNote = "",
+    status = order.orderStatus || "Shipped",
+  } = options;
+
+  const { shippingAddress = {}, items = [], total = 0, currency = "AED", _id } = order;
+  const customerEmail = shippingAddress.email || (order.userId?.email) || "";
+  const customerName = `${shippingAddress.firstName || "Valued"} ${shippingAddress.lastName || "Customer"}`.trim();
+  const orderRef = (_id ? _id.toString().slice(-6).toUpperCase() : "ORDER");
+
+  // Determine Tracking URL
+  let trackingUrl = customTrackingUrl;
+  if (!trackingUrl && trackingNumber) {
+    const courierLower = (courierName || "").toLowerCase();
+    if (courierLower.includes("dhl")) {
+      trackingUrl = `https://www.dhl.com/en/express/tracking.html?AWB=${trackingNumber}`;
+    } else if (courierLower.includes("fedex")) {
+      trackingUrl = `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+    } else if (courierLower.includes("aramex")) {
+      trackingUrl = `https://www.aramex.com/track/results?mode=0&ShipmentNumber=${trackingNumber}`;
+    } else if (courierLower.includes("ups")) {
+      trackingUrl = `https://www.ups.com/track?tracknum=${trackingNumber}`;
+    } else {
+      trackingUrl = `https://www.montres.ae/track-order?tracking=${trackingNumber}&order=${orderRef}`;
+    }
+  }
+
+  // Format delivery date with 1-2 business days delivery promise
+  let formattedDeliveryDate = "1–2 Business Days";
+  if (estimatedDeliveryDate) {
+    try {
+      const d = new Date(estimatedDeliveryDate);
+      const dateStr = d.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+      formattedDeliveryDate = `${dateStr} (1–2 Business Days)`;
+    } catch {
+      formattedDeliveryDate = `${String(estimatedDeliveryDate)} (1–2 Business Days)`;
+    }
+  }
+
+  // Generate Items HTML
+  const itemsHTML = (items || []).map((item) => `
+    <tr>
+      <td style="padding: 14px 0; border-bottom: 1px solid #f1f3f5;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            ${item.image ? `
+              <td width="64" style="vertical-align: middle;">
+                <img src="${item.image}" alt="${item.name || 'Product'}" width="54" height="54" style="border-radius: 8px; object-fit: cover; border: 1px solid #e9ecef; display: block;" />
+              </td>
+            ` : ''}
+            <td style="padding-left: ${item.image ? '12px' : '0'}; vertical-align: middle;">
+              <div style="font-weight: 600; font-size: 14px; color: #1a1a1a; line-height: 1.3;">${item.name || 'Luxury Timepiece'}</div>
+              <div style="font-size: 12px; color: #868e96; margin-top: 4px;">
+                ${item.sku ? `<span style="font-family: monospace; background: #f1f3f5; padding: 2px 6px; border-radius: 4px;">${item.sku}</span> &bull; ` : ''}
+                Qty: ${item.quantity || 1}
+              </div>
+            </td>
+            <td style="text-align: right; font-weight: 700; font-size: 14px; color: #1a1a1a; vertical-align: middle; white-space: nowrap;">
+              ${currency} ${((item.price || 0) * (item.quantity || 1)).toLocaleString()}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  `).join("");
+
+  const destinationAddress = [
+    shippingAddress.address1,
+    shippingAddress.address2,
+    shippingAddress.city,
+    shippingAddress.country
+  ].filter(Boolean).join(", ");
+
+  const emailSubject = `🚚 Shipment Confirmed: Order #${orderRef} Dispatched (1–2 Business Days Delivery)`;
+
+  const plainText = `
+Dear ${customerName},
+
+Great news! Your Montres order #${orderRef} has been prepared, securely packaged, and dispatched.
+Your package is in transit via ${courierName || 'DHL Express'} and is scheduled for delivery within 1 to 2 business days.
+
+SHIPMENT DETAILS:
+- Order Reference: #${orderRef}
+- Carrier: ${courierName || 'DHL Express Priority'}
+- Tracking Number: ${trackingNumber || 'Available via Tracking Link'}
+- Estimated Delivery: ${formattedDeliveryDate}
+- Destination: ${destinationAddress || 'Address on file'}
+
+${trackingUrl ? `Track your live shipment: ${trackingUrl}\n` : ''}
+${customNote ? `Special Fulfillment Note: ${customNote}\n` : ''}
+
+Need assistance? Contact our concierge at ${process.env.ADMIN_EMAIL || 'concierge@montres.ae'}.
+
+Warm regards,
+Montres Trading L.L.C
+Dubai, United Arab Emirates
+`.trim();
+
+  const mailOptions = {
+    from: `"Montres Trading L.L.C" <${process.env.EMAIL_USER}>`,
+    to: customerEmail,
+    replyTo: process.env.ADMIN_EMAIL || process.env.EMAIL_USER,
+    subject: emailSubject,
+    text: plainText,
+    headers: {
+      "X-Entity-Ref-ID": `ORDER-TRACK-${orderRef}`,
+      "X-Auto-Response-Suppress": "OOF, AutoReply",
+    },
+    html: `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shipment Tracking - Montres</title>
+  <style>
+    @media only screen and (max-width: 600px) {
+      .container { width: 100% !important; border-radius: 0 !important; }
+      .content-cell { padding: 30px 20px !important; }
+      .tracking-box { padding: 20px !important; }
+      .cta-button { width: 100% !important; text-align: center !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f6f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #212529;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f6f8; padding: 40px 0;">
+    <tr>
+      <td align="center">
+        <table class="container" width="620" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 12px 36px rgba(0,0,0,0.06); border: 1px solid #e9ecef;">
+          
+          <!-- ── Header Banner ── -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #111418 0%, #1e242c 100%); padding: 44px 36px 36px; text-align: center;">
+              <div style="font-size: 11px; letter-spacing: 5px; text-transform: uppercase; color: #c5a059; font-weight: 700; margin-bottom: 8px;">MONTRES LUXURY FULFILLMENT</div>
+              <h1 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.5px;">Your Order Is On Its Way</h1>
+              <div style="width: 36px; height: 2px; background-color: #c5a059; margin: 16px auto 0;"></div>
+            </td>
+          </tr>
+
+          <!-- ── Main Content ── -->
+          <tr>
+            <td class="content-cell" style="padding: 36px 36px 20px;">
+              <p style="font-size: 16px; line-height: 1.6; color: #343a40; margin: 0 0 16px;">
+                Dear <strong>${customerName}</strong>,
+              </p>
+              <p style="font-size: 14px; line-height: 1.7; color: #495057; margin: 0 0 24px;">
+                Great news! Your package for order <strong style="color: #111418;">#${orderRef}</strong> has been carefully inspected, securely packaged, and dispatched. Your item will be delivered within <strong>1 to 2 business days</strong>.
+              </p>
+
+              <!-- ── Delivery Notice Pill ── -->
+              <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 12px 18px; margin-bottom: 26px; display: flex; align-items: center;">
+                <span style="font-size: 13px; font-weight: 700; color: #065f46;">
+                  ⚡ Express Delivery: Expected within 1–2 business days via ${courierName || 'Courier'}
+                </span>
+              </div>
+
+              <!-- ── Tracking Details Card ── -->
+              <div class="tracking-box" style="background: linear-gradient(145deg, #fdfbf7 0%, #f9f6ef 100%); border: 1px solid #eedec4; border-radius: 12px; padding: 26px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(197, 160, 89, 0.08);">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="vertical-align: top; padding-bottom: 14px;">
+                      <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #8c733e; font-weight: 700;">Carrier Authority</div>
+                      <div style="font-size: 16px; font-weight: 700; color: #1a1a1a; margin-top: 3px;">${courierName || 'DHL Express Priority'}</div>
+                    </td>
+                    <td style="text-align: right; vertical-align: top; padding-bottom: 14px;">
+                      <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #8c733e; font-weight: 700;">Estimated Delivery</div>
+                      <div style="font-size: 15px; font-weight: 700; color: #16a34a; margin-top: 3px;">${formattedDeliveryDate}</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="border-top: 1px dashed #d8c29d; padding-top: 14px;">
+                      <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #8c733e; font-weight: 700;">Tracking Number</div>
+                      <div style="font-size: 20px; font-weight: 800; color: #111418; font-family: 'SFMono-Regular', Consolas, Menlo, monospace; margin-top: 4px; letter-spacing: 1px;">
+                        ${trackingNumber || 'Available via Tracking Link'}
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- ── CTA Button ── -->
+              ${trackingUrl ? `
+                <div style="text-align: center; margin-bottom: 34px;">
+                  <a href="${trackingUrl}" class="cta-button" style="display: inline-block; background-color: #111418; color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 700; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; box-shadow: 0 6px 20px rgba(0,0,0,0.15);">
+                    Track Live Shipment &rarr;
+                  </a>
+                </div>
+              ` : ''}
+
+              <!-- ── Custom Logistics Note if provided ── -->
+              ${customNote ? `
+                <div style="background-color: #f1f3f5; border-left: 4px solid #c5a059; border-radius: 4px; padding: 14px 18px; margin-bottom: 30px; font-size: 13px; color: #495057; line-height: 1.6;">
+                  <strong>Special Fulfillment Note:</strong><br />${customNote}
+                </div>
+              ` : ''}
+
+              <!-- ── Shipping Destination ── -->
+              <div style="background-color: #fafbfc; border: 1px solid #edf2f7; border-radius: 10px; padding: 18px 22px; margin-bottom: 32px;">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #868e96; font-weight: 700; margin-bottom: 6px;">
+                  Delivery Address
+                </div>
+                <div style="font-size: 13px; font-weight: 600; color: #212529; line-height: 1.5;">
+                  ${customerName}<br />
+                  ${destinationAddress || 'Address on file'}<br />
+                  ${shippingAddress.phone ? `Phone: ${shippingAddress.phone}` : ''}
+                </div>
+              </div>
+
+              <!-- ── Order Items Breakdown ── -->
+              <div style="margin-bottom: 24px;">
+                <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #868e96; font-weight: 700; margin-bottom: 12px; border-bottom: 1px solid #f1f3f5; padding-bottom: 8px;">
+                  Items In This Shipment
+                </div>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  ${itemsHTML}
+                </table>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- ── Support & Assistance ── -->
+          <tr>
+            <td style="background-color: #f8f9fa; padding: 26px 36px; border-top: 1px solid #e9ecef; text-align: center;">
+              <p style="font-size: 13px; color: #6c757d; margin: 0 0 6px;">
+                Need help or have questions regarding your delivery?
+              </p>
+              <p style="font-size: 13px; margin: 0;">
+                Email our concierge at <a href="mailto:${process.env.ADMIN_EMAIL || 'concierge@montres.ae'}" style="color: #c5a059; text-decoration: none; font-weight: 600;">${process.env.ADMIN_EMAIL || 'concierge@montres.ae'}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- ── Footer ── -->
+          <tr>
+            <td style="background-color: #111418; padding: 32px 36px; text-align: center; color: #868e96;">
+              <div style="font-size: 14px; font-weight: 700; color: #ffffff; letter-spacing: 3px; margin-bottom: 6px;">MONTRES</div>
+              <div style="font-size: 11px; letter-spacing: 1px; color: #c5a059; margin-bottom: 14px;">FINE WATCHES & LUXURY ACCESSORIES</div>
+              <p style="font-size: 11px; line-height: 1.6; margin: 0; color: #6c757d;">
+                &copy; ${new Date().getFullYear()} Montres Store. Dubai, United Arab Emirates.<br />All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `,
+  };
+
+  try {
+    if (!customerEmail) {
+      console.warn("⚠️ No customer email found on order:", _id);
+      return { success: false, message: "No customer email found" };
+    }
+    const result = await transporter.sendMail(mailOptions);
+    console.log(`✅ Shipment tracking email sent to ${customerEmail} (Order #${orderRef})`);
+    return { success: true, message: "Shipment tracking email sent successfully", result };
+  } catch (error) {
+    console.error("❌ Error sending shipment tracking email:", error.message);
+    throw error;
+  }
+};
+
+/**
+ * 📬 Delivery Status Update Notification (Delivered, Out for Delivery, etc.)
+ */
+const sendDeliveryStatusEmail = async (order, options = {}) => {
+  return sendShipmentTrackingEmail(order, options);
+};
 
 // For CommonJS export
 module.exports = {
@@ -957,6 +1242,8 @@ module.exports = {
   sendManualOfferEmail,
   sendOfferExpiredEmail,
   sendNewsletterEmail,
+  sendShipmentTrackingEmail,
+  sendDeliveryStatusEmail,
   getWelcomeTemplate,
   getDiscountTemplate,
   getNewArrivalTemplate

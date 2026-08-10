@@ -1,6 +1,7 @@
 const axios = require("axios");
 const Shipment = require("../models/ShipmentModel");
 const Order = require("../models/OrderModel");
+const { sendShipmentTrackingEmail } = require("../services/emailService");
 
 exports.createDHLShipmentFromOrder = async (req, res) => {
   try {
@@ -236,13 +237,32 @@ exports.createDHLShipmentFromOrder = async (req, res) => {
       }
     });
 
-    // Update order status
-    order.orderStatus = "Completed";
+    // Update order status & tracking info
+    order.orderStatus = "In Transit";
+    order.trackingNumber = dhlData.shipmentTrackingNumber;
+    order.courierName = "DHL Express";
+    order.trackingUrl = dhlData.trackingUrl || `https://www.dhl.com/en/express/tracking.html?AWB=${dhlData.shipmentTrackingNumber}`;
+    order.shippedAt = new Date();
     await order.save();
+
+    // Trigger professional shipment tracking email to customer
+    try {
+      await sendShipmentTrackingEmail(order, {
+        trackingNumber: order.trackingNumber,
+        courierName: order.courierName,
+        trackingUrl: order.trackingUrl,
+        status: "In Transit",
+      });
+      order.emailNotificationSent = true;
+      order.lastNotificationSentAt = new Date();
+      await order.save();
+    } catch (emailErr) {
+      console.error("⚠️ Failed to auto-send DHL shipment email:", emailErr.message);
+    }
 
     return res.status(200).json({
       success: true,
-      message: "DHL shipment created successfully",
+      message: "DHL shipment created successfully and tracking email dispatched",
       shipmentTrackingNumber: dhlData.shipmentTrackingNumber,
       data: shipment
     });
