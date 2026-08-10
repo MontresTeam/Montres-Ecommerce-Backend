@@ -62,19 +62,37 @@ const buildProductQuery = (queryParams) => {
             .filter(Boolean);
     };
 
-    // Search - Sanitize input to prevent ReDoS
+    // Search - Smart Multi-Token Search
     if (search && search.trim()) {
-        const escapedSearch = escapeRegExp(search.trim());
-        const searchRegex = new RegExp(escapedSearch, "i");
-        andConditions.push({
-            $or: [
-                { name: searchRegex },
-                { brand: searchRegex },
-                { model: searchRegex },
-                { description: searchRegex },
-                { referenceNumber: searchRegex },
-                { sku: searchRegex }
-            ],
+        const cleanSearch = search.trim();
+        const tokens = cleanSearch
+            .split(/\s+/)
+            .map((t) => t.trim())
+            .filter((t) => t.length > 0)
+            .map((t) => escapeRegExp(t));
+
+        tokens.forEach((tok) => {
+            const tokenRegex = new RegExp(tok, "i");
+            andConditions.push({
+                $or: [
+                    { name: tokenRegex },
+                    { brand: tokenRegex },
+                    { model: tokenRegex },
+                    { additionalTitle: tokenRegex },
+                    { description: tokenRegex },
+                    { referenceNumber: tokenRegex },
+                    { sku: tokenRegex },
+                    { serialNumber: tokenRegex },
+                    { category: tokenRegex },
+                    { watchType: tokenRegex },
+                    { watchStyle: tokenRegex },
+                    { accessoryCategory: tokenRegex },
+                    { accessorySubCategory: tokenRegex },
+                    { leatherMainCategory: tokenRegex },
+                    { leatherSubCategory: tokenRegex },
+                    { seoKeywords: tokenRegex },
+                ],
+            });
         });
     }
 

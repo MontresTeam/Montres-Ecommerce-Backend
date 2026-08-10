@@ -22,18 +22,18 @@ const sendEmail = async (to, subject, htmlContent, textContent = "") => {
         });
 
         // Strip HTML tags for a clean text version if not provided
-        const plainText = textContent || htmlContent.replace(/<[^>]*>?/gm, '');
+        const plainText = textContent || htmlContent.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
 
         await transporter.sendMail({
-            from: `"Montres Admin" <${process.env.EMAIL_USER}>`,
+            from: `"Montres Trading L.L.C" <${process.env.EMAIL_USER}>`,
             to,
+            replyTo: process.env.ADMIN_EMAIL || process.env.EMAIL_USER,
             subject,
             text: plainText,
             html: htmlContent,
             headers: {
-                "X-Priority": "1 (Highest)",
-                "X-MSMail-Priority": "High",
-                "Importance": "High",
+                "X-Mailer": "Montres-Mailer/2.0",
+                "X-Auto-Response-Suppress": "OOF, AutoReply",
             }
         });
 

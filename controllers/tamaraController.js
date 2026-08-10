@@ -320,9 +320,12 @@ const verifyTamaraSignature = (req) => {
 
     const signature =
         req.headers["x-tamara-signature"] ||
-        req.headers["x-tamara-notification-signature"];
+        req.headers["x-tamara-notification-signature"] ||
+        req.headers["tamara-signature"] ||
+        req.headers["signature"] ||
+        req.headers["authorization"];
 
-    const webhookSecret = process.env.TAMARA_WEBHOOK_SECRET;
+    const webhookSecret = process.env.TAMARA_WEBHOOK_SECRET || process.env.TAMARA_NOTIFICATION_KEY;
 
     if (!signature) {
         console.error("❌ Tamara signature header missing");
@@ -334,6 +337,16 @@ const verifyTamaraSignature = (req) => {
         return false;
     }
 
+    // Direct token comparison (Notification token / Bearer)
+    if (
+        signature === webhookSecret ||
+        signature === `Bearer ${webhookSecret}` ||
+        signature.trim() === webhookSecret.trim()
+    ) {
+        return true;
+    }
+
+    // HMAC SHA-256 comparison
     try {
         const payload = Buffer.isBuffer(req.body) ? req.body : JSON.stringify(req.body);
         const expectedSignature = crypto
@@ -344,12 +357,14 @@ const verifyTamaraSignature = (req) => {
         const signatureBuffer = Buffer.from(signature);
         const expectedBuffer = Buffer.from(expectedSignature);
 
-        if (signatureBuffer.length !== expectedBuffer.length) return false;
-        return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+        if (signatureBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+            return true;
+        }
     } catch (err) {
         console.error("❌ Tamara signature verification error:", err.message);
-        return false;
     }
+
+    return false;
 };
 
 // ==================================================
@@ -497,12 +512,12 @@ const handleTamaraWebhook = async (req, res) => {
                              (["approved", "order_approved"].includes(eventType)); // Include approved because we just authorised it above
 
         if (isSuccessEvent) {
-            // Idempotent update
+            // Idempotent update to PAID
             const updatedOrder = await Order.findOneAndUpdate(
-                { _id: order._id, paymentStatus: { $nin: ["paid", "authorized"] } },
+                { _id: order._id, paymentStatus: { $ne: "paid" } },
                 {
                     $set: {
-                        paymentStatus: "authorized",
+                        paymentStatus: "paid",
                         orderStatus: "Paid / Awaiting Shipment",
                         tamaraOrderId: tamaraOrderId,
                         paidAt: new Date()
@@ -517,7 +532,6 @@ const handleTamaraWebhook = async (req, res) => {
             const tamaraAmount = Number(payload.total_amount?.amount || payload.amount?.amount || 0);
             if (tamaraAmount > 0 && Math.abs(tamaraAmount - activeOrder.total) > 0.5) {
                 console.error(`❌ Tamara Amount Mismatch: Received ${tamaraAmount}, Expected ${activeOrder.total}.`);
-                // Note: We don't fail the webhook ACK here to prevent loops, but we log the error.
             }
 
             if (updatedOrder) {
@@ -530,9 +544,7 @@ const handleTamaraWebhook = async (req, res) => {
                 sendOrderConfirmation(activeOrder._id).catch(e => console.error("📧 Email Error:", e.message));
             }
 
-            // AUTO-CAPTURE (If enabled)
-            // Some merchants prefer manual capture on shipping. 
-            // For testing, we trigger it if the status is authorised.
+            // AUTO-CAPTURE
             const isAuthorised = ["order_authorized", "order_authorised", "authorised"].includes(eventType) || ["approved", "order_approved"].includes(eventType);
             if (isAuthorised) {
                 console.log(`📡 Status is ${eventType}. Triggering Capture for ${tamaraOrderId}...`);

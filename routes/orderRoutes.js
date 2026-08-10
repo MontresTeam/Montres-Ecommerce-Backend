@@ -18,6 +18,8 @@ const {
   calculateShipping,
   deleteOrder,
   refundOrder,
+  updateOrderLogistics,
+  sendOrderTrackingEmail,
 } = require("../controllers/orderController");
 
 // ✅ Place this route BEFORE /:id
@@ -27,6 +29,7 @@ router.get("/myorders", protect, getMyOrders);
 router.post("/stripe/create-checkout", optionalProtect, createStripeOrder);
 router.post("/calculate-shipping", optionalProtect, calculateShipping);
 router.post("/:id/refund", adminProtect, refundOrder);
+router.post("/:id/send-tracking-email", adminProtect, sendOrderTrackingEmail);
 
 // Shipping
 router.get("/shipping", protect, getShippingAddresses);
@@ -41,6 +44,8 @@ router.delete("/billing/:id", protect, deleteBillingAddress);
 router.put("/billing-address/:id", protect, updateBillingAddress)
 
 router.get("/", adminProtect, getAllOrders);
+router.put("/:id/logistics", adminProtect, updateOrderLogistics);
+router.put("/:id", adminProtect, updateOrderLogistics);
 router.delete("/:id", adminProtect, deleteOrder);
 
 // Dynamic route LAST - Protected with optionalProtect to allow owner/admin check

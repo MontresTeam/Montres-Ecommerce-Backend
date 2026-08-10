@@ -93,9 +93,42 @@ const orderSchema = new mongoose.Schema(
 
     orderStatus: {
       type: String,
-      enum: ["Pending", "Paid / Awaiting Shipment", "Completed", "Cancelled"],
+      enum: [
+        "Pending",
+        "pending",
+        "Paid / Awaiting Shipment",
+        "paid_awaiting_shipment",
+        "Processing",
+        "processing",
+        "Shipped",
+        "shipped",
+        "In Transit",
+        "in_transit",
+        "Out for Delivery",
+        "out_for_delivery",
+        "Delivered",
+        "delivered",
+        "Completed",
+        "completed",
+        "Cancelled",
+        "cancelled",
+        "Refunded",
+        "refunded",
+        "On Hold",
+        "on_hold"
+      ],
       default: "Pending"
-    }
+    },
+
+    // Logistics & Tracking
+    trackingNumber: { type: String, default: "" },
+    courierName: { type: String, default: "" },
+    trackingUrl: { type: String, default: "" },
+    estimatedDeliveryDate: { type: Date },
+    shippedAt: { type: Date },
+    deliveryNotes: { type: String, default: "" },
+    emailNotificationSent: { type: Boolean, default: false },
+    lastNotificationSentAt: { type: Date }
   },
   { timestamps: true }
 );
